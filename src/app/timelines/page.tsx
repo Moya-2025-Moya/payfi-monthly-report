@@ -1,0 +1,30 @@
+import Link from 'next/link'
+import { supabaseAdmin } from '@/db/client'
+import { PageHeader } from '@/components/ui/PageHeader'
+import type { Timeline } from '@/lib/types'
+
+export default async function TimelinesPage() {
+  const { data } = await supabaseAdmin.from('timelines').select('*').order('updated_at', { ascending: false })
+  const timelines = (data ?? []) as Timeline[]
+  return (
+    <div>
+      <PageHeader title="Timelines" description={`${timelines.length} event timelines`} />
+      <div className="space-y-2">
+        {timelines.map(t => (
+          <Link key={t.id} href={`/timelines/${t.id}`}
+            className="block rounded-lg border p-4 hover:shadow-sm transition-shadow"
+            style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">{t.name}</h3>
+              <span className="text-xs px-2 py-0.5 rounded"
+                style={{ background: t.status === 'active' ? '#dcfce7' : 'var(--muted)', color: t.status === 'active' ? '#166534' : 'var(--muted-fg)' }}>
+                {t.status}
+              </span>
+            </div>
+            {t.description && <p className="text-xs mt-1" style={{ color: 'var(--muted-fg)' }}>{t.description}</p>}
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}

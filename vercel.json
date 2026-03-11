@@ -1,0 +1,24 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/collect",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/process",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/twitter",
+      "schedule": "0 1 * * 0"
+    },
+    {
+      "path": "/api/cron/knowledge",
+      "schedule": "0 5 * * 0"
+    },
+    {
+      "path": "/api/cron/snapshot",
+      "schedule": "0 1 * * 1"
+    }
+  ]
+}

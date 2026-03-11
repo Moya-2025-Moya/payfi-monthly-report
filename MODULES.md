@@ -1,0 +1,1169 @@
+# MECE 模块划分 & 边界定义 V4
+
+> 产品: StablePulse — 稳定币行业原子化知识引擎
+> 架构核心: 原子事实是最小信息单位，所有事实必须经过多维度验证
+> 每个模块独立开发、独立测试，模块间通过Supabase数据库和TypeScript类型通信
+
+---
+
+## 模块全景图
+
+```
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                              StablePulse 系统                                 │
+├──────────┬────────────────────────┬───────────┬──────────┬──────┬────────────┤
+│ Module A │      Module B          │ Module C  │ Module D │Mod E │ Module F   │
+│ 数据采集  │  AI原子化 + 验证层      │ 知识引擎   │ 展示层    │ 分发  │ 基础设施   │
+├──────────┼────────────────────────┼───────────┼──────────┼──────┼────────────┤
+│A1 链上    │ B1 事实拆解Agent       │C1 实体    │D1 Web    │E1 邮件│F1 DB      │
+│A2 新闻    │ ─── 验证层 ⭐ ───      │  档案     │D2 API   │E2 TG │F2 配置    │
+│  (多源)   │ V0 裁决器 (纯代码)     │C2 时间线   │D3 可视化 │E3 调度│F3 认证    │
+│A3 上市公司│ V1 来源回溯验证员      │C3 关系图谱 │D4 AI对话 │      │F4 监控    │
+│A4 产品    │ V2 多来源交叉验证员    │C4 赛道视图 │D5 分享   │      │           │
+│A5 融资    │ V3 数值合理性验证员    │C5 监管追踪 │          │      │           │
+│  (免费多源)│ V4 链上锚定验证员      │C6 盲区探测 │          │      │           │
+│A6 Twitter │ V5 时序一致性验证员    │C7 Diff    │          │      │           │
+│  (特定账号)│ V6 时间线归属验证员    │C8 密度统计 │          │      │           │
+│A7 监管    │ ─────────────────     │           │          │      │           │
+│           │ B2 实体识别Agent       │           │          │      │           │
+│           │ B3 时间线归并Agent     │           │          │      │           │
+│           │ B4 矛盾检测Agent      │           │          │      │           │
+│           │ B5 翻译Agent          │           │          │      │           │
+│           │ B6 编排Agent          │           │          │      │           │
+└──────────┴────────────────────────┴───────────┴──────────┴──────┴────────────┘
+```
+
+---
+
+## Module A: 数据采集层
+
+> **职责**: 从多个数据源抓取原始数据，清洗后存入Supabase的raw_*表
+> **边界**: 只负责"拿到原始数据并存储"。不做拆解、分析、归集、关联。
+> **原则**: 同一类信息尽量多数据源采集，为后续交叉验证提供基础。每条原始数据必须附带source_url。
+
+### A1 链上数据采集器
+| 字段 | 说明 |
+|---|---|
+| **数据源** | DeFiLlama API (免费); [ROADMAP] +CoinGecko API 交叉验证 |
+| **采集内容** | 各稳定币市值、交易量、TVL、链分布、持有者数量变化 |
+| **频率** | 每日 |
+| **输出表** | `raw_onchain_metrics` |
+| **关键字段** | `source` ('defillama'), `metric_name`, `metric_value`, `fetched_at` |
+| **多源策略** | 当前仅用DeFiLlama。[ROADMAP] 后续集成CoinGecko做交叉验证 |
+| **接口** | `collectOnChainData(): Promise<void>` |
+| **目录** | `src/modules/collectors/on-chain/` |
+
+### A2 新闻媒体采集器 (全免费，多源)
+| 字段 | 说明 |
+|---|---|
+| **数据源1** | [free-crypto-news](https://cryptocurrency.cv/api) (免费，无需key) — 300+来源聚合，REST API，自带source_url |
+| **数据源2** | RSS feeds (免费) — The Block, CoinDesk, Decrypt, Bloomberg Crypto, Cointelegraph, DeFiLlama News, 各项目Blog |
+| **采集内容** | 标题、摘要、来源名、source_url (原文链接)、发布时间 |
+| **频率** | 每6小时 |
+| **去重** | 基于source_url去重；保留同一事件的不同来源版本(供V2交叉验证) |
+| **多源策略** | free-crypto-news提供结构化数据，RSS覆盖主流媒体。同一事件多来源版本交叉验证 |
+| **输出表** | `raw_news` |
+| **关键字段** | `source_url` (必填), `collector` ('free-crypto-news' | 'rss'), `title`, `summary`, `published_at` |
+| **接口** | `collectNews(): Promise<void>` |
+| **目录** | `src/modules/collectors/news/` |
+
+### A3 上市公司数据采集器
+| 字段 | 说明 |
+|---|---|
+| **数据源** | SEC EDGAR API (免费), Yahoo Finance (`yahoo-finance2` npm), 公司IR页面RSS |
+| **关注公司** | 配置在 `config/watchlist.ts` |
+| **采集内容** | Filing (10-K/10-Q/8-K) 含filing URL, 股价, 持仓变化 |
+| **频率** | 每日检查新Filing，股价每日 |
+| **输出表** | `raw_filings`, `raw_stock_data` |
+| **关键字段** | `source_url` (SEC filing直链), `filing_type`, `company_cik` |
+| **接口** | `collectCompanyData(): Promise<void>` |
+| **目录** | `src/modules/collectors/companies/` |
+
+### A4 产品动态采集器
+| 字段 | 说明 |
+|---|---|
+| **数据源** | 产品官方Blog RSS, GitHub Releases API, Changelog页面 |
+| **关注产品** | 配置在 `config/watchlist.ts` |
+| **采集内容** | 更新标题、描述、source_url、版本号 |
+| **频率** | 每日 |
+| **输出表** | `raw_product_updates` |
+| **接口** | `collectProductUpdates(): Promise<void>` |
+| **目录** | `src/modules/collectors/products/` |
+
+### A5 融资事件采集器 (免费)
+| 字段 | 说明 |
+|---|---|
+| **数据源1** | [DeFiLlama /raises](https://api.llama.fi/raises) (免费) — Crypto融资数据，结构化，含金额/轮次/投资方 |
+| **数据源2** | 新闻中的融资相关条目 (A2已采集，标签过滤提取) |
+| **[ROADMAP]** | CryptoRank API — 后续集成，用于融资数据交叉验证 |
+| **采集内容** | 项目名、轮次、金额、估值、投资方、赛道、source_url |
+| **频率** | 每日 |
+| **多源策略** | DeFiLlama提供结构化数据(主源)，新闻提供上下文和交叉验证 |
+| **输出表** | `raw_funding` |
+| **关键字段** | `source_url`, `collector` ('defillama_raises' | 'news_extraction'), `amount`, `round`, `investors[]` |
+| **接口** | `collectFunding(): Promise<void>` |
+| **目录** | `src/modules/collectors/funding/` |
+
+### A6 Twitter声音采集器 (twitterapi.io)
+| 字段 | 说明 |
+|---|---|
+| **策略** | **追踪特定账号的新帖子**，不做搜索。账号列表经人工筛选，质量有保障 |
+| **关注账号** | 配置在 `config/twitter-accounts.ts`，分4类: VC/投资人, KOL/分析师, 创始人/项目方, 社区用户 |
+| **采集方式** | [twitterapi.io](https://twitterapi.io/twitter-stream) — 通过API注册监控账号 (`POST /oapi/x_user_stream/add_user_to_monitor_tweet`)，WebSocket实时接收推文 |
+| **套餐** | Starter $29/月 (6个账号)，额外账号$5/个 |
+| **采集内容** | 推文内容、作者、时间、互动量、作者类别、tweet_url |
+| **频率** | 实时流式接收，每周汇总处理 |
+| **输出表** | `raw_tweets` |
+| **关键字段** | `source_url` (tweet链接), `author_handle`, `author_category` ('vc' | 'kol' | 'founder' | 'user') |
+| **接口** | `collectTweets(): Promise<void>` |
+| **目录** | `src/modules/collectors/twitter/` |
+
+### A7 监管动态采集器
+| 字段 | 说明 |
+|---|---|
+| **数据源** | SEC.gov RSS, Congress.gov API, EU Official Journal RSS, 各国央行公告 |
+| **采集内容** | 法案进展、监管公告、执法行动、牌照发放, source_url |
+| **频率** | 每日 |
+| **输出表** | `raw_regulatory` |
+| **接口** | `collectRegulatory(): Promise<void>` |
+| **目录** | `src/modules/collectors/regulatory/` |
+
+---
+
+## Module B: AI原子化 + 验证层
+
+> **职责**: 将原始数据拆解为原子事实，经过多维度独立验证后，再进行实体识别、时间线归并、矛盾检测、翻译
+> **边界**: 读取raw_*表，写入atomic_facts表和知识图谱表
+> **核心原则**:
+> - AI零主观——只做结构化操作，不输出任何观点
+> - 每个原子事实必须附带source_url，可追溯验证
+> - 多维度独立验证，投票制裁决，少数服从多数
+> - 提取和验证完全分离
+
+### 完整Pipeline
+
+```
+raw_*表 (A层多源采集)
+      │
+      ▼
+══════════════════════════════════════════════════
+  PHASE 1: 提取
+══════════════════════════════════════════════════
+      │
+┌─────▼──────┐
+│ B1 事实     │  两次prompt:
+│ 拆解Agent  │    Prompt1: 提取候选事实
+│            │    Prompt2: 反向自查 (有依据/无依据)
+└─────┬──────┘   输出: 候选原子事实[] (状态: pending_verification)
+      │
+      ▼
+══════════════════════════════════════════════════
+  PHASE 2: 多维度独立验证 (5个验证员并行)
+══════════════════════════════════════════════════
+      │
+      ├──→ V1 来源回溯验证员     fetch source_url → 事实是否在原文中?
+      ├──→ V2 多来源交叉验证员   同一事件不同来源 → 一致吗? 少数服从多数
+      ├──→ V3 数值合理性验证员   数字量级/范围合理吗? (纯代码)
+      ├──→ V4 链上锚定验证员     声称的链上数据与A1实际数据匹配吗? (纯代码)
+      └──→ V5 时序一致性验证员   时间线有无矛盾?
+      │
+      ▼
+┌─────────────┐
+│ V0 裁决器    │  纯代码: 汇总V1-V5投票结果
+│ (纯代码)     │  计算最终confidence + verification_status
+│             │  rejected的事实不进入系统
+└─────┬───────┘
+      │ 只有 verified/partially_verified 的事实继续
+      ▼
+══════════════════════════════════════════════════
+  PHASE 3: 归集
+══════════════════════════════════════════════════
+      │
+┌─────▼──────┐
+│ B2 实体     │  识别涉及的实体，关联到实体档案
+│ 识别Agent  │
+└─────┬──────┘
+      │
+┌─────▼──────┐
+│ B3 时间线   │  判断事实是否属于已有时间线
+│ 归并Agent  │
+└─────┬──────┘
+      │
+┌─────▼──────┐
+│ V6 时间线   │  独立确认B3的归属判断 (第二双眼睛)
+│ 归属验证员  │
+└─────┬──────┘
+      │
+┌─────▼──────┐
+│ B4 矛盾     │  检测已验证事实之间的矛盾
+│ 检测Agent  │
+└─────┬──────┘
+      │
+┌─────▼──────┐
+│ B5 翻译     │  英→中翻译
+│ Agent      │
+└─────┬──────┘
+      │
+      ▼
+  atomic_facts表 (status: verified, confidence: high/medium/low)
+```
+
+---
+
+### B1 事实拆解Agent ⭐ (提取核心)
+
+| 字段 | 说明 |
+|---|---|
+| **模型** | Claude Haiku 4.5 |
+| **输入** | raw_*表中的新记录 |
+| **实现** | 两次prompt流水线 |
+
+#### Prompt 1: 提取
+
+```
+你是一个严格的事实提取器。从以下文本中提取所有明确陈述的事实。
+
+规则:
+- 只提取原文中明确说了的事实，不推测、不推断、不补充
+- 每个事实必须是独立的、不可再拆的
+- 对于每个事实，标注它对应原文中的哪句话
+- 如果有具体数字，精确提取数字、单位、时间范围
+- 如果有人物发言，原文引用
+- 宁可少提取，也不要编造
+
+输出JSON格式:
+[{
+  content: "事实内容",
+  fact_type: "event|metric|quote|relationship|status_change",
+  evidence_sentence: "原文中的对应句子",
+  tags: ["标签1", "标签2"],
+  metric_name?: "指标名",
+  metric_value?: 数字,
+  metric_unit?: "单位",
+  metric_period?: "时间范围",
+  metric_change?: "变化描述"
+}]
+
+原文:
+{source_text}
+```
+
+#### Prompt 2: 反向自查
+
+```
+你是一个严格的事实审查员。以下是从一篇文章中提取的事实列表。
+请逐条检查每个事实是否在原文中有明确依据。
+
+对于每个事实，判断:
+- ✅ SUPPORTED: 原文中有明确对应内容
+- ⚠️ PARTIAL: 部分有依据，部分是推测
+- ❌ UNSUPPORTED: 原文中找不到依据
+
+原文:
+{source_text}
+
+提取的事实:
+{facts_from_prompt1}
+```
+
+#### 过滤逻辑 (纯代码)
+- ✅ SUPPORTED → 保留，进入验证层
+- ⚠️ PARTIAL → 保留但降低初始置信度
+- ❌ UNSUPPORTED → 丢弃，不进入系统
+
+| **输出表** | `atomic_facts` (status: `pending_verification`) |
+| **目录** | `src/modules/ai-agents/fact-splitter/` |
+
+---
+
+### 验证层 (V0-V6) ⭐
+
+#### V0 裁决器
+
+| 字段 | 说明 |
+|---|---|
+| **实现** | **纯TypeScript代码**，不用AI |
+| **输入** | V1-V5的全部验证结果 |
+| **输出** | 最终 `confidence` 和 `verification_status` |
+| **目录** | `src/modules/ai-agents/validators/adjudicator.ts` |
+
+**裁决规则**:
+
+```typescript
+function adjudicate(v1: V1Result, v2: V2Result, v3: V3Result, v4: V4Result, v5: V5Result): Verdict {
+
+  // 硬性否决 — 任一条件触发则rejected
+  if (v1.status === 'no_match') return { status: 'rejected', reason: '来源原文中无依据' }
+  if (v3.sanity === 'likely_error') return { status: 'rejected', reason: '数值明显错误' }
+  if (v4.anchor_status === 'mismatch') return { status: 'rejected', reason: '与链上实际数据严重不符' }
+  if (v2.cross_validation === 'inconsistent' && v2.is_minority) return { status: 'rejected', reason: '多来源中处于少数方' }
+
+  // 高置信度 — 必须有独立信息源的交叉验证
+  if (v1.status === 'matched'
+      && v2.source_count >= 2
+      && v2.independent_sources === true     // ⭐ 信息源必须独立
+      && v2.cross_validation === 'consistent'
+      && v3.sanity === 'normal'
+      && v5.temporal_status === 'consistent') {
+    return { status: 'verified', confidence: 'high' }
+  }
+
+  // 中置信度 — 来源已验证但无独立交叉验证
+  if (v1.status === 'matched'
+      && v3.sanity === 'normal') {
+    return { status: 'verified', confidence: 'medium' }
+  }
+
+  // 低置信度
+  return { status: 'partially_verified', confidence: 'low' }
+}
+```
+
+> **关键**: 高置信度必须同时满足 `independent_sources === true`。即使有多个来源，如果它们实质上是同一信息源（转载/引用同一原始报道），也只能得到中置信度。
+
+#### V1 来源回溯验证员
+
+| 字段 | 说明 |
+|---|---|
+| **实现** | Fetch + Claude Haiku |
+| **输入** | 候选原子事实 + source_url |
+| **过程** | 1. Fetch source_url内容 (用 `@mozilla/readability` 提取正文) 2. AI判断事实与原文是否匹配 |
+| **目录** | `src/modules/ai-agents/validators/source-traceback.ts` |
+
+**Prompt**:
+```
+你是事实核查员。判断以下事实是否在原文中有明确依据。
+
+事实: {fact.content}
+原文: {fetched_article_text}
+
+回答JSON:
+{
+  status: "matched" | "partial" | "no_match",
+  evidence_quote: "原文中支持该事实的具体段落（原文引用）",
+  match_score: 0-100
+}
+
+如果原文中找不到任何支持该事实的内容，status必须为"no_match"。
+```
+
+**输出**: `{ status, evidence_quote, match_score }`
+
+**边界情况**:
+- source_url 404/付费墙 → `status: 'source_unavailable'`，不否定也不确认
+- 原文太长(>10000字) → 截断到与事实最相关的段落再比对
+
+#### V2 多来源交叉验证员
+
+| 字段 | 说明 |
+|---|---|
+| **实现** | 纯代码(metric+信息源独立性) + Claude Haiku(event) |
+| **输入** | 同一事件的多个候选原子事实 (来自不同collector) |
+| **核心原则** | **交叉验证只有在信息源相互独立时才有意义**。每条事实的source_url必须精确到具体页面URL |
+| **目录** | `src/modules/ai-agents/validators/cross-source.ts` |
+
+**过程**:
+
+```
+Step 0 (纯代码，强制执行): 验证信息源独立性 ⭐
+  对每组事实，检查source_url:
+  - source_url完全相同 → 同源，不算交叉验证
+  - source_url域名相同但路径不同 → 可能独立，标记待确认
+  - source_url域名不同 → 初步判定独立
+  - 对event类型: AI额外检查内容是否大段重复(转载检测)
+  - 输出: independent_sources: true/false, source_urls[]
+
+  不独立的情况:
+  - 同一篇文章拆出的多条事实 → 同源
+  - A媒体全文转载B媒体 → 实质同源
+  - 都引用同一官方声明 → partially_independent
+
+Step 1 (纯代码): 找到描述同一事件的事实组
+  - 匹配规则: 同一entity + 同一周 + 标题相似度>0.7 或 tags重叠>50%
+  - 额外约束: 每组中的事实source_url必须来自不同原始信息源
+  - 输出: fact_groups[] (每组是关于同一事件的多条独立来源事实)
+
+Step 2 (分类处理):
+  metric类型 → 纯代码比数值:
+    前提: 确认source_url不同且独立
+    同一metric_name的不同来源的metric_value
+    差异<5% → consistent
+    差异5-20% → deviation (可能口径不同)
+    差异>20% → inconsistent
+
+  event类型 → AI判断 (prompt中包含每条事实的精确source_url):
+    "以下N条描述来自N个独立信息源（URL已列出）。
+     先确认这些来源是否真正独立（非转载/非引用同一原始报道）。
+     然后判断核心事实是否一致。"
+
+Step 3 (投票):
+  ≥2个独立来源一致 → 多数方标记 consistent
+  只有1个独立来源 → 标记 single_source (不否定，但置信度不升)
+  不一致 → 少数方标记 is_minority=true
+  信息源不独立 → 不算交叉验证，标记 independent_sources=false
+```
+
+**输出**: `{ source_count, consistent_count, cross_validation, is_minority, independent_sources, source_urls[], source_independence_note }`
+
+#### V3 数值合理性验证员
+
+| 字段 | 说明 |
+|---|---|
+| **实现** | **纯TypeScript代码**，不用AI |
+| **输入** | metric类型的原子事实 |
+| **目录** | `src/modules/ai-agents/validators/numerical-sanity.ts` |
+
+**规则引擎** (配置在 `config/numerical-ranges.ts`):
+
+```typescript
+const SANITY_RULES = {
+  // 稳定币市值范围
+  'market_cap_usdt': { min: 50e9, max: 200e9 },
+  'market_cap_usdc': { min: 10e9, max: 100e9 },
+  'market_cap_*':    { min: 0, max: 50e9 },
+
+  // 交易量
+  'weekly_volume_*': { min: 0, max: 500e9 },
+
+  // 融资金额
+  'funding_seed':    { min: 0, max: 50e6 },
+  'funding_series_a': { min: 0, max: 200e6 },
+
+  // 百分比
+  'percentage_*':    { min: 0, max: 100 },
+
+  // 周变化
+  'weekly_change_*': { anomaly_threshold: 50 }, // >50%标记异常
+}
+```
+
+**还会与历史数据对比**:
+- 查 `raw_onchain_metrics` 中该metric的最近值
+- 偏差>30% → anomaly (异常但未必错)
+- 偏差>10x → likely_error (量级错误，如$52B写成$520B)
+
+**输出**: `{ sanity: 'normal' | 'anomaly' | 'likely_error', reason, historical_reference? }`
+
+#### V4 链上数据锚定验证员
+
+| 字段 | 说明 |
+|---|---|
+| **实现** | **纯TypeScript代码**，不用AI |
+| **输入** | 声称链上数据的原子事实 + `raw_onchain_metrics` 中的实际数据 |
+| **适用范围** | 只有metric类型且涉及链上可验证数据的事实 (市值、TVL、交易量、链分布等) |
+| **目录** | `src/modules/ai-agents/validators/onchain-anchor.ts` |
+
+**过程**:
+```
+1. 从atomic_fact中识别metric_name (如 'usdc_market_cap')
+2. 在raw_onchain_metrics中查对应日期±1天的实际值
+3. 比对:
+   差异<5%  → anchored (确认)
+   差异5-20% → deviation (可能时间差/口径差)
+   差异>20% → mismatch (不匹配)
+   查不到   → no_anchor_data (无法验证，不否定)
+```
+
+**输出**: `{ anchor_status: 'anchored' | 'deviation' | 'mismatch' | 'no_anchor_data', claimed_value, actual_value, deviation_pct }`
+
+#### V5 时序一致性验证员
+
+| 字段 | 说明 |
+|---|---|
+| **实现** | 纯代码规则 + Claude Haiku(复杂情况) |
+| **输入** | 原子事实 + 该实体的已有时间线 |
+| **目录** | `src/modules/ai-agents/validators/temporal-consistency.ts` |
+
+**过程**:
+```
+Step 1 (纯代码):
+  - 事实日期不能是未来日期
+  - 事实日期不能早于实体创建日期
+  - 同一事件的事实日期应在合理范围内 (±7天)
+
+Step 2 (AI辅助，仅在有时间线冲突时调用):
+  "以下是实体X的时间线和一条新事实。
+   新事实: {fact}
+   已有时间线: {timeline_events}
+   新事实与时间线有无逻辑矛盾?
+   例如: 时间线显示'S-1已提交'但新事实说'尚未提交S-1'
+   回答: consistent / conflict + 说明"
+```
+
+**输出**: `{ temporal_status: 'consistent' | 'conflict' | 'unchecked', conflict_detail? }`
+
+#### V6 时间线归属验证员
+
+| 字段 | 说明 |
+|---|---|
+| **实现** | Claude Haiku |
+| **输入** | B3的归属建议 (事实X → 时间线Y) + 时间线Y的定义和已有节点 |
+| **目录** | `src/modules/ai-agents/validators/timeline-attribution.ts` |
+
+**Prompt**:
+```
+你是一个时间线归属审查员。
+
+时间线: {timeline.name}
+时间线描述: {timeline.description}
+已有节点:
+{timeline_events}
+
+B3建议将以下事实归入此时间线:
+事实: {fact.content}
+日期: {fact.fact_date}
+
+判断: 这个事实是否确实属于此时间线?
+回答JSON:
+{
+  confirmed: true/false,
+  confidence: 0-100,
+  reason: "归属理由或拒绝理由"
+}
+```
+
+**与B3的关系**: B3做初步归属，V6做独立验证。二者一致→确认；不一致→标记 `attribution_uncertain`，前端显示为待确认。
+
+---
+
+### B2 实体识别Agent
+
+| 字段 | 说明 |
+|---|---|
+| **模型** | Claude Haiku 4.5 |
+| **输入** | verified/partially_verified 的原子事实 |
+| **职责** | 识别事实涉及的实体，匹配已有entities表（含aliases），未匹配则创建新实体 |
+| **输出** | 更新 `fact_entities`, `entities`, `entity_relationships` |
+| **目录** | `src/modules/ai-agents/entity-resolver/` |
+
+### B3 时间线归并Agent
+
+| 字段 | 说明 |
+|---|---|
+| **模型** | Claude Haiku 4.5 |
+| **输入** | verified原子事实 + 已有timelines表 |
+| **职责** | 判断新事实是否属于已有时间线，或需要创建新时间线 |
+| **输出** | 归属建议 → 交给V6验证确认 |
+| **目录** | `src/modules/ai-agents/timeline-merger/` |
+
+### B4 矛盾检测Agent
+
+| 字段 | 说明 |
+|---|---|
+| **实现** | 纯代码(数值矛盾) + Claude Haiku(文本矛盾) |
+| **输入** | verified原子事实 + 已有同实体/同metric的事实 |
+| **数值矛盾** | 纯代码: 同一entity同一metric_name，不同source的value差异超阈值 |
+| **文本矛盾** | AI: 两条事实描述同一件事但内容不一致 |
+| **输出** | `fact_contradictions` 表: `{ fact_id_a, fact_id_b, type, difference_description, status }` |
+| **关键** | difference_description只描述差异，不判断谁对 |
+| **目录** | `src/modules/ai-agents/contradiction-detector/` |
+
+### B5 翻译Agent
+
+| 字段 | 说明 |
+|---|---|
+| **模型** | Claude Haiku 4.5 |
+| **输入** | verified原子事实的content_en |
+| **职责** | 英→中翻译，保留专业术语英文原文 |
+| **输出** | 更新 `atomic_facts.content_zh` |
+| **目录** | `src/modules/ai-agents/translator/` |
+
+### B6 编排Agent (Orchestrator)
+
+| 字段 | 说明 |
+|---|---|
+| **实现** | 纯TypeScript代码 |
+| **职责** | 协调完整pipeline: B1 → V1-V5(并行) → V0裁决 → B2 → B3 → V6 → B4 → B5 |
+| **错误处理** | 某验证员失败时标记该维度为unchecked，不阻塞流程 |
+| **日志** | 每次运行记录到 `pipeline_runs` 表 |
+| **目录** | `src/modules/ai-agents/orchestrator/` |
+
+---
+
+### 置信度体系
+
+```typescript
+// 每个原子事实的验证信息
+interface FactVerification {
+  // V0裁决结果
+  verification_status: 'verified' | 'partially_verified' | 'rejected'
+  confidence: 'high' | 'medium' | 'low'
+  confidence_reasons: string[]
+  // 例: ["multi_source_verified", "onchain_anchored", "source_matched"]
+  // 或: ["single_source", "source_unavailable"]
+
+  // 各验证员结果
+  v1_source_traceback: { status, evidence_quote, match_score }
+  v2_cross_source: { source_count, consistent_count, cross_validation }
+  v3_numerical_sanity: { sanity, reason }
+  v4_onchain_anchor: { anchor_status, deviation_pct }
+  v5_temporal: { temporal_status }
+
+  // 时间线归属 (如适用)
+  v6_timeline_attribution?: { confirmed, confidence }
+}
+
+// 前端显示
+// 🟢 高置信 — 多来源验证 + 来源匹配 + 数据锚定
+// 🔵 中置信 — 单来源但来源已验证 + 数值合理
+// 🟡 低置信 — 来源不可用或仅部分验证
+// (rejected的事实不显示)
+```
+
+---
+
+### AI调用成本估算
+
+```
+每篇原始数据的处理成本:
+  B1 事实拆解 (2次prompt):                ~$0.005
+  V1 来源回溯 (~5事实/篇):                ~$0.010
+  V2 多来源交叉 (event类型比对):           ~$0.003
+  V3 数值合理性:                          $0 (纯代码)
+  V4 链上锚定:                            $0 (纯代码)
+  V5 时序一致性 (仅冲突时调AI):            ~$0.001
+  V6 时间线归属 (~2事实需归属):            ~$0.002
+  B2 实体识别:                            ~$0.003
+  B5 翻译:                                ~$0.005
+  ─────────────────────────────────────
+  每篇总成本:                             ~$0.03
+
+  每周~200篇原始数据:                      ~$6
+  月成本(AI部分):                         ~$24
+```
+
+---
+
+## Module C: 知识引擎层
+
+> **职责**: 在verified原子事实之上提供知识结构和分析计算
+> **边界**: 提供查询和计算能力，被D层和E层调用。C6/C7/C8纯代码不用AI。
+
+### C1 实体档案管理
+| 字段 | 说明 |
+|---|---|
+| **功能** | CRUD实体档案，按实体查所有verified原子事实 |
+| **接口** | `getEntityProfile(id)`, `getEntityFacts(id, filters)`, `listEntities(filters)` |
+| **目录** | `src/modules/knowledge/entities/` |
+
+### C2 事件时间线管理
+| 字段 | 说明 |
+|---|---|
+| **功能** | CRUD时间线，每节点关联verified原子事实 |
+| **接口** | `getTimeline(id)`, `listTimelines(filters)`, `getEntityTimelines(entityId)` |
+| **目录** | `src/modules/knowledge/timelines/` |
+
+### C3 关系图谱管理
+| 字段 | 说明 |
+|---|---|
+| **功能** | 维护实体间关系，查询图谱 |
+| **关系类型** | 投资、合作、竞争、依赖、收购、发行 |
+| **接口** | `getEntityGraph(id, depth)`, `getFullGraph()` |
+| **目录** | `src/modules/knowledge/graph/` |
+
+### C4 赛道视图管理
+| 字段 | 说明 |
+|---|---|
+| **功能** | 按赛道组织原子事实 |
+| **接口** | `getSectorFacts(sector, week)`, `getSectorMatrix(week)` |
+| **目录** | `src/modules/knowledge/sectors/` |
+
+### C5 监管追踪器
+| 字段 | 说明 |
+|---|---|
+| **功能** | 按国家/地区组织监管原子事实，维护法案状态 |
+| **接口** | `getRegulatoryTracker()`, `getRegionStatus(region)` |
+| **目录** | `src/modules/knowledge/regulatory/` |
+
+### C6 盲区探测器 ⭐
+| 字段 | 说明 |
+|---|---|
+| **实现** | 纯TypeScript代码 |
+| **逻辑** | 按实体类型分组 → 取覆盖最全的实体为模板 → 其他实体与模板对比 → 缺失维度=盲区 |
+| **接口** | `getBlindSpotReport(entityType)`, `getEntityCoverage(entityId)` |
+| **目录** | `src/modules/knowledge/blind-spots/` |
+
+### C7 Diff生成器 ⭐
+| 字段 | 说明 |
+|---|---|
+| **实现** | 纯TypeScript + SQL |
+| **逻辑** | 对比两周: 新增实体、状态变化、关系变化、指标变化、时间线推进、事实量变化、矛盾/盲区变化 |
+| **接口** | `generateDiff(weekA, weekB)` |
+| **目录** | `src/modules/knowledge/diff/` |
+
+### C8 密度统计器 ⭐
+| 字段 | 说明 |
+|---|---|
+| **实现** | 纯SQL聚合 |
+| **逻辑** | 按tag/entity/sector分组COUNT，与历史对比，超2倍标准差标记异常 |
+| **接口** | `getDensityStats(week)`, `getDensityAnomalies(week)` |
+| **目录** | `src/modules/knowledge/density/` |
+
+---
+
+## Module D: 展示层
+
+> **职责**: Web界面和API，展示知识引擎，支持用户交互和分享
+> **边界**: 从C层查询数据，用户操作写入协作表
+
+### D1 Web前端
+
+| 字段 | 说明 |
+|---|---|
+| **框架** | Next.js 15 App Router + Tailwind + shadcn/ui |
+| **目录** | `src/app/` |
+
+#### 页面结构
+```
+src/app/
+├── page.tsx                       # 首页 (三视图切换: 聚合卷/时间线流/矩阵)
+├── entities/
+│   ├── page.tsx                   # 实体列表
+│   └── [id]/page.tsx              # 实体档案 (含verified原子事实+团队标注)
+├── timelines/
+│   ├── page.tsx                   # 时间线列表
+│   └── [id]/page.tsx              # 单条时间线 (每节点关联原子事实)
+├── graph/page.tsx                 # 关系图谱可视化
+├── regulatory/page.tsx            # 监管追踪器
+├── twitter/page.tsx               # Twitter Voices
+├── diff/page.tsx                  # 行业知识Diff
+├── density/page.tsx               # 信息密度统计
+├── blind-spots/page.tsx           # 知识盲区报告
+├── contradictions/page.tsx        # 事实矛盾列表
+├── search/page.tsx                # 原子事实自由查询
+├── snapshots/
+│   ├── page.tsx                   # 周报快照归档
+│   └── [id]/page.tsx              # 单期快照
+├── chat/page.tsx                  # AI对话
+├── settings/page.tsx              # 设置
+├── share/[token]/page.tsx         # 外部分享页
+└── api/                           # API Routes
+```
+
+**原子事实卡片展示**:
+每个事实卡片必须显示: 置信度标记(🟢🔵🟡) + 来源链接 + 验证详情(可展开)
+
+### D2 API层
+
+```
+# 原子事实查询
+GET  /api/facts?tags=...&entities=...&type=...&confidence=high,medium&week=...
+GET  /api/facts/search?q=...&from=...&to=...
+GET  /api/facts/:id
+GET  /api/facts/:id/verification          # 查看该事实的完整验证详情
+
+# 三视图
+GET  /api/feed?view=aggregate|timeline|matrix&week=...
+
+# 知识结构
+GET  /api/entities
+GET  /api/entities/:id
+GET  /api/entities/:id/facts?week=...&type=...
+GET  /api/timelines
+GET  /api/timelines/:id
+GET  /api/graph?entity=:id&depth=2
+GET  /api/regulatory
+GET  /api/twitter-voices?week=...
+GET  /api/sectors/:sector/facts?week=...
+
+# 杀手功能
+GET  /api/diff?weekA=...&weekB=...
+GET  /api/density?week=...
+GET  /api/density/anomalies?week=...
+GET  /api/blind-spots?entity_type=...
+GET  /api/contradictions?status=unresolved
+
+# 团队协作
+POST /api/bookmarks
+POST /api/notes
+POST /api/comments
+POST /api/questions
+GET  /api/questions?status=open
+
+# 分享
+POST /api/share
+GET  /api/share/:token
+
+# AI对话
+POST /api/chat
+
+# 管理
+POST /api/trigger/collect
+POST /api/trigger/process
+POST /api/trigger/snapshot
+GET  /api/health
+GET  /api/pipeline/stats                   # 验证层统计 (通过率/拒绝率/各验证员通过率)
+```
+
+### D3 数据可视化
+
+| 组件 | 说明 |
+|---|---|
+| 图表 | Recharts — 市值折线、事实密度、置信度分布 |
+| 图谱 | react-force-graph — 实体关系 |
+| 时间线 | 自定义Timeline组件 |
+| 矩阵 | 自定义Matrix热力格 |
+| 盲区 | 覆盖矩阵 (✅/⚠️/❌) |
+| Diff | 变化展示 (+/-/~) |
+| **验证详情** | 折叠面板: 展示V1-V6各验证员的具体结果 |
+| **目录** | `src/components/` |
+
+### D4 AI对话
+
+| 字段 | 说明 |
+|---|---|
+| **模型** | Claude Sonnet 4.6 |
+| **实现** | RAG: 用户提问 → 检索相关verified原子事实 → AI基于事实回答 |
+| **约束** | System prompt: 只基于提供的事实回答，不推测，不给建议，数据不足时明确说"当前数据不足" |
+| **目录** | `src/modules/chat/` |
+
+### D5 分享链接
+
+| 字段 | 说明 |
+|---|---|
+| **功能** | 将任意查询结果生成token化外部链接 |
+| **内容** | 原子事实列表 + 置信度标记 + 矛盾标记 + 盲区标记 + 来源链接 |
+| **有效期** | 默认30天 |
+| **目录** | `src/modules/sharing/` |
+
+---
+
+## Module E: 分发层
+
+### E1 邮件推送
+| 字段 | 说明 |
+|---|---|
+| **服务** | Resend |
+| **内容** | 周报快照: Diff + 密度异常 + 新矛盾 + 盲区变化 + 团队标注 + 验证统计 |
+| **目录** | `src/modules/distributors/email/` |
+
+### E2 Telegram Bot
+| 字段 | 说明 |
+|---|---|
+| **库** | grammy |
+| **命令** | /latest, /entity [name], /diff, /contradictions |
+| **目录** | `src/modules/distributors/telegram/` |
+
+### E3 推送调度器
+| 字段 | 说明 |
+|---|---|
+| **触发** | Vercel Cron 每周一 9:00 AM |
+| **目录** | `src/modules/distributors/scheduler/` |
+
+---
+
+## Module F: 基础设施
+
+### F1 数据库Schema
+
+```
+目录: src/db/
+
+── 原始数据层 (A层写入) ──
+raw_onchain_metrics       # 链上指标每日快照 (DeFiLlama; [ROADMAP] +CoinGecko)
+raw_news                  # 新闻 (free-crypto-news + RSS)
+raw_filings               # SEC Filing
+raw_stock_data            # 股价
+raw_product_updates       # 产品更新
+raw_funding               # 融资事件 (DeFiLlama raises + 新闻提取; [ROADMAP] +CryptoRank)
+raw_tweets                # Twitter推文 (twitterapi.io 特定账号流)
+raw_regulatory            # 监管公告
+
+── 原子事实层 (B层写入) ⭐ ──
+atomic_facts              # 原子事实主表
+  # 内容: content_en, content_zh, fact_type, tags[]
+  # 指标: metric_name, metric_value, metric_unit, metric_period, metric_change
+  # 来源: source_id, source_type, source_url, source_credibility
+  # 验证: verification_status, confidence, confidence_reasons[]
+  # 验证详情: v1_result, v2_result, v3_result, v4_result, v5_result (JSONB)
+  # 时间: fact_date, collected_at, week_number
+
+── 知识图谱层 ──
+entities                  # 实体主表 (含aliases[])
+fact_entities             # 原子事实↔实体 关联
+entity_relationships      # 实体间关系
+timelines                 # 时间线主表
+timeline_facts            # 时间线↔事实 关联 (含v6_result)
+sectors                   # 赛道分类
+fact_sectors              # 事实↔赛道 关联
+regulatory_trackers       # 监管追踪状态
+
+── 质量层 ──
+fact_contradictions       # 事实矛盾 (含status: unresolved/resolved/dismissed)
+blind_spot_reports        # 盲区报告快照 (每周生成)
+
+── 协作层 ──
+users                     # 团队成员
+bookmarks                 # 收藏/标记
+notes                     # 笔记
+comments                  # 评论讨论
+team_questions            # 团队提问 (跨周追踪)
+user_preferences          # 偏好
+chat_history              # AI对话
+
+── 分享层 ──
+shared_views              # 分享链接
+
+── 系统层 ──
+weekly_snapshots          # 周报快照
+pipeline_runs             # 运行日志 (含验证统计: 通过率/拒绝率/各验证员数据)
+```
+
+### F2 配置管理
+
+```
+目录: src/config/
+
+watchlist.ts              # 关注实体列表
+twitter-accounts.ts       # Twitter账号列表 (按角色分类)
+sources.ts                # 数据源URL和API Key
+sectors.ts                # 赛道分类
+regions.ts                # 监管追踪地区
+fact-dimensions.ts        # 各实体类型的事实维度模板 (盲区检测用)
+numerical-ranges.ts       # 数值合理性范围 (V3用)
+prompts/                  # Prompt模板
+  fact-splitter-extract.md    # B1 提取prompt
+  fact-splitter-verify.md     # B1 反向自查prompt
+  source-traceback.md         # V1 来源回溯prompt
+  cross-source.md             # V2 多来源交叉prompt (event类型)
+  temporal-consistency.md     # V5 时序一致性prompt
+  timeline-attribution.md    # V6 时间线归属prompt
+  entity-resolver.md          # B2 实体识别prompt
+  timeline-merger.md          # B3 时间线归并prompt
+  contradiction-detector.md   # B4 矛盾检测prompt
+  translator.md               # B5 翻译prompt
+  chat-system.md              # D4 对话system prompt
+schedule.ts               # 采集和推送时间表
+```
+
+### F3 认证
+| 字段 | 说明 |
+|---|---|
+| **方案** | Supabase Auth (邮箱邀请制) |
+| **角色** | Admin, Member |
+| **分享** | token-based只读 |
+
+### F4 监控
+| 字段 | 说明 |
+|---|---|
+| **日志** | `pipeline_runs` 含验证统计 |
+| **告警** | 失败时Telegram通知 |
+| **验证仪表盘** | `/api/pipeline/stats` — 各验证员通过率、拒绝率、平均置信度 |
+
+---
+
+## 完整目录结构
+
+```
+payfi-monthly-report/
+├── src/
+│   ├── app/                            # [D1] Next.js 前端
+│   │   ├── page.tsx
+│   │   ├── entities/
+│   │   ├── timelines/
+│   │   ├── graph/
+│   │   ├── regulatory/
+│   │   ├── twitter/
+│   │   ├── diff/
+│   │   ├── density/
+│   │   ├── blind-spots/
+│   │   ├── contradictions/
+│   │   ├── search/
+│   │   ├── snapshots/
+│   │   ├── chat/
+│   │   ├── settings/
+│   │   ├── share/[token]/
+│   │   ├── api/
+│   │   └── layout.tsx
+│   │
+│   ├── components/
+│   │   ├── ui/
+│   │   ├── charts/
+│   │   ├── feed/
+│   │   │   ├── AggregateView.tsx
+│   │   │   ├── TimelineView.tsx
+│   │   │   └── MatrixView.tsx
+│   │   ├── facts/
+│   │   │   ├── FactCard.tsx            # 含置信度标记+来源链接
+│   │   │   ├── FactList.tsx
+│   │   │   ├── FactSearch.tsx
+│   │   │   ├── FactDetail.tsx
+│   │   │   └── VerificationDetail.tsx  # ⭐ V1-V6验证详情展开面板
+│   │   ├── entity/
+│   │   ├── timeline/
+│   │   ├── diff/
+│   │   ├── density/
+│   │   ├── blind-spots/
+│   │   ├── contradictions/
+│   │   ├── collab/
+│   │   └── layout/
+│   │
+│   ├── modules/
+│   │   ├── collectors/                 # [Module A]
+│   │   │   ├── on-chain/
+│   │   │   ├── news/                   # 多源: free-crypto-news + RSS (全免费)
+│   │   │   ├── companies/
+│   │   │   ├── products/
+│   │   │   ├── funding/                # DeFiLlama raises + 新闻提取; [ROADMAP] +CryptoRank
+│   │   │   ├── twitter/                # twitterapi.io 特定账号流
+│   │   │   └── regulatory/
+│   │   │
+│   │   ├── ai-agents/                 # [Module B]
+│   │   │   ├── fact-splitter/          # B1 (两次prompt)
+│   │   │   ├── validators/             # ⭐ 验证层
+│   │   │   │   ├── adjudicator.ts      # V0 裁决器 (纯代码)
+│   │   │   │   ├── source-traceback.ts # V1 来源回溯
+│   │   │   │   ├── cross-source.ts     # V2 多来源交叉
+│   │   │   │   ├── numerical-sanity.ts # V3 数值合理性 (纯代码)
+│   │   │   │   ├── onchain-anchor.ts   # V4 链上锚定 (纯代码)
+│   │   │   │   ├── temporal-consistency.ts # V5 时序一致性
+│   │   │   │   └── timeline-attribution.ts # V6 时间线归属
+│   │   │   ├── entity-resolver/        # B2
+│   │   │   ├── timeline-merger/        # B3
+│   │   │   ├── contradiction-detector/ # B4
+│   │   │   ├── translator/             # B5
+│   │   │   └── orchestrator/           # B6
+│   │   │
+│   │   ├── knowledge/                 # [Module C]
+│   │   │   ├── entities/
+│   │   │   ├── timelines/
+│   │   │   ├── graph/
+│   │   │   ├── sectors/
+│   │   │   ├── regulatory/
+│   │   │   ├── blind-spots/
+│   │   │   ├── diff/
+│   │   │   └── density/
+│   │   │
+│   │   ├── chat/                       # [D4]
+│   │   ├── sharing/                    # [D5]
+│   │   │
+│   │   ├── distributors/              # [Module E]
+│   │   │   ├── email/
+│   │   │   ├── telegram/
+│   │   │   └── scheduler/
+│   │   │
+│   │   └── monitoring/                # [F4]
+│   │
+│   ├── db/
+│   │   ├── schema.sql
+│   │   ├── migrations/
+│   │   └── client.ts
+│   │
+│   ├── config/
+│   │   ├── watchlist.ts
+│   │   ├── twitter-accounts.ts
+│   │   ├── sources.ts
+│   │   ├── sectors.ts
+│   │   ├── regions.ts
+│   │   ├── fact-dimensions.ts
+│   │   ├── numerical-ranges.ts         # ⭐ V3数值范围配置
+│   │   ├── schedule.ts
+│   │   └── prompts/
+│   │
+│   ├── lib/
+│   │   ├── supabase.ts
+│   │   ├── ai-client.ts
+│   │   ├── auth.ts
+│   │   └── types.ts
+│   │
+│   └── emails/
+│       └── weekly-snapshot.tsx
+│
+├── public/
+├── package.json
+├── tsconfig.json
+├── next.config.ts
+├── tailwind.config.ts
+├── .env.local
+├── PRODUCT_DESIGN.md
+└── MODULES.md
+```
+
+---
+
+## Pipeline 执行顺序
+
+```
+每日 Pipeline:
+  Phase 1 (并行):   A1, A2, A3, A4, A5, A7         ← 多源数据采集
+  Phase 2:          B1                               ← 事实拆解 (提取+自查)
+  Phase 3 (并行):   V1, V2, V3, V4, V5              ← 5个验证员并行验证
+  Phase 4:          V0                               ← 裁决器汇总投票
+  Phase 5:          B2                               ← 实体识别 (只处理verified事实)
+  Phase 6:          B3 → V6                          ← 时间线归并 + 归属验证
+  Phase 7:          B4                               ← 矛盾检测
+  Phase 8:          B5                               ← 翻译
+
+每周 Pipeline (周日):
+  Phase 1:          A6                               ← Twitter采集 (特定账号)
+  Phase 2-8:        同上 (处理Twitter数据)
+  Phase 9 (并行):   C6, C7, C8                       ← 盲区/Diff/密度
+  Phase 10:         组装周报快照
+  Phase 11 (并行):  E1, E2                           ← 推送
+```
+
+---
+
+## 开发分工 (给子Agent)
+
+| Agent | 模块 | 前置 | 说明 |
+|---|---|---|---|
+| **Agent 0** | F1 + F2 + types.ts | 无 | DB Schema + 配置 + TypeScript类型。**必须先完成** |
+| **Agent 1** | A1-A7 | F1 | 7个采集器 (含twitterapi.io/DeFiLlama raises集成) |
+| **Agent 2** | B1 + V0-V6 | F1 | ⭐ 事实拆解 + 完整验证层 (最核心) |
+| **Agent 3** | B2-B5 + C1-C8 | F1 | 归集Agents + 知识引擎 |
+| **Agent 4** | D1-D5 | F1 (可mock) | 前端 + API + 可视化 + 验证详情面板 |
+| **Agent 5** | E1-E3 + B6 | F1 | 分发 + 编排器 |
+
+**Agent 0 先行**，然后 **Agent 1-5 并行**。
+
+---
+
+## 环境变量
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# AI
+ANTHROPIC_API_KEY=
+
+# 数据源 (全免费)
+DEFILLAMA_API_BASE=https://api.llama.fi
+# [ROADMAP] COINGECKO_API_KEY=
+# [ROADMAP] CRYPTORANK_API_KEY=
+SEC_EDGAR_USER_AGENT=
+
+# Twitter (twitterapi.io — $29/月)
+TWITTERAPI_IO_KEY=
+
+# 分发
+RESEND_API_KEY=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+
+# 认证
+NEXTAUTH_SECRET=
+
+# 分享
+SHARE_BASE_URL=
+SHARE_TOKEN_SECRET=
+```
+
+---
+
+## 月成本预估
+
+| 项目 | 预估 |
+|---|---|
+| Vercel Hobby | $0 |
+| Supabase Free | $0 |
+| Claude Haiku (B1+V1-V6+B2-B5) | ~$24 |
+| Claude Sonnet (D4对话) | ~$5-10 |
+| twitterapi.io Starter (6账号) | $29 |
+| 新闻采集 (free-crypto-news + RSS) | $0 |
+| 融资数据 (DeFiLlama raises + 新闻提取) | $0 |
+| Resend/其他 | $0 |
+| **合计** | **~$58-63** |
