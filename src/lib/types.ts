@@ -494,7 +494,7 @@ export interface PipelineStats {
 
 // ─── API/Frontend Helper Types ───
 
-export type FeedView = 'aggregate' | 'timeline' | 'matrix'
+export type FeedView = 'aggregate' | 'timeline'
 
 export interface FactFilters {
   tags?: string[]

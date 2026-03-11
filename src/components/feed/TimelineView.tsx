@@ -1,41 +1,67 @@
-import { SourceCountBadge } from '@/components/ui/Badge'
+'use client'
+import { useState } from 'react'
+import { FactCard } from '@/components/facts/FactCard'
 import type { AtomicFact } from '@/lib/types'
 
-function getSourceCount(fact: AtomicFact): number {
-  const urls = new Set<string>()
-  if (fact.source_url) urls.add(fact.source_url)
-  const v2 = fact.v2_result as { source_urls?: string[] } | null
-  if (v2?.source_urls) {
-    for (const u of v2.source_urls) urls.add(u)
-  }
-  return urls.size
-}
+const INITIAL_SHOW = 5
 
 export function TimelineView({ facts }: { facts: AtomicFact[] }) {
   const sorted = [...facts].sort((a, b) => new Date(b.fact_date).getTime() - new Date(a.fact_date).getTime())
 
+  // Group by date
+  const grouped = new Map<string, AtomicFact[]>()
+  for (const fact of sorted) {
+    const dateKey = new Date(fact.fact_date).toISOString().split('T')[0]
+    const arr = grouped.get(dateKey) ?? []
+    arr.push(fact)
+    grouped.set(dateKey, arr)
+  }
+
   return (
-    <div className="relative pl-6 border-l" style={{ borderColor: 'var(--border)' }}>
-      {sorted.map(fact => {
-        const date = new Date(fact.fact_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-        const displayContent = fact.content_zh || fact.content_en
-        return (
-          <div key={fact.id} className="relative mb-6 pb-2">
-            <div className="absolute -left-[25px] top-1.5 w-2 h-2 rounded-full"
-              style={{ background: 'var(--accent)' }} />
-            <div className="flex items-center gap-3 mb-1">
-              <time className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{date}</time>
-              <SourceCountBadge count={getSourceCount(fact)} />
-            </div>
-            <p className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{displayContent}</p>
-            <div className="flex gap-1.5 mt-2">
-              {fact.tags.slice(0, 3).map(t => (
-                <span key={t} className="text-[10px] font-mono" style={{ color: 'var(--fg-faint)' }}>{t}</span>
-              ))}
-            </div>
-          </div>
-        )
-      })}
+    <div className="space-y-8">
+      {[...grouped.entries()].map(([dateKey, dateFacts]) => (
+        <DateGroup key={dateKey} dateKey={dateKey} facts={dateFacts} />
+      ))}
+      {sorted.length === 0 && (
+        <p className="text-sm py-8 text-center" style={{ color: 'var(--fg-muted)' }}>本周暂无事实。</p>
+      )}
     </div>
+  )
+}
+
+function DateGroup({ dateKey, facts }: { dateKey: string; facts: AtomicFact[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const date = new Date(dateKey + 'T00:00:00')
+  const label = date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })
+  const showAll = expanded || facts.length <= INITIAL_SHOW
+  const visible = showAll ? facts : facts.slice(0, INITIAL_SHOW)
+  const remaining = facts.length - INITIAL_SHOW
+
+  return (
+    <section>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)' }} />
+        <h3 className="text-[12px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>
+          {label}
+        </h3>
+        <span className="text-[11px] font-mono" style={{ color: 'var(--fg-dim)' }}>
+          {facts.length} 条
+        </span>
+      </div>
+      <div className="space-y-2 pl-5 border-l" style={{ borderColor: 'var(--border)' }}>
+        {visible.map(fact => (
+          <FactCard key={fact.id} fact={fact} compact />
+        ))}
+        {!showAll && remaining > 0 && (
+          <button
+            onClick={() => setExpanded(true)}
+            className="text-[12px] font-mono px-3 py-1.5 rounded-md transition-colors"
+            style={{ color: 'var(--accent)', background: 'var(--surface-alt)' }}
+          >
+            展开更多 (+{remaining})
+          </button>
+        )}
+      </div>
+    </section>
   )
 }

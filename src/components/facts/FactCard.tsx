@@ -1,7 +1,10 @@
 'use client'
 import { useState } from 'react'
 import { SourceCountBadge, FactTypeBadge } from '@/components/ui/Badge'
-import type { AtomicFact } from '@/lib/types'
+import { CommentBox } from '@/components/collab/CommentBox'
+import type { AtomicFact, Comment } from '@/lib/types'
+
+const DEFAULT_USER_ID = 'default-user'
 
 const FACT_TYPE_ZH: Record<string, string> = {
   event: '事件', metric: '指标', quote: '引述', relationship: '关系', status_change: '状态变更',
@@ -30,6 +33,8 @@ function getSourceUrls(fact: AtomicFact): string[] {
 export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const [showSources, setShowSources] = useState(false)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentsLoaded, setCommentsLoaded] = useState(false)
   const date = new Date(fact.fact_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' })
   const displayContent = fact.content_zh || fact.content_en
   const sourceUrls = getSourceUrls(fact)
@@ -124,6 +129,53 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
           <div className="flex gap-2">
             <span style={{ color: 'var(--fg-faint)' }}>ID:</span>
             <span style={{ color: 'var(--fg-dim)' }}>{fact.id}</span>
+          </div>
+
+          {/* Comments section */}
+          <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-[10px] font-mono mb-2" style={{ color: 'var(--fg-faint)' }}>
+              评论 ({comments.length})
+              {!commentsLoaded && (
+                <button
+                  className="ml-2 underline"
+                  style={{ color: 'var(--accent)' }}
+                  onClick={async () => {
+                    const res = await fetch(`/api/comments?fact_id=${fact.id}`)
+                    if (res.ok) setComments(await res.json())
+                    setCommentsLoaded(true)
+                  }}
+                >
+                  加载
+                </button>
+              )}
+            </p>
+            {commentsLoaded && comments.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {comments.map(c => (
+                  <div key={c.id} className="text-[11px] p-2 rounded" style={{ background: 'var(--surface-alt)', color: 'var(--fg-body)' }}>
+                    {c.content}
+                    <time className="block mt-0.5" style={{ color: 'var(--fg-faint)' }}>
+                      {new Date(c.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </time>
+                  </div>
+                ))}
+              </div>
+            )}
+            <CommentBox
+              factId={fact.id}
+              onSubmit={async (content) => {
+                const res = await fetch('/api/comments', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ user_id: DEFAULT_USER_ID, fact_id: fact.id, content }),
+                })
+                if (res.ok) {
+                  const comment = await res.json()
+                  setComments(prev => [...prev, comment])
+                  setCommentsLoaded(true)
+                }
+              }}
+            />
           </div>
         </div>
       )}

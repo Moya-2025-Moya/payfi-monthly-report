@@ -3,10 +3,9 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AggregateView } from '@/components/feed/AggregateView'
 import { TimelineView } from '@/components/feed/TimelineView'
-import { MatrixView } from '@/components/feed/MatrixView'
 import type { AtomicFact } from '@/lib/types'
 
-type View = 'aggregate' | 'timeline' | 'matrix'
+type View = 'aggregate' | 'timeline'
 
 function parseWeek(w: string): { year: number; num: number } {
   const [year, wPart] = w.split('-W')
@@ -29,9 +28,8 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
   const [view, setView] = useState<View>('aggregate')
   const router = useRouter()
   const views: { key: View; label: string; desc: string }[] = [
-    { key: 'aggregate', label: '聚合视图', desc: '按主题分组' },
-    { key: 'timeline', label: '时间线', desc: '按时间排列' },
-    { key: 'matrix', label: '矩阵视图', desc: '板块 × 类型 热力图' },
+    { key: 'aggregate', label: '聚合视图', desc: '按实体分组' },
+    { key: 'timeline', label: '时间线', desc: '按日期排列' },
   ]
 
   function navigate(week: string) {
@@ -84,7 +82,6 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
       </div>
       {view === 'aggregate' && <AggregateView facts={facts} />}
       {view === 'timeline' && <TimelineView facts={facts} />}
-      {view === 'matrix' && <MatrixView facts={facts} />}
     </div>
   )
 }

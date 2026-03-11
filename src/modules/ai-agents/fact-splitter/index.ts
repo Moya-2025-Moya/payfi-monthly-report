@@ -107,8 +107,8 @@ async function saveCandidates(
   weekNumber: string
 ): Promise<string[]> {
   const rows = candidates.map(c => ({
-    content_en: c.content,
-    content_zh: null,
+    content_zh: c.content,
+    content_en: null,
     fact_type: c.fact_type,
     tags: c.tags,
     source_id: raw.id,

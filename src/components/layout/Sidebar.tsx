@@ -47,8 +47,6 @@ const NAV_SECTIONS = [
     items: [
       { href: '/', label: '信息流' },
       { href: '/entities', label: '实体' },
-      { href: '/timelines', label: '时间线' },
-      { href: '/graph', label: '关系图谱' },
       { href: '/search', label: '搜索' },
     ]
   },
@@ -56,11 +54,14 @@ const NAV_SECTIONS = [
     label: '分析',
     items: [
       { href: '/regulatory', label: '监管追踪' },
-      { href: '/twitter', label: '推特声音' },
-      { href: '/diff', label: '周对比' },
-      { href: '/density', label: '信息密度' },
-      { href: '/blind-spots', label: '盲区检测' },
-      { href: '/contradictions', label: '矛盾检测' },
+      { href: '/diff', label: '周报对比' },
+      { href: '/quality', label: '数据质量' },
+    ]
+  },
+  {
+    label: '协作',
+    items: [
+      { href: '/notes', label: '团队笔记' },
     ]
   },
   {

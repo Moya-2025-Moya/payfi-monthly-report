@@ -2,6 +2,7 @@
 // 从多个来源抓取加密/稳定币相关新闻，存入 raw_news 表
 
 import { SOURCES } from '@/config/sources'
+import { WATCHLIST } from '@/config/watchlist'
 import { supabaseAdmin } from '@/db/client'
 import RSSParser from 'rss-parser'
 
@@ -32,6 +33,31 @@ const rssParser = new RSSParser({
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
+// ─── Stablecoin keyword pre-filter (soft filter) ─────────────────────────────
+
+const STABLECOIN_KEYWORDS = [
+  // Core terms
+  'stablecoin', 'stable coin', '稳定币',
+  // Major stablecoins
+  'usdc', 'usdt', 'pyusd', 'dai', 'usde', 'frax', 'ausd', 'busd', 'tusd', 'gusd', 'fdusd',
+  // Issuers & infra
+  'circle', 'tether', 'ethena', 'makerdao', 'maker', 'agora',
+  'stripe', 'bridge.xyz', 'zero hash', 'fireblocks',
+  // Payments & cross-border
+  '跨境支付', 'cross-border payment', 'remittance',
+  // Regulation
+  'genius act', 'mica', 'stablecoin regulation', 'stablecoin bill',
+]
+
+// Add watchlist entity names and aliases as additional keywords
+const WATCHLIST_KEYWORDS = WATCHLIST.flatMap(e => [e.name.toLowerCase(), ...e.aliases.map(a => a.toLowerCase())])
+const ALL_FILTER_KEYWORDS = [...STABLECOIN_KEYWORDS, ...WATCHLIST_KEYWORDS]
+
+function matchesStablecoinKeywords(title: string, summary: string | null): boolean {
+  const text = `${title} ${summary ?? ''}`.toLowerCase()
+  return ALL_FILTER_KEYWORDS.some(kw => text.includes(kw))
+}
+
 // 中文源名单
 const ZH_SOURCES = ['cointelegraph 中文', '吴说区块链', 'chaincatcher', 'blockbeats', 'odaily', 'foresight', 'panewslab', 'marsbit']
 
@@ -59,6 +85,9 @@ async function collectFromRssFeed(
 
       // 过滤非新闻链接
       if (item.link.includes('github.com')) continue
+
+      // 稳定币关键词预过滤（软过滤，B1 prompt 做硬过滤）
+      if (!matchesStablecoinKeywords(item.title, item.contentSnippet ?? null)) continue
 
       collected.push({
         collector: 'rss',
