@@ -16,18 +16,15 @@ function TriggerButton({ label, endpoint, method = 'POST' }: { label: string; en
     try {
       const res = await fetch(endpoint, { method })
       const json = await res.json().catch(() => ({}))
-      if (res.ok) {
-        setState('success')
-        setMessage(json.message ?? 'Done')
-      } else {
-        setState('error')
-        setMessage(json.error ?? json.message ?? `HTTP ${res.status}`)
-      }
+      const nextState: ButtonState = res.ok ? 'success' : 'error'
+      setState(nextState)
+      setMessage(res.ok ? (json.message ?? 'Done') : (json.error ?? json.message ?? `HTTP ${res.status}`))
+      if (nextState === 'error') setTimeout(() => { setState('idle'); setMessage('') }, 5000)
     } catch (e: unknown) {
       setState('error')
       setMessage(e instanceof Error ? e.message : 'Request failed')
+      setTimeout(() => { setState('idle'); setMessage('') }, 5000)
     }
-    if (state === 'error') setTimeout(() => { setState('idle'); setMessage('') }, 5000)
   }
 
   const styles: Record<ButtonState, React.CSSProperties> = {
@@ -84,8 +81,8 @@ export default function SettingsPage() {
           <p className="text-[11px] font-mono mb-4" style={{ color: 'var(--fg-faint)' }}>Manually trigger pipeline stages. Collection fetches new data, Processing runs AI analysis, Snapshot generates the weekly report.</p>
           <div className="flex flex-wrap gap-3">
             <TriggerButton label="Trigger Collection" endpoint="/api/trigger/collect" />
-            <TriggerButton label="Trigger Processing" endpoint="/api/trigger" />
-            <TriggerButton label="Generate Snapshot" endpoint="/api/cron/snapshot" />
+            <TriggerButton label="Trigger Processing" endpoint="/api/cron/process" method="GET" />
+            <TriggerButton label="Generate Snapshot" endpoint="/api/cron/snapshot" method="GET" />
           </div>
         </Card>
 
