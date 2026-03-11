@@ -43,24 +43,34 @@ export function adjudicate(input: AdjudicatorInput): Verdict {
     return reject('多来源中处于少数方')
   }
 
+  // ─── 辅助判断 ───
+  // V1: 来源可用且匹配
+  const v1Pass = v1.status === 'matched'
+  const v1Acceptable = v1.status === 'matched' || v1.status === 'partial' || v1.status === 'source_unavailable'
+  // V3: 数值合理（非指标事实视为通过）
+  const v3Pass = v3.sanity === 'normal' || v3.sanity === 'not_applicable'
+  // V5: 时间一致（未检查视为通过）
+  const v5Pass = v5.temporal_status === 'consistent' || v5.temporal_status === 'unchecked'
+
   // ═══ 高置信度 — 必须有独立信息源的交叉验证 ═══
 
   if (
-    v1.status === 'matched' &&
+    v1Pass &&
     v2.source_count >= 2 &&
     v2.independent_sources === true &&
     v2.cross_validation === 'consistent' &&
-    v3.sanity === 'normal' &&
-    v5.temporal_status === 'consistent'
+    v3Pass &&
+    v5Pass
   ) {
     return verified('high', buildReasons(input))
   }
 
-  // ═══ 中置信度 — 来源已验证但无独立交叉验证 ═══
+  // ═══ 中置信度 — 来源基本可信 + 无数值/时间问题 ═══
 
   if (
-    v1.status === 'matched' &&
-    v3.sanity === 'normal'
+    v1Acceptable &&
+    v3Pass &&
+    v5Pass
   ) {
     return verified('medium', buildReasons(input))
   }

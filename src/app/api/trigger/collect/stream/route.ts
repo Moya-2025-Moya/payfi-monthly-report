@@ -6,6 +6,7 @@ import {
   collectProductUpdates,
   collectFunding,
   collectRegulatory,
+  collectTweets,
 } from '@/modules/collectors'
 
 export const maxDuration = 300
@@ -21,7 +22,7 @@ export async function GET() {
 
       const tasks = [
         { name: '链上数据 (DeFiLlama)', key: 'on-chain', fn: collectOnChainData },
-        { name: '新闻采集 (RSS + API)', key: 'news', fn: collectNews },
+        { name: '新闻采集 (14个RSS源)', key: 'news', fn: collectNews },
         { name: '公司数据 (SEC + Yahoo)', key: 'companies', fn: collectCompanyData },
         { name: '产品更新 (GitHub + Blog)', key: 'products', fn: collectProductUpdates },
         { name: '融资事件 (DeFiLlama)', key: 'funding', fn: collectFunding },

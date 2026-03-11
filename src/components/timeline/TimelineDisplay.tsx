@@ -1,4 +1,4 @@
-import { ConfidenceBadge } from '@/components/ui/Badge'
+import { SourceCountBadge } from '@/components/ui/Badge'
 import type { Timeline, AtomicFact } from '@/lib/types'
 
 interface TimelineNode {
@@ -10,6 +10,16 @@ function dotColor(status: string): string {
   if (status === 'confirmed') return 'var(--success)'
   if (status === 'uncertain') return 'var(--accent)'
   return 'var(--danger)'
+}
+
+function getSourceCount(fact: AtomicFact): number {
+  const urls = new Set<string>()
+  if (fact.source_url) urls.add(fact.source_url)
+  const v2 = fact.v2_result as { source_urls?: string[] } | null
+  if (v2?.source_urls) {
+    for (const u of v2.source_urls) urls.add(u)
+  }
+  return urls.size
 }
 
 export function TimelineDisplay({ timeline, nodes }: { timeline: Timeline; nodes: TimelineNode[] }) {
@@ -26,18 +36,19 @@ export function TimelineDisplay({ timeline, nodes }: { timeline: Timeline; nodes
       </div>
       <div className="relative pl-6 border-l" style={{ borderColor: 'var(--border)' }}>
         {sorted.map(({ fact, attribution_status }) => {
-          const date = new Date(fact.fact_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          const date = new Date(fact.fact_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' })
+          const displayContent = fact.content_zh || fact.content_en
           return (
             <div key={fact.id} className="relative mb-8">
               <div className="absolute -left-[25px] top-1.5 w-2 h-2 rounded-full" style={{ background: dotColor(attribution_status) }} />
               <div className="flex items-center gap-3 mb-1">
                 <time className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{date}</time>
-                <ConfidenceBadge confidence={fact.confidence} />
+                <SourceCountBadge count={getSourceCount(fact)} />
                 {attribution_status === 'uncertain' && (
-                  <span className="text-[10px] font-mono" style={{ color: 'var(--accent)' }}>uncertain</span>
+                  <span className="text-[10px] font-mono" style={{ color: 'var(--accent)' }}>待确认</span>
                 )}
               </div>
-              <p className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{fact.content_en}</p>
+              <p className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{displayContent}</p>
             </div>
           )
         })}

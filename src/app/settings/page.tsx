@@ -230,6 +230,12 @@ export default function SettingsPage() {
               method="POST"
             />
             <PipelineTrigger
+              label="推特采集"
+              description="从 twitterapi.io 拉取监控账号的推文（周任务，通常每周日自动运行）"
+              endpoint="/api/cron/twitter"
+              method="GET"
+            />
+            <PipelineTrigger
               label="AI 处理"
               description="运行事实拆分 (B1)、六层验证 (V1-V5)、裁决 (V0)、实体识别 (B2)、时间线归并 (B3)、矛盾检测 (B4)、翻译 (B5)"
               endpoint="/api/cron/process"

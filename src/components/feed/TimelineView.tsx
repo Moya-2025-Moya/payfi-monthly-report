@@ -1,5 +1,15 @@
-import { ConfidenceBadge } from '@/components/ui/Badge'
+import { SourceCountBadge } from '@/components/ui/Badge'
 import type { AtomicFact } from '@/lib/types'
+
+function getSourceCount(fact: AtomicFact): number {
+  const urls = new Set<string>()
+  if (fact.source_url) urls.add(fact.source_url)
+  const v2 = fact.v2_result as { source_urls?: string[] } | null
+  if (v2?.source_urls) {
+    for (const u of v2.source_urls) urls.add(u)
+  }
+  return urls.size
+}
 
 export function TimelineView({ facts }: { facts: AtomicFact[] }) {
   const sorted = [...facts].sort((a, b) => new Date(b.fact_date).getTime() - new Date(a.fact_date).getTime())
@@ -15,7 +25,7 @@ export function TimelineView({ facts }: { facts: AtomicFact[] }) {
               style={{ background: 'var(--accent)' }} />
             <div className="flex items-center gap-3 mb-1">
               <time className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{date}</time>
-              <ConfidenceBadge confidence={fact.confidence} />
+              <SourceCountBadge count={getSourceCount(fact)} />
             </div>
             <p className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{displayContent}</p>
             <div className="flex gap-1.5 mt-2">

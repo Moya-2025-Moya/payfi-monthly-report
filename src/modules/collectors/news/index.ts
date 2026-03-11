@@ -1,5 +1,5 @@
-// A2 News Collector — CryptoPanic API + RSS feeds (含中文源)
-// 从多个来源抓取稳定币相关新闻，存入 raw_news 表
+// A2 News Collector — 14 个 RSS 源（含中文）
+// 从多个来源抓取加密/稳定币相关新闻，存入 raw_news 表
 
 import { SOURCES } from '@/config/sources'
 import { supabaseAdmin } from '@/db/client'
@@ -8,7 +8,7 @@ import RSSParser from 'rss-parser'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RawNews {
-  collector: 'cryptopanic' | 'rss'
+  collector: 'rss'
   source_name: string
   source_url: string
   title: string
@@ -20,99 +20,36 @@ interface RawNews {
   processed: boolean
 }
 
-// ─── CryptoPanic API shapes ─────────────────────────────────────────────────
+// ─── RSS feeds ────────────────────────────────────────────────────────────────
 
-interface CryptoPanicPost {
-  kind: string
-  domain: string
-  title: string
-  published_at: string
-  slug: string
-  url: string
-  source: {
-    title: string
-    region: string
-    domain: string
-  }
-  currencies?: { code: string; title: string }[]
-}
+const rssParser = new RSSParser({
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (compatible; StablePulse/1.0)',
+    Accept: 'application/rss+xml, application/xml, text/xml, */*',
+  },
+  timeout: 15000,
+})
 
-interface CryptoPanicResponse {
-  count: number
-  results: CryptoPanicPost[]
-}
-
-// ─── Part 1: CryptoPanic API ─────────────────────────────────────────────────
-
-async function collectFromCryptoPanic(): Promise<RawNews[]> {
-  const baseUrl = SOURCES.cryptoPanic.baseUrl
-  const apiKey = SOURCES.cryptoPanic.apiKey
-  const collected: RawNews[] = []
-
-  // 搜索稳定币相关新闻
-  const currencies = 'USDC,USDT,DAI,PYUSD'
-  const authParam = apiKey ? `&auth_token=${apiKey}` : ''
-  const url = `${baseUrl}/posts/?currencies=${currencies}&filter=important&kind=news${authParam}`
-
-  try {
-    const res = await fetch(url, {
-      headers: { Accept: 'application/json', 'User-Agent': 'StablePulse/1.0' },
-    })
-
-    if (!res.ok) {
-      console.error(`[A2] CryptoPanic API returned ${res.status}`)
-      return collected
-    }
-
-    const data = await res.json() as CryptoPanicResponse
-    console.log(`[A2] CryptoPanic: ${data.results?.length ?? 0} posts`)
-
-    for (const post of data.results ?? []) {
-      if (!post.url || !post.title || !post.published_at) continue
-
-      // 过滤 GitHub 链接 — 这些不是新闻
-      if (post.domain === 'github.com' || post.url.includes('github.com')) continue
-
-      const tags = (post.currencies ?? []).map(c => c.code)
-
-      collected.push({
-        collector: 'cryptopanic',
-        source_name: post.source?.title ?? post.domain ?? 'CryptoPanic',
-        source_url: post.url,
-        title: post.title.trim(),
-        summary: null,
-        full_text: null,
-        published_at: new Date(post.published_at).toISOString(),
-        tags: tags.length > 0 ? tags : ['stablecoin'],
-        language: post.source?.region === 'zh' ? 'zh' : 'en',
-        processed: false,
-      })
-    }
-  } catch (err) {
-    console.error('[A2] CryptoPanic fetch failed:', err)
-  }
-
-  return collected
-}
-
-// ─── Part 2: RSS feeds ────────────────────────────────────────────────────────
-
-const rssParser = new RSSParser()
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+// 中文源名单
+const ZH_SOURCES = ['cointelegraph 中文', '吴说区块链', 'chaincatcher', 'blockbeats', 'odaily', 'foresight', 'panewslab', 'marsbit']
+
+function isZhSource(name: string, url: string): boolean {
+  const lower = name.toLowerCase()
+  return ZH_SOURCES.some(s => lower.includes(s)) || url.includes('cn.cointelegraph')
+}
 
 async function collectFromRssFeed(
   feed: { name: string; url: string }
 ): Promise<RawNews[]> {
   const cutoff = new Date(Date.now() - SEVEN_DAYS_MS)
   const collected: RawNews[] = []
+  const isZh = isZhSource(feed.name, feed.url)
 
   try {
     const parsed = await rssParser.parseURL(feed.url)
     let count = 0
-
-    // 检测是否为中文源
-    const zhSources = ['chaincatcher', 'blockbeats', 'odaily', 'foresight', 'panewslab']
-    const isZh = zhSources.some(s => feed.url.toLowerCase().includes(s) || feed.name.toLowerCase().includes(s))
 
     for (const item of parsed.items) {
       if (!item.link || !item.title) continue
@@ -120,7 +57,7 @@ async function collectFromRssFeed(
       const publishedAt = item.pubDate ? new Date(item.pubDate) : null
       if (!publishedAt || isNaN(publishedAt.getTime()) || publishedAt < cutoff) continue
 
-      // 过滤 GitHub 链接
+      // 过滤非新闻链接
       if (item.link.includes('github.com')) continue
 
       collected.push({
@@ -128,7 +65,7 @@ async function collectFromRssFeed(
         source_name: feed.name,
         source_url: item.link,
         title: item.title.trim(),
-        summary: item.contentSnippet ?? null,
+        summary: item.contentSnippet?.slice(0, 500) ?? null,
         full_text: null,
         published_at: publishedAt.toISOString(),
         tags: null,
@@ -139,24 +76,9 @@ async function collectFromRssFeed(
       count++
     }
 
-    console.log(`[A2] RSS "${feed.name}" → ${count} items in last 7 days`)
+    console.log(`[A2] RSS "${feed.name}" → ${count} items (last 7 days)`)
   } catch (err) {
-    console.error(`[A2] RSS feed failed for "${feed.name}" (${feed.url}):`, err)
-  }
-
-  return collected
-}
-
-async function collectFromRssFeeds(): Promise<RawNews[]> {
-  const results = await Promise.allSettled(
-    SOURCES.rssFeeds.map(feed => collectFromRssFeed(feed))
-  )
-
-  const collected: RawNews[] = []
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      collected.push(...result.value)
-    }
+    console.error(`[A2] RSS "${feed.name}" failed:`, err instanceof Error ? err.message.slice(0, 100) : String(err))
   }
 
   return collected
@@ -169,17 +91,26 @@ async function filterExistingUrls(items: RawNews[]): Promise<RawNews[]> {
 
   const urls = [...new Set(items.map(i => i.source_url))]
 
-  const { data, error } = await supabaseAdmin
-    .from('raw_news')
-    .select('source_url')
-    .in('source_url', urls)
+  // Supabase IN query has a limit, batch if needed
+  const BATCH = 200
+  const existingUrls = new Set<string>()
 
-  if (error) {
-    console.error('[A2] Failed to fetch existing URLs from DB, skipping dedup:', error.message)
-    return items
+  for (let i = 0; i < urls.length; i += BATCH) {
+    const batch = urls.slice(i, i + BATCH)
+    const { data, error } = await supabaseAdmin
+      .from('raw_news')
+      .select('source_url')
+      .in('source_url', batch)
+
+    if (error) {
+      console.error('[A2] Failed to fetch existing URLs:', error.message)
+      continue
+    }
+
+    for (const row of data ?? []) {
+      existingUrls.add((row as { source_url: string }).source_url)
+    }
   }
-
-  const existingUrls = new Set((data ?? []).map((row: { source_url: string }) => row.source_url))
 
   return items.filter(item => !existingUrls.has(item.source_url))
 }
@@ -187,18 +118,29 @@ async function filterExistingUrls(items: RawNews[]): Promise<RawNews[]> {
 // ─── Main collector ───────────────────────────────────────────────────────────
 
 export async function collectNews(): Promise<void> {
-  console.log('[A2] collectNews start')
+  console.log(`[A2] collectNews start — ${SOURCES.rssFeeds.length} RSS feeds`)
 
-  // Fetch from both sources in parallel
-  const [cryptoPanicItems, rssItems] = await Promise.all([
-    collectFromCryptoPanic(),
-    collectFromRssFeeds(),
-  ])
+  // Fetch all feeds in parallel
+  const results = await Promise.allSettled(
+    SOURCES.rssFeeds.map(feed => collectFromRssFeed(feed))
+  )
 
-  const allItems = [...cryptoPanicItems, ...rssItems]
-  console.log(`[A2] Total collected before dedup: ${allItems.length}`)
+  const allItems: RawNews[] = []
+  let successCount = 0
+  let failCount = 0
 
-  // In-memory deduplication by source_url (keep first occurrence)
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      allItems.push(...result.value)
+      if (result.value.length > 0) successCount++
+    } else {
+      failCount++
+    }
+  }
+
+  console.log(`[A2] Total collected before dedup: ${allItems.length} (${successCount} feeds ok, ${failCount} failed)`)
+
+  // In-memory deduplication by source_url
   const seenUrls = new Set<string>()
   const deduped = allItems.filter(item => {
     if (seenUrls.has(item.source_url)) return false
@@ -208,7 +150,7 @@ export async function collectNews(): Promise<void> {
 
   console.log(`[A2] After in-memory dedup: ${deduped.length}`)
 
-  // DB-level deduplication — skip URLs already stored
+  // DB deduplication
   const newItems = await filterExistingUrls(deduped)
 
   if (newItems.length === 0) {
@@ -216,17 +158,25 @@ export async function collectNews(): Promise<void> {
     return
   }
 
-  console.log(`[A2] Upserting ${newItems.length} new news items...`)
+  console.log(`[A2] Upserting ${newItems.length} new items (${newItems.filter(i => i.language === 'zh').length} 中文)...`)
 
-  const { error } = await supabaseAdmin
-    .from('raw_news')
-    .upsert(newItems, { onConflict: 'source_url' })
+  // Insert in batches to avoid payload limits
+  const INSERT_BATCH = 100
+  let inserted = 0
 
-  if (error) {
-    console.error('[A2] Upsert failed:', error.message)
-  } else {
-    console.log(`[A2] Successfully upserted ${newItems.length} news items.`)
+  for (let i = 0; i < newItems.length; i += INSERT_BATCH) {
+    const batch = newItems.slice(i, i + INSERT_BATCH)
+    const { error } = await supabaseAdmin
+      .from('raw_news')
+      .upsert(batch, { onConflict: 'source_url' })
+
+    if (error) {
+      console.error(`[A2] Upsert batch ${Math.floor(i / INSERT_BATCH) + 1} failed:`, error.message)
+    } else {
+      inserted += batch.length
+    }
   }
 
+  console.log(`[A2] Successfully upserted ${inserted} news items.`)
   console.log('[A2] collectNews complete')
 }

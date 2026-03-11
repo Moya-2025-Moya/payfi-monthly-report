@@ -13,27 +13,24 @@ export const SOURCES = {
     },
   },
 
-  // ── 新闻 (全免费，多源交叉验证) ──
-  // CryptoPanic — 免费聚合器，汇集 300+ 来源
-  cryptoPanic: {
-    baseUrl: 'https://cryptopanic.com/api/free/v1',
-    // 免费 tier: 不需要 API key 也可以用 /posts/ 端点
-    // 有 key 可以获得更多字段: 在 https://cryptopanic.com/developers/api/ 注册
-    apiKey: process.env.CRYPTOPANIC_API_KEY || '',
-    endpoints: {
-      posts: '/posts/',  // ?currencies=USDC,USDT&filter=important&kind=news
-    },
-  },
+  // ── 新闻 RSS 源（全免费，14 个源） ──
   rssFeeds: [
+    // 英文主流 (12 个)
     { name: 'The Block', url: 'https://www.theblock.co/rss.xml' },
     { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
     { name: 'Decrypt', url: 'https://decrypt.co/feed' },
     { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },
-    { name: 'DeFi Llama News', url: 'https://feed.defillama.com/' },
-    // 中文源
-    { name: 'ChainCatcher', url: 'https://www.chaincatcher.com/rss' },
-    { name: 'BlockBeats', url: 'https://www.theblockbeats.info/rss' },
-    { name: 'Odaily', url: 'https://www.odaily.news/rss' },
+    { name: 'DLNews', url: 'https://www.dlnews.com/arc/outboundfeeds/rss/' },
+    { name: 'Blockworks', url: 'https://blockworks.co/feed' },
+    { name: 'The Defiant', url: 'https://thedefiant.io/feed' },
+    { name: 'Crypto Briefing', url: 'https://cryptobriefing.com/feed/' },
+    { name: 'Unchained', url: 'https://unchainedcrypto.com/feed/' },
+    { name: 'CryptoSlate', url: 'https://cryptoslate.com/feed/' },
+    { name: 'BeInCrypto', url: 'https://beincrypto.com/feed/' },
+    { name: 'Protos', url: 'https://protos.com/feed/' },
+    // 中文 (2 个)
+    { name: 'Cointelegraph 中文', url: 'https://cn.cointelegraph.com/rss' },
+    { name: '吴说区块链', url: 'https://wublock.substack.com/feed' },
   ],
 
   // ── SEC (免费) ──
@@ -43,15 +40,11 @@ export const SOURCES = {
     userAgent: process.env.SEC_EDGAR_USER_AGENT || 'StablePulse research@example.com',
   },
 
-  // ── 融资 (全免费) ──
-  // 策略: DeFiLlama /raises (结构化) + 新闻提取
-
   // ── Twitter (twitterapi.io) ──
   twitter: {
     baseUrl: 'https://api.twitterapi.io',
     apiKey: process.env.TWITTERAPI_IO_KEY || '',
     // Starter plan: $29/月, 6个账号
-    // 认证: X-API-Key header
     endpoints: {
       addMonitor: '/oapi/x_user_stream/add_user_to_monitor_tweet',
     },
