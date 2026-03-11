@@ -1,12 +1,9 @@
 'use client'
-import { useState } from 'react'
-import { EntityCard } from '@/components/entity/EntityCard'
+import Link from 'next/link'
 import type { Entity, EntityCategory } from '@/lib/types'
 
-const CATEGORY_FILTERS: { key: EntityCategory | 'all'; label: string }[] = [
-  { key: 'all', label: '全部' },
+const CATEGORY_ORDER: { key: EntityCategory; label: string }[] = [
   { key: 'stablecoin_issuer', label: '稳定币发行方' },
-  { key: 'b2c_product', label: 'B2C 产品' },
   { key: 'b2b_infra', label: 'B2B 基础设施' },
   { key: 'tradfi', label: '传统金融' },
   { key: 'public_company', label: '上市公司' },
@@ -14,59 +11,57 @@ const CATEGORY_FILTERS: { key: EntityCategory | 'all'; label: string }[] = [
   { key: 'regulator', label: '监管机构' },
 ]
 
-export function EntitiesClient({ entities }: { entities: Entity[] }) {
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<EntityCategory | 'all'>('all')
-
-  const filtered = entities.filter(e => {
-    const matchesCategory = category === 'all' || e.category === category
-    if (!matchesCategory) return false
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
-    return (
-      e.name.toLowerCase().includes(q) ||
-      (e.aliases ?? []).some(a => a.toLowerCase().includes(q))
-    )
-  })
+export function EntitiesClient({ entities }: { entities: (Entity & { _factCount?: number })[] }) {
+  const grouped = new Map<EntityCategory, (Entity & { _factCount?: number })[]>()
+  for (const e of entities) {
+    const arr = grouped.get(e.category) ?? []
+    arr.push(e)
+    grouped.set(e.category, arr)
+  }
 
   return (
-    <div>
-      <div className="mb-4 space-y-3">
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="按名称或别名搜索..."
-          className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
-          style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)' }}
-        />
-        <div className="flex flex-wrap gap-1">
-          {CATEGORY_FILTERS.map(f => (
-            <button
-              key={f.key}
-              onClick={() => setCategory(f.key)}
-              className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
-              style={{
-                background: category === f.key ? 'var(--accent)' : 'var(--surface-alt)',
-                color: category === f.key ? 'var(--bg)' : 'var(--fg-muted)',
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>
-          显示 {filtered.length} 个实体
-          {filtered.length !== entities.length && `（共 ${entities.length} 个）`}
-        </p>
-      </div>
-      {filtered.length === 0 ? (
-        <p className="text-sm py-8 text-center" style={{ color: 'var(--fg-muted)' }}>没有匹配的实体。</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map(e => <EntityCard key={e.id} entity={e} />)}
-        </div>
-      )}
+    <div className="space-y-8">
+      {CATEGORY_ORDER.map(({ key, label }) => {
+        const items = grouped.get(key)
+        if (!items || items.length === 0) return null
+        return (
+          <section key={key}>
+            <h3 className="text-[11px] font-mono tracking-widest uppercase mb-3"
+              style={{ color: 'var(--fg-faint)' }}>
+              {label}
+            </h3>
+            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+              {items.map((e, i) => (
+                <Link
+                  key={e.id}
+                  href={`/entities/${e.id}`}
+                  className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-[var(--surface-alt)]"
+                  style={{
+                    background: 'var(--surface)',
+                    borderTop: i > 0 ? '1px solid var(--border)' : 'none',
+                  }}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-[13px] font-medium truncate" style={{ color: 'var(--fg-title)' }}>
+                      {e.name}
+                    </span>
+                    {e.aliases.length > 0 && (
+                      <span className="text-[11px] font-mono truncate hidden sm:inline" style={{ color: 'var(--fg-dim)' }}>
+                        {e.aliases.join(', ')}
+                      </span>
+                    )}
+                  </div>
+                  {(e._factCount ?? 0) > 0 && (
+                    <span className="text-[11px] font-mono shrink-0 ml-3" style={{ color: 'var(--fg-faint)' }}>
+                      {e._factCount} 条
+                    </span>
+                  )}
+                </Link>
+              ))}
+            </div>
+          </section>
+        )
+      })}
     </div>
   )
 }
