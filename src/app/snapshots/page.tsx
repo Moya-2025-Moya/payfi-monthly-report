@@ -13,7 +13,7 @@ export default async function SnapshotsPage() {
       {snapshots.length === 0 ? (
         <Card className="text-center py-8">
           <p className="text-lg mb-1">No snapshots yet</p>
-          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>Weekly snapshots archive the state of knowledge each week. Generate one in Settings or wait for the next pipeline run.</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>Weekly snapshots archive the state of knowledge each week. Generate one in Settings or wait for the next pipeline run.</p>
         </Card>
       ) : (
       <div className="space-y-2">
@@ -23,9 +23,9 @@ export default async function SnapshotsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold">{s.week_number}</p>
-                  <p className="text-xs" style={{ color: 'var(--muted-fg)' }}>{new Date(s.generated_at).toLocaleDateString()}</p>
+                  <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>{new Date(s.generated_at).toLocaleDateString()}</p>
                 </div>
-                <div className="flex gap-4 text-xs" style={{ color: 'var(--muted-fg)' }}>
+                <div className="flex gap-4 text-xs" style={{ color: 'var(--fg-muted)' }}>
                   <span>{s.snapshot_data.total_facts} facts</span>
                   <span>{s.snapshot_data.new_facts} new</span>
                   <span>{s.snapshot_data.high_confidence} high</span>

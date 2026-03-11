@@ -9,19 +9,19 @@ const CATEGORY_LABELS: Record<string, string> = {
 export function EntityCard({ entity, factCount }: { entity: Entity; factCount?: number }) {
   return (
     <Link href={`/entities/${entity.id}`}
-      className="block rounded border p-4 transition-colors hover:border-[#333]"
-      style={{ borderColor: '#1a1a1a', background: '#0a0a0a' }}>
+      className="block rounded-lg border p-4 transition-colors hover:border-[var(--border-hover)]"
+      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[13px] font-medium" style={{ color: '#fff' }}>{entity.name}</span>
-        <span className="text-[10px] font-mono" style={{ color: '#333' }}>
+        <span className="text-[13px] font-medium" style={{ color: 'var(--fg-title)' }}>{entity.name}</span>
+        <span className="text-[10px] font-mono" style={{ color: 'var(--fg-faint)' }}>
           {CATEGORY_LABELS[entity.category] ?? entity.category}
         </span>
       </div>
       {entity.description_en && (
-        <p className="text-[12px] line-clamp-2 mb-2" style={{ color: '#555' }}>{entity.description_en}</p>
+        <p className="text-[12px] line-clamp-2 mb-2" style={{ color: 'var(--fg-dim)' }}>{entity.description_en}</p>
       )}
       {factCount != null && (
-        <span className="text-[11px] font-mono" style={{ color: '#333' }}>{factCount} facts</span>
+        <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{factCount} facts</span>
       )}
     </Link>
   )

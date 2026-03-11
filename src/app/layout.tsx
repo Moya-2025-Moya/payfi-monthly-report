@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { ThemeProvider } from '@/components/theme/ThemeProvider'
 import './globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
@@ -13,14 +14,25 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Prevent dark flash — default to light */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            const t = localStorage.getItem('stablepulse-theme');
+            if (t === 'dark') document.documentElement.classList.add('dark');
+          } catch(e) {}
+        `}} />
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 md:ml-[var(--sidebar-w)] p-8 max-w-[1200px]">
-            {children}
-          </main>
-        </div>
+        <ThemeProvider>
+          <div className="flex min-h-screen">
+            <Sidebar />
+            <main className="flex-1 md:ml-[var(--sidebar-w)] p-8 max-w-[1200px]">
+              {children}
+            </main>
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   )

@@ -16,8 +16,8 @@ export function AggregateView({ facts }: { facts: AtomicFact[] }) {
       {sorted.map(([topic, topicFacts]) => (
         <section key={topic}>
           <div className="flex items-center gap-3 mb-4">
-            <h3 className="text-[11px] font-mono tracking-wider uppercase" style={{ color: '#555' }}>{topic}</h3>
-            <span className="text-[11px] font-mono" style={{ color: '#333' }}>{topicFacts.length}</span>
+            <h3 className="text-[11px] font-mono tracking-wider uppercase" style={{ color: 'var(--fg-dim)' }}>{topic}</h3>
+            <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{topicFacts.length}</span>
           </div>
           <FactList facts={topicFacts} compact />
         </section>

@@ -37,7 +37,7 @@ export function EntitiesClient({ entities }: { entities: Entity[] }) {
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name or alias..."
           className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
-          style={{ borderColor: 'var(--border)', background: 'var(--background)', color: 'var(--foreground)' }}
+          style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)' }}
         />
         <div className="flex flex-wrap gap-1">
           {CATEGORY_FILTERS.map(f => (
@@ -46,21 +46,21 @@ export function EntitiesClient({ entities }: { entities: Entity[] }) {
               onClick={() => setCategory(f.key)}
               className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
               style={{
-                background: category === f.key ? 'var(--accent)' : 'var(--muted)',
-                color: category === f.key ? 'var(--accent-fg)' : 'var(--muted-fg)',
+                background: category === f.key ? 'var(--accent)' : 'var(--surface-alt)',
+                color: category === f.key ? 'var(--bg)' : 'var(--fg-muted)',
               }}
             >
               {f.label}
             </button>
           ))}
         </div>
-        <p className="text-xs" style={{ color: 'var(--muted-fg)' }}>
+        <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>
           {filtered.length} {filtered.length === 1 ? 'entity' : 'entities'} shown
           {filtered.length !== entities.length && ` (of ${entities.length} total)`}
         </p>
       </div>
       {filtered.length === 0 ? (
-        <p className="text-sm py-8 text-center" style={{ color: 'var(--muted-fg)' }}>No entities match your filters.</p>
+        <p className="text-sm py-8 text-center" style={{ color: 'var(--fg-muted)' }}>No entities match your filters.</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map(e => <EntityCard key={e.id} entity={e} />)}

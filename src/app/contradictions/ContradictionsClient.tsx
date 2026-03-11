@@ -33,37 +33,36 @@ export function ContradictionsClient({ contradictions, factsMap }: Props) {
   if (contradictions.length === 0) {
     return (
       <Card className="text-center py-8">
-        <p className="text-lg mb-1">No contradictions detected</p>
-        <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>The system automatically detects conflicting facts. None found yet.</p>
+        <p className="text-lg mb-1" style={{ color: 'var(--fg-title)' }}>No contradictions detected</p>
+        <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>The system automatically detects conflicting facts. None found yet.</p>
       </Card>
     )
   }
 
   return (
     <div>
-      <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: 'var(--muted)' }}>
+      <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: 'var(--surface-alt)' }}>
         {TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setFilter(t.key)}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors"
             style={{
-              background: filter === t.key ? 'var(--background)' : 'transparent',
-              color: 'var(--foreground)',
+              background: filter === t.key ? 'var(--surface)' : 'transparent',
+              color: filter === t.key ? 'var(--fg-title)' : 'var(--fg-muted)',
+              boxShadow: filter === t.key ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
             }}
           >
             {t.label}
-            <span
-              className="text-xs px-1.5 py-0.5 rounded-full"
-              style={{ background: 'var(--muted)', color: 'var(--muted-fg)' }}
-            >
+            <span className="text-xs px-1.5 py-0.5 rounded-full"
+              style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
               {counts[t.key]}
             </span>
           </button>
         ))}
       </div>
       {filtered.length === 0 ? (
-        <p className="text-sm py-8 text-center" style={{ color: 'var(--muted-fg)' }}>
+        <p className="text-sm py-8 text-center" style={{ color: 'var(--fg-muted)' }}>
           No {filter === 'all' ? '' : filter} contradictions found.
         </p>
       ) : (

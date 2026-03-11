@@ -21,7 +21,7 @@ export default async function SnapshotDetailPage({ params }: { params: Promise<{
         ].map(([label, val]) => (
           <Card key={label as string}>
             <p className="text-2xl font-bold">{val as number}</p>
-            <p className="text-xs" style={{ color: 'var(--muted-fg)' }}>{label as string}</p>
+            <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>{label as string}</p>
           </Card>
         ))}
       </div>

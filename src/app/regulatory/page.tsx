@@ -19,7 +19,7 @@ export default async function RegulatoryPage() {
       {byRegion.size === 0 ? (
         <Card className="text-center py-8">
           <p className="text-lg mb-1">No regulatory items tracked yet</p>
-          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>Regulatory developments are tracked as they are collected. Check back after the next pipeline run.</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>Regulatory developments are tracked as they are collected. Check back after the next pipeline run.</p>
         </Card>
       ) : (
       <div className="space-y-4">
@@ -30,7 +30,7 @@ export default async function RegulatoryPage() {
               {items.map(t => (
                 <div key={t.id} className="flex items-center justify-between py-2 border-t" style={{ borderColor: 'var(--border)' }}>
                   <span className="text-sm">{t.name}</span>
-                  <span className="text-xs px-2 py-0.5 rounded font-mono" style={{ background: 'var(--muted)', color: 'var(--muted-fg)' }}>{t.status}</span>
+                  <span className="text-xs px-2 py-0.5 rounded font-mono" style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>{t.status}</span>
                 </div>
               ))}
             </div>

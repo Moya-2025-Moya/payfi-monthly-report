@@ -10,21 +10,21 @@ export function EntityProfile({ entity, facts }: { entity: Entity; facts: Atomic
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold" style={{ color: '#fff' }}>{entity.name}</h1>
-        <p className="text-[12px] font-mono mt-1" style={{ color: '#444' }}>
+        <h1 className="text-2xl font-semibold" style={{ color: 'var(--fg-title)' }}>{entity.name}</h1>
+        <p className="text-[12px] font-mono mt-1" style={{ color: 'var(--fg-faint)' }}>
           {CATEGORY_LABELS[entity.category] ?? entity.category}
           {entity.aliases.length > 0 && ` · ${entity.aliases.join(', ')}`}
         </p>
       </div>
-      {entity.description_en && <p className="text-[13px] leading-relaxed" style={{ color: '#888' }}>{entity.description_en}</p>}
+      {entity.description_en && <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>{entity.description_en}</p>}
       {entity.website && (
         <a href={entity.website} target="_blank" rel="noopener noreferrer"
-          className="text-[12px] font-mono transition-colors hover:text-white" style={{ color: '#555' }}>
+          className="text-[12px] font-mono transition-colors hover:text-white" style={{ color: 'var(--fg-dim)' }}>
           {entity.website} ↗
         </a>
       )}
       <div>
-        <p className="text-[10px] font-mono tracking-wider uppercase mb-4" style={{ color: '#444' }}>
+        <p className="text-[10px] font-mono tracking-wider uppercase mb-4" style={{ color: 'var(--fg-faint)' }}>
           Facts ({facts.length})
         </p>
         <FactList facts={facts} />

@@ -23,12 +23,11 @@ export function MatrixView({ facts }: { facts: AtomicFact[] }) {
     }
   }
 
-  function cellBg(count: number) {
-    if (count === 0) return '#0a0a0a'
-    if (count <= 2) return '#111'
-    if (count <= 5) return '#1a1a1a'
-    if (count <= 10) return '#222'
-    return '#333'
+  function cellStyle(count: number): React.CSSProperties {
+    if (count === 0) return { background: 'var(--surface)', color: 'var(--fg-faint)' }
+    if (count <= 2) return { background: 'var(--accent-soft)', color: 'var(--accent)' }
+    if (count <= 5) return { background: 'var(--accent-muted)', color: 'var(--accent)' }
+    return { background: 'var(--accent)', color: 'var(--accent-fg)' }
   }
 
   return (
@@ -36,20 +35,20 @@ export function MatrixView({ facts }: { facts: AtomicFact[] }) {
       <table className="w-full">
         <thead>
           <tr>
-            <th className="text-left p-3 text-[10px] font-mono tracking-wider uppercase" style={{ color: '#444' }}>Sector</th>
+            <th className="text-left p-3 text-[10px] font-mono tracking-wider uppercase" style={{ color: 'var(--fg-faint)' }}>Sector</th>
             {FACT_TYPES.map(t => (
-              <th key={t} className="p-3 text-[10px] font-mono tracking-wider uppercase text-center" style={{ color: '#444' }}>{t.replace('_', ' ')}</th>
+              <th key={t} className="p-3 text-[10px] font-mono tracking-wider uppercase text-center" style={{ color: 'var(--fg-faint)' }}>{t.replace('_', ' ')}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {SECTORS.map(s => (
-            <tr key={s} className="border-t" style={{ borderColor: '#111' }}>
-              <td className="p-3 text-[12px] font-mono" style={{ color: '#888' }}>{SECTOR_LABELS[s]}</td>
+            <tr key={s} className="border-t" style={{ borderColor: 'var(--border)' }}>
+              <td className="p-3 text-[12px] font-mono" style={{ color: 'var(--fg-muted)' }}>{SECTOR_LABELS[s]}</td>
               {FACT_TYPES.map(t => (
                 <td key={t} className="p-3 text-center">
                   <span className="inline-flex items-center justify-center w-10 h-10 rounded text-[12px] font-mono"
-                    style={{ background: cellBg(matrix[s][t]), color: matrix[s][t] > 0 ? '#888' : '#222' }}>
+                    style={cellStyle(matrix[s][t])}>
                     {matrix[s][t]}
                   </span>
                 </td>

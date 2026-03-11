@@ -48,38 +48,41 @@ export function SearchClient({ initialQuery, initialResults }: { initialQuery: s
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search facts by keyword..."
-          className="flex-1 rounded border px-4 py-2.5 text-[13px] outline-none font-mono transition-colors focus:border-[#333]"
-          style={{ borderColor: '#1a1a1a', background: '#0a0a0a', color: '#e5e5e5' }}
+          className="flex-1 rounded-lg border px-4 py-2.5 text-[13px] outline-none font-mono transition-colors"
+          style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)' }}
         />
         <button
           type="submit"
-          className="rounded px-6 py-2.5 text-[13px] font-medium transition-opacity hover:opacity-80"
-          style={{ background: '#fff', color: '#000' }}
+          className="rounded-lg px-6 py-2.5 text-[13px] font-medium transition-opacity hover:opacity-80"
+          style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
         >
           Search
         </button>
       </form>
 
-      {loading ? (
-        <p className="text-[13px] font-mono" style={{ color: '#333' }}>Searching...</p>
-      ) : hasSearched ? (
+      {hasSearched ? (
         results.length > 0 ? (
           <>
-            <p className="text-[12px] font-mono tracking-wider uppercase" style={{ color: '#444' }}>
-              {results.length} result{results.length === 1 ? '' : 's'} found
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-[12px] font-mono tracking-wider uppercase" style={{ color: 'var(--fg-faint)' }}>
+                {results.length} result{results.length === 1 ? '' : 's'} found
+              </p>
+              {loading && <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>updating...</span>}
+            </div>
             <FactList facts={results} />
           </>
+        ) : loading ? (
+          <p className="text-[13px] font-mono" style={{ color: 'var(--fg-faint)' }}>Searching...</p>
         ) : (
           <div className="py-16 text-center space-y-2">
-            <p className="text-[13px] font-medium" style={{ color: '#666' }}>No results found</p>
-            <p className="text-[12px] font-mono" style={{ color: '#333' }}>
+            <p className="text-[13px] font-medium" style={{ color: 'var(--fg-secondary)' }}>No results found</p>
+            <p className="text-[12px] font-mono" style={{ color: 'var(--fg-faint)' }}>
               Try different keywords, or check for typos.
             </p>
           </div>
         )
       ) : (
-        <p className="text-[13px] font-mono" style={{ color: '#333' }}>Enter a keyword to search across all verified atomic facts.</p>
+        <p className="text-[13px] font-mono" style={{ color: 'var(--fg-faint)' }}>Enter a keyword to search across all verified atomic facts.</p>
       )}
     </div>
   )

@@ -39,7 +39,7 @@ function formatFactsContext(facts: AtomicFact[]): string {
 
   return facts.map((f, i) => {
     const confidence = f.confidence ?? 'unknown'
-    const dot = confidence === 'high' ? '🟢' : confidence === 'medium' ? '🔵' : '🟡'
+    const dot = confidence === 'high' ? '[H]' : confidence === 'medium' ? '[M]' : '[L]'
     const date = new Date(f.fact_date).toISOString().split('T')[0]
     return `[${i + 1}] ${dot} (${confidence}) ${f.content_en}\n    Source: ${f.source_type} — ${f.source_url}\n    Date: ${date} | Tags: ${f.tags.join(', ')}`
   }).join('\n\n')
@@ -80,7 +80,7 @@ export async function chat(
 // ─── 保存对话记录 ───
 
 async function saveChatMessages(userId: string, userContent: string, assistantContent: string, contextFactIds: string[]) {
-  await supabaseAdmin.from('chat_messages').insert([
+  await supabaseAdmin.from('chat_history').insert([
     { user_id: userId, role: 'user', content: userContent, context_fact_ids: [] },
     { user_id: userId, role: 'assistant', content: assistantContent, context_fact_ids: contextFactIds },
   ])
@@ -90,7 +90,7 @@ async function saveChatMessages(userId: string, userContent: string, assistantCo
 
 export async function getChatHistory(userId: string, limit = 50): Promise<ChatMessage[]> {
   const { data } = await supabaseAdmin
-    .from('chat_messages')
+    .from('chat_history')
     .select('role, content')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })

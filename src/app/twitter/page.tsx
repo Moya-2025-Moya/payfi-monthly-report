@@ -22,7 +22,7 @@ export default async function TwitterPage() {
       {facts.length === 0 ? (
         <Card className="text-center py-8">
           <p className="text-lg mb-1">No verified Twitter facts this week</p>
-          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>Verified tweets are collected and processed each week. Check back after the next pipeline run.</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>Verified tweets are collected and processed each week. Check back after the next pipeline run.</p>
         </Card>
       ) : (
         <FactList facts={facts} />

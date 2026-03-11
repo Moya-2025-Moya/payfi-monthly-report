@@ -44,7 +44,7 @@ export default async function GraphPage() {
         <PageHeader title="Relationship Graph" description="Entity relationship visualization" />
         <Card className="text-center py-8">
           <p className="text-lg mb-1">Failed to load graph data</p>
-          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>{error.message}</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>{error.message}</p>
         </Card>
       </div>
     )
@@ -58,7 +58,7 @@ export default async function GraphPage() {
         <PageHeader title="Relationship Graph" description="Entity relationship visualization" />
         <Card className="text-center py-8">
           <p className="text-lg mb-1">No relationships mapped yet</p>
-          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>Entity relationships are extracted during pipeline processing. Run the pipeline to populate the graph.</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>Entity relationships are extracted during pipeline processing. Run the pipeline to populate the graph.</p>
         </Card>
       </div>
     )
@@ -123,7 +123,7 @@ export default async function GraphPage() {
               <h3 className="text-sm font-semibold">{TYPE_LABELS[type] ?? type}</h3>
               <span
                 className="text-xs px-2 py-0.5 rounded-full font-mono"
-                style={{ background: 'var(--muted)', color: 'var(--muted-fg)' }}
+                style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}
               >
                 {typeEdges.length}
               </span>
@@ -136,7 +136,7 @@ export default async function GraphPage() {
                   <div
                     key={edge.id}
                     className="flex items-start gap-3 p-2 rounded-md"
-                    style={{ background: 'var(--muted)' }}
+                    style={{ background: 'var(--surface-alt)' }}
                   >
                     {/* Entity A */}
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -151,7 +151,7 @@ export default async function GraphPage() {
                     </div>
 
                     {/* Arrow */}
-                    <span className="text-xs flex-shrink-0" style={{ color: 'var(--muted-fg)' }}>→</span>
+                    <span className="text-xs flex-shrink-0" style={{ color: 'var(--fg-muted)' }}>→</span>
 
                     {/* Entity B */}
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -167,7 +167,7 @@ export default async function GraphPage() {
 
                     {/* Description */}
                     {edge.description && (
-                      <p className="text-xs flex-shrink-0 max-w-[200px] truncate" style={{ color: 'var(--muted-fg)' }} title={edge.description}>
+                      <p className="text-xs flex-shrink-0 max-w-[200px] truncate" style={{ color: 'var(--fg-muted)' }} title={edge.description}>
                         {edge.description}
                       </p>
                     )}

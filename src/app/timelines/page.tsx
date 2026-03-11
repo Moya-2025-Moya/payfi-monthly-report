@@ -13,7 +13,7 @@ export default async function TimelinesPage() {
       {timelines.length === 0 ? (
         <Card className="text-center py-8">
           <p className="text-lg mb-1">No timelines yet</p>
-          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>Event timelines are built as the pipeline processes data. Check back after the next run, or trigger it manually in Settings.</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>Event timelines are built as the pipeline processes data. Check back after the next run, or trigger it manually in Settings.</p>
         </Card>
       ) : (
       <div className="space-y-2">
@@ -24,11 +24,11 @@ export default async function TimelinesPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">{t.name}</h3>
               <span className="text-xs px-2 py-0.5 rounded"
-                style={{ background: t.status === 'active' ? '#dcfce7' : 'var(--muted)', color: t.status === 'active' ? '#166534' : 'var(--muted-fg)' }}>
+                style={{ background: t.status === 'active' ? 'var(--success-soft)' : 'var(--surface-alt)', color: t.status === 'active' ? 'var(--success)' : 'var(--fg-muted)' }}>
                 {t.status}
               </span>
             </div>
-            {t.description && <p className="text-xs mt-1" style={{ color: 'var(--muted-fg)' }}>{t.description}</p>}
+            {t.description && <p className="text-xs mt-1" style={{ color: 'var(--fg-muted)' }}>{t.description}</p>}
           </Link>
         ))}
       </div>

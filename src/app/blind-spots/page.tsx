@@ -20,7 +20,7 @@ export default async function BlindSpotsPage() {
       {reports.length === 0 ? (
         <Card className="text-center py-8">
           <p className="text-lg mb-1">No blind spot reports yet</p>
-          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>Reports are generated weekly. Check back after the pipeline runs, or trigger it manually in Settings.</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>Reports are generated weekly. Check back after the pipeline runs, or trigger it manually in Settings.</p>
         </Card>
       ) : (
         <div className="space-y-6">

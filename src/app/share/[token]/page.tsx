@@ -26,7 +26,7 @@ export default async function SharedViewPage({ params }: { params: Promise<{ tok
     <div className="max-w-3xl mx-auto p-6">
       <PageHeader title={sv.title ?? 'Shared Facts'} description="Shared from StablePulse" />
       <FactList facts={facts} />
-      <p className="text-xs mt-6 text-center" style={{ color: 'var(--muted-fg)' }}>
+      <p className="text-xs mt-6 text-center" style={{ color: 'var(--fg-muted)' }}>
         Shared via StablePulse · Expires {new Date(sv.expires_at).toLocaleDateString()}
       </p>
     </div>

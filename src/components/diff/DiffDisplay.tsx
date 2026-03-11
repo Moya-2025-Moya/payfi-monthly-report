@@ -2,11 +2,11 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import type { DiffResult } from '@/lib/types'
 
 function ChangeRow({ type, text }: { type: '+' | '-' | '~'; text: string }) {
-  const colors = { '+': '#00cc88', '-': '#ff4444', '~': '#ffaa00' }
+  const colors = { '+': 'var(--success)', '-': 'var(--danger)', '~': 'var(--accent)' }
   return (
     <div className="flex items-start gap-3 py-1.5 text-[12px] font-mono">
       <span style={{ color: colors[type] }}>{type}</span>
-      <span style={{ color: '#999' }}>{text}</span>
+      <span style={{ color: 'var(--fg-secondary)' }}>{text}</span>
     </div>
   )
 }
@@ -14,9 +14,9 @@ function ChangeRow({ type, text }: { type: '+' | '-' | '~'; text: string }) {
 export function DiffDisplay({ diff }: { diff: DiffResult }) {
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-[11px] font-mono" style={{ color: '#444' }}>
+      <div className="flex items-center gap-2 text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
         <span>{diff.week_a}</span>
-        <span style={{ color: '#333' }}>/</span>
+        <span style={{ color: 'var(--fg-faint)' }}>/</span>
         <span>{diff.week_b}</span>
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -26,8 +26,8 @@ export function DiffDisplay({ diff }: { diff: DiffResult }) {
           [diff.new_contradictions, 'Contradictions'],
         ].map(([val, label]) => (
           <Card key={label as string}>
-            <p className="text-2xl font-semibold" style={{ color: '#fff' }}>{val as number}</p>
-            <p className="text-[10px] font-mono tracking-wider uppercase mt-1" style={{ color: '#444' }}>{label as string}</p>
+            <p className="text-2xl font-semibold" style={{ color: 'var(--fg-title)' }}>{val as number}</p>
+            <p className="text-[10px] font-mono tracking-wider uppercase mt-1" style={{ color: 'var(--fg-faint)' }}>{label as string}</p>
           </Card>
         ))}
       </div>
