@@ -2,7 +2,6 @@ import { FactList } from '@/components/facts/FactList'
 import type { AtomicFact } from '@/lib/types'
 
 export function AggregateView({ facts }: { facts: AtomicFact[] }) {
-  // Group by tag/topic
   const grouped = new Map<string, AtomicFact[]>()
   for (const fact of facts) {
     const key = fact.tags[0] ?? 'other'
@@ -10,14 +9,16 @@ export function AggregateView({ facts }: { facts: AtomicFact[] }) {
     arr.push(fact)
     grouped.set(key, arr)
   }
-
   const sorted = [...grouped.entries()].sort((a, b) => b[1].length - a[1].length)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       {sorted.map(([topic, topicFacts]) => (
         <section key={topic}>
-          <h3 className="text-sm font-semibold mb-2 capitalize">{topic} <span style={{ color: 'var(--muted-fg)' }}>({topicFacts.length})</span></h3>
+          <div className="flex items-center gap-3 mb-4">
+            <h3 className="text-[11px] font-mono tracking-wider uppercase" style={{ color: '#555' }}>{topic}</h3>
+            <span className="text-[11px] font-mono" style={{ color: '#333' }}>{topicFacts.length}</span>
+          </div>
           <FactList facts={topicFacts} compact />
         </section>
       ))}

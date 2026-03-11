@@ -13,11 +13,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <div className="flex min-h-screen">
           <Sidebar />
-          <main className="flex-1 md:ml-[var(--sidebar-w)] p-6">
+          <main className="flex-1 md:ml-[var(--sidebar-w)] p-8 max-w-[1200px]">
             {children}
           </main>
         </div>

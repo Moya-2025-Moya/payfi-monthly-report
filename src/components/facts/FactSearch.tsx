@@ -21,12 +21,12 @@ export function FactSearch({ onSearch, placeholder = 'Search facts...' }: FactSe
         value={query}
         onChange={e => setQuery(e.target.value)}
         placeholder={placeholder}
-        className="flex-1 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
-        style={{ borderColor: 'var(--border)', background: 'var(--background)', color: 'var(--foreground)' }}
+        className="flex-1 rounded border px-3 py-2 text-[13px] outline-none font-mono transition-colors focus:border-[#333]"
+        style={{ borderColor: '#1a1a1a', background: '#0a0a0a', color: '#e5e5e5' }}
       />
       <button type="submit"
-        className="rounded-md px-4 py-2 text-sm font-medium"
-        style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>
+        className="rounded px-5 py-2 text-[13px] font-medium transition-opacity hover:opacity-80"
+        style={{ background: '#fff', color: '#000' }}>
         Search
       </button>
     </form>

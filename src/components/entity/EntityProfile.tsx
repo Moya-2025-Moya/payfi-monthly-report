@@ -8,30 +8,25 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export function EntityProfile({ entity, facts }: { entity: Entity; facts: AtomicFact[] }) {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        {entity.logo_url ? (
-          <img src={entity.logo_url} alt="" className="w-12 h-12 rounded-lg" />
-        ) : (
-          <div className="w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold"
-            style={{ background: 'var(--muted)', color: 'var(--muted-fg)' }}>
-            {entity.name[0]}
-          </div>
-        )}
-        <div>
-          <h1 className="text-xl font-bold">{entity.name}</h1>
-          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>
-            {CATEGORY_LABELS[entity.category] ?? entity.category}
-            {entity.aliases.length > 0 && ` · Also: ${entity.aliases.join(', ')}`}
-          </p>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-semibold" style={{ color: '#fff' }}>{entity.name}</h1>
+        <p className="text-[12px] font-mono mt-1" style={{ color: '#444' }}>
+          {CATEGORY_LABELS[entity.category] ?? entity.category}
+          {entity.aliases.length > 0 && ` · ${entity.aliases.join(', ')}`}
+        </p>
       </div>
-      {entity.description_en && <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>{entity.description_en}</p>}
+      {entity.description_en && <p className="text-[13px] leading-relaxed" style={{ color: '#888' }}>{entity.description_en}</p>}
       {entity.website && (
-        <a href={entity.website} target="_blank" rel="noopener noreferrer" className="text-sm underline" style={{ color: 'var(--accent)' }}>{entity.website}</a>
+        <a href={entity.website} target="_blank" rel="noopener noreferrer"
+          className="text-[12px] font-mono transition-colors hover:text-white" style={{ color: '#555' }}>
+          {entity.website} ↗
+        </a>
       )}
       <div>
-        <h2 className="text-sm font-semibold mb-3">Verified Facts ({facts.length})</h2>
+        <p className="text-[10px] font-mono tracking-wider uppercase mb-4" style={{ color: '#444' }}>
+          Facts ({facts.length})
+        </p>
         <FactList facts={facts} />
       </div>
     </div>

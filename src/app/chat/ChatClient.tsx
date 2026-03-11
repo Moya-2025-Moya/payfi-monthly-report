@@ -33,33 +33,37 @@ export function ChatClient() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-y-auto space-y-3 pb-4">
+      <div className="flex-1 overflow-y-auto space-y-4 pb-4">
         {messages.length === 0 && (
-          <p className="text-sm text-center py-12" style={{ color: 'var(--muted-fg)' }}>
-            Ask anything about the stablecoin industry. Answers are based on verified atomic facts.
+          <p className="text-[13px] font-mono text-center py-20" style={{ color: '#333' }}>
+            Ask anything about the stablecoin industry.
           </p>
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className="max-w-[80%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap"
+            <div className="max-w-[75%] rounded px-4 py-3 text-[13px] whitespace-pre-wrap"
               style={{
-                background: m.role === 'user' ? 'var(--accent)' : 'var(--muted)',
-                color: m.role === 'user' ? 'var(--accent-fg)' : 'var(--foreground)',
+                background: m.role === 'user' ? '#fff' : '#111',
+                color: m.role === 'user' ? '#000' : '#ccc',
               }}>
               {m.content}
             </div>
           </div>
         ))}
-        {loading && <div className="flex justify-start"><div className="rounded-lg px-4 py-2 text-sm" style={{ background: 'var(--muted)', color: 'var(--muted-fg)' }}>Thinking...</div></div>}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="rounded px-4 py-3 text-[13px] font-mono" style={{ background: '#111', color: '#444' }}>...</div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={send} className="flex gap-2 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+      <form onSubmit={send} className="flex gap-2 pt-4 border-t" style={{ borderColor: '#1a1a1a' }}>
         <input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask a question..."
-          className="flex-1 rounded-md border px-3 py-2 text-sm outline-none"
-          style={{ borderColor: 'var(--border)', background: 'var(--background)' }} />
+          className="flex-1 rounded border px-4 py-2.5 text-[13px] outline-none font-mono transition-colors focus:border-[#333]"
+          style={{ borderColor: '#1a1a1a', background: '#0a0a0a', color: '#e5e5e5' }} />
         <button type="submit" disabled={loading}
-          className="rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
-          style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>
+          className="rounded px-6 py-2.5 text-[13px] font-medium transition-opacity hover:opacity-80 disabled:opacity-30"
+          style={{ background: '#fff', color: '#000' }}>
           Send
         </button>
       </form>

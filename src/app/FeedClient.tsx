@@ -41,22 +41,22 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
   return (
     <div>
       {/* Week navigator */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-6">
         <button
           onClick={() => navigate(shiftWeek(currentWeek, -1))}
-          className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
-          style={{ background: 'var(--muted)', color: 'var(--foreground)' }}
+          className="px-3 py-1.5 rounded text-[12px] font-mono tracking-wider uppercase transition-colors hover:opacity-80"
+          style={{ background: '#111', color: '#666', border: '1px solid #1a1a1a' }}
           aria-label="Previous week"
         >
           &lt; {shiftWeek(currentWeek, -1).replace('-', ' ')}
         </button>
-        <span className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+        <span className="text-[13px] font-mono tracking-wider uppercase" style={{ color: '#fff' }}>
           {currentWeek.replace('-', ' ')}
         </span>
         <button
           onClick={() => navigate(shiftWeek(currentWeek, 1))}
-          className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
-          style={{ background: 'var(--muted)', color: 'var(--foreground)' }}
+          className="px-3 py-1.5 rounded text-[12px] font-mono tracking-wider uppercase transition-colors hover:opacity-80"
+          style={{ background: '#111', color: '#666', border: '1px solid #1a1a1a' }}
           aria-label="Next week"
         >
           {shiftWeek(currentWeek, 1).replace('-', ' ')} &gt;
@@ -64,11 +64,14 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
       </div>
 
       {/* View switcher */}
-      <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: 'var(--muted)' }}>
+      <div className="flex gap-0 mb-8 border-b" style={{ borderColor: '#1a1a1a' }}>
         {views.map(v => (
           <button key={v.key} onClick={() => setView(v.key)}
-            className="px-4 py-1.5 rounded-md text-sm font-medium transition-colors"
-            style={{ background: view === v.key ? 'var(--background)' : 'transparent', color: 'var(--foreground)' }}>
+            className="px-4 py-2 text-[12px] font-mono tracking-wider uppercase transition-colors -mb-px border-b-2"
+            style={{
+              borderColor: view === v.key ? '#fff' : 'transparent',
+              color: view === v.key ? '#fff' : '#444',
+            }}>
             {v.label}
           </button>
         ))}
