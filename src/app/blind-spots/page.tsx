@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/db/client'
 import { getCurrentWeekNumber } from '@/db/client'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Card } from '@/components/ui/Card'
 import { CoverageMatrix } from '@/components/blind-spots/CoverageMatrix'
 import type { BlindSpotReport } from '@/lib/types'
 
@@ -17,7 +18,10 @@ export default async function BlindSpotsPage() {
     <div>
       <PageHeader title="Knowledge Blind Spots" description="Coverage gaps across tracked entities" />
       {reports.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>No blind spot reports yet. Run the weekly pipeline first.</p>
+        <Card className="text-center py-8">
+          <p className="text-lg mb-1">No blind spot reports yet</p>
+          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>Reports are generated weekly. Check back after the pipeline runs, or trigger it manually in Settings.</p>
+        </Card>
       ) : (
         <div className="space-y-6">
           {reports.map(r => (

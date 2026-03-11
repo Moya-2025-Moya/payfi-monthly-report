@@ -16,6 +16,12 @@ export default async function RegulatoryPage() {
   return (
     <div>
       <PageHeader title="Regulatory Tracker" description="Legislation, enforcement, and guidance tracking by region" />
+      {byRegion.size === 0 ? (
+        <Card className="text-center py-8">
+          <p className="text-lg mb-1">No regulatory items tracked yet</p>
+          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>Regulatory developments are tracked as they are collected. Check back after the next pipeline run.</p>
+        </Card>
+      ) : (
       <div className="space-y-4">
         {[...byRegion.entries()].map(([region, items]) => (
           <Card key={region}>
@@ -31,6 +37,7 @@ export default async function RegulatoryPage() {
           </Card>
         ))}
       </div>
+      )}
     </div>
   )
 }

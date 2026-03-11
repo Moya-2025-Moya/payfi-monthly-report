@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '@/db/client'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { EntityCard } from '@/components/entity/EntityCard'
+import { EntitiesClient } from './EntitiesClient'
 import type { Entity } from '@/lib/types'
 
 export default async function EntitiesPage() {
@@ -9,9 +9,7 @@ export default async function EntitiesPage() {
   return (
     <div>
       <PageHeader title="Entities" description={`${entities.length} tracked entities`} />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {entities.map(e => <EntityCard key={e.id} entity={e} />)}
-      </div>
+      <EntitiesClient entities={entities} />
     </div>
   )
 }

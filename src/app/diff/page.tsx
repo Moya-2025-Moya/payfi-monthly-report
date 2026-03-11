@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/ui/PageHeader'
-import { DiffDisplay } from '@/components/diff/DiffDisplay'
+import { DiffClient } from './DiffClient'
 import { getCurrentWeekNumber } from '@/db/client'
 import type { DiffResult } from '@/lib/types'
 
@@ -25,10 +25,8 @@ export default async function DiffPage() {
 
   return (
     <div>
-      <PageHeader title="Weekly Diff" description={`Changes from ${weekA} to ${weekB}`} />
-      {diff ? <DiffDisplay diff={diff} /> : (
-        <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>No diff data available yet. Run the weekly pipeline first.</p>
-      )}
+      <PageHeader title="Weekly Diff" description={`Compare fact changes between any two weeks`} />
+      <DiffClient initialDiff={diff} defaultWeekA={weekA} defaultWeekB={weekB} />
     </div>
   )
 }

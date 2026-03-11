@@ -32,6 +32,12 @@
   }
 }
 
+@media (max-width: 767px) {
+  :root {
+    --sidebar-w: 0px;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

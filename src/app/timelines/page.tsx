@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { supabaseAdmin } from '@/db/client'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Card } from '@/components/ui/Card'
 import type { Timeline } from '@/lib/types'
 
 export default async function TimelinesPage() {
@@ -9,6 +10,12 @@ export default async function TimelinesPage() {
   return (
     <div>
       <PageHeader title="Timelines" description={`${timelines.length} event timelines`} />
+      {timelines.length === 0 ? (
+        <Card className="text-center py-8">
+          <p className="text-lg mb-1">No timelines yet</p>
+          <p className="text-sm" style={{ color: 'var(--muted-fg)' }}>Event timelines are built as the pipeline processes data. Check back after the next run, or trigger it manually in Settings.</p>
+        </Card>
+      ) : (
       <div className="space-y-2">
         {timelines.map(t => (
           <Link key={t.id} href={`/timelines/${t.id}`}
@@ -25,6 +32,7 @@ export default async function TimelinesPage() {
           </Link>
         ))}
       </div>
+      )}
     </div>
   )
 }
