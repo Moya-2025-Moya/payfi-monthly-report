@@ -1,11 +1,14 @@
 import type { AtomicFact, Sector } from '@/lib/types'
 
 const SECTOR_LABELS: Record<string, string> = {
-  issuance: 'Issuance', payments: 'Payments', defi: 'DeFi',
-  infrastructure: 'Infra', regulatory: 'Regulatory', capital_markets: 'Capital Mkts'
+  issuance: '发行', payments: '支付', defi: 'DeFi',
+  infrastructure: '基础设施', regulatory: '监管', capital_markets: '资本市场'
 }
 const SECTORS: Sector[] = ['issuance', 'payments', 'defi', 'infrastructure', 'regulatory', 'capital_markets']
 const FACT_TYPES = ['event', 'metric', 'quote', 'relationship', 'status_change'] as const
+const FACT_TYPE_ZH: Record<string, string> = {
+  event: '事件', metric: '指标', quote: '引述', relationship: '关系', status_change: '状态变更'
+}
 
 export function MatrixView({ facts }: { facts: AtomicFact[] }) {
   const matrix: Record<string, Record<string, number>> = {}
@@ -35,9 +38,9 @@ export function MatrixView({ facts }: { facts: AtomicFact[] }) {
       <table className="w-full">
         <thead>
           <tr>
-            <th className="text-left p-3 text-[10px] font-mono tracking-wider uppercase" style={{ color: 'var(--fg-faint)' }}>Sector</th>
+            <th className="text-left p-3 text-[10px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>板块</th>
             {FACT_TYPES.map(t => (
-              <th key={t} className="p-3 text-[10px] font-mono tracking-wider uppercase text-center" style={{ color: 'var(--fg-faint)' }}>{t.replace('_', ' ')}</th>
+              <th key={t} className="p-3 text-[10px] font-mono tracking-wider text-center" style={{ color: 'var(--fg-faint)' }}>{FACT_TYPE_ZH[t]}</th>
             ))}
           </tr>
         </thead>

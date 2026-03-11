@@ -15,11 +15,11 @@ export default async function RegulatoryPage() {
 
   return (
     <div>
-      <PageHeader title="Regulatory Tracker" description="Legislation, enforcement, and guidance tracking by region" />
+      <PageHeader title="监管追踪" description="按地区追踪立法、执法和监管指导" />
       {byRegion.size === 0 ? (
         <Card className="text-center py-8">
-          <p className="text-lg mb-1">No regulatory items tracked yet</p>
-          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>Regulatory developments are tracked as they are collected. Check back after the next pipeline run.</p>
+          <p className="text-lg mb-1">暂无监管追踪项</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>监管动态会在数据采集后自动追踪。请在下次流水线运行后查看。</p>
         </Card>
       ) : (
       <div className="space-y-4">

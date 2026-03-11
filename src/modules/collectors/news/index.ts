@@ -1,5 +1,5 @@
-// A2 News Collector — free-crypto-news API + RSS feeds
-// Fetches recent stablecoin news from multiple sources and stores in raw_news table.
+// A2 News Collector — CryptoPanic API + RSS feeds (含中文源)
+// 从多个来源抓取稳定币相关新闻，存入 raw_news 表
 
 import { SOURCES } from '@/config/sources'
 import { supabaseAdmin } from '@/db/client'
@@ -8,7 +8,7 @@ import RSSParser from 'rss-parser'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RawNews {
-  collector: 'free-crypto-news' | 'rss'
+  collector: 'cryptopanic' | 'rss'
   source_name: string
   source_url: string
   title: string
@@ -20,103 +20,76 @@ interface RawNews {
   processed: boolean
 }
 
-// ─── free-crypto-news API shapes ─────────────────────────────────────────────
+// ─── CryptoPanic API shapes ─────────────────────────────────────────────────
 
-interface FreeCryptoNewsArticle {
-  title?: string
-  url?: string
-  link?: string
-  source?: string
-  source_name?: string
-  description?: string
-  summary?: string
-  publishedAt?: string
-  published_at?: string
-  date?: string
-}
-
-interface FreeCryptoNewsResponse {
-  articles?: FreeCryptoNewsArticle[]
-  data?: FreeCryptoNewsArticle[]
-  results?: FreeCryptoNewsArticle[]
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': 'payfi-monthly-report' },
-  })
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText} — ${url}`)
+interface CryptoPanicPost {
+  kind: string
+  domain: string
+  title: string
+  published_at: string
+  slug: string
+  url: string
+  source: {
+    title: string
+    region: string
+    domain: string
   }
-  return res.json() as Promise<T>
+  currencies?: { code: string; title: string }[]
 }
 
-function extractArticles(data: FreeCryptoNewsResponse): FreeCryptoNewsArticle[] {
-  return data.articles ?? data.data ?? data.results ?? []
+interface CryptoPanicResponse {
+  count: number
+  results: CryptoPanicPost[]
 }
 
-function normalizePublishedAt(article: FreeCryptoNewsArticle): string | null {
-  const raw = article.publishedAt ?? article.published_at ?? article.date
-  if (!raw) return null
-  const d = new Date(raw)
-  return isNaN(d.getTime()) ? null : d.toISOString()
-}
+// ─── Part 1: CryptoPanic API ─────────────────────────────────────────────────
 
-function normalizeSourceUrl(article: FreeCryptoNewsArticle): string | null {
-  return article.url ?? article.link ?? null
-}
-
-function normalizeSourceName(article: FreeCryptoNewsArticle): string {
-  return article.source ?? article.source_name ?? 'free-crypto-news'
-}
-
-function normalizeSummary(article: FreeCryptoNewsArticle): string | null {
-  return article.description ?? article.summary ?? null
-}
-
-// ─── Part 1: free-crypto-news API ─────────────────────────────────────────────
-
-async function collectFromFreeCryptoNews(): Promise<RawNews[]> {
-  const baseUrl = SOURCES.freeCryptoNews.baseUrl
-  const searchEndpoint = SOURCES.freeCryptoNews.endpoints.search
-
-  const queries = ['stablecoin', 'USDC', 'USDT']
+async function collectFromCryptoPanic(): Promise<RawNews[]> {
+  const baseUrl = SOURCES.cryptoPanic.baseUrl
+  const apiKey = SOURCES.cryptoPanic.apiKey
   const collected: RawNews[] = []
 
-  for (const q of queries) {
-    const url = `${baseUrl}${searchEndpoint}?q=${encodeURIComponent(q)}&limit=50`
+  // 搜索稳定币相关新闻
+  const currencies = 'USDC,USDT,DAI,PYUSD'
+  const authParam = apiKey ? `&auth_token=${apiKey}` : ''
+  const url = `${baseUrl}/posts/?currencies=${currencies}&filter=important&kind=news${authParam}`
 
-    try {
-      const data = await fetchJson<FreeCryptoNewsResponse>(url)
-      const articles = extractArticles(data)
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': 'StablePulse/1.0' },
+    })
 
-      console.log(`[A2] free-crypto-news: "${q}" → ${articles.length} articles`)
-
-      for (const article of articles) {
-        const sourceUrl = normalizeSourceUrl(article)
-        const title = article.title?.trim()
-        const publishedAt = normalizePublishedAt(article)
-
-        if (!sourceUrl || !title || !publishedAt) continue
-
-        collected.push({
-          collector: 'free-crypto-news',
-          source_name: normalizeSourceName(article),
-          source_url: sourceUrl,
-          title,
-          summary: normalizeSummary(article),
-          full_text: null,
-          published_at: publishedAt,
-          tags: [q],
-          language: null,
-          processed: false,
-        })
-      }
-    } catch (err) {
-      console.error(`[A2] free-crypto-news search failed for "${q}":`, err)
+    if (!res.ok) {
+      console.error(`[A2] CryptoPanic API returned ${res.status}`)
+      return collected
     }
+
+    const data = await res.json() as CryptoPanicResponse
+    console.log(`[A2] CryptoPanic: ${data.results?.length ?? 0} posts`)
+
+    for (const post of data.results ?? []) {
+      if (!post.url || !post.title || !post.published_at) continue
+
+      // 过滤 GitHub 链接 — 这些不是新闻
+      if (post.domain === 'github.com' || post.url.includes('github.com')) continue
+
+      const tags = (post.currencies ?? []).map(c => c.code)
+
+      collected.push({
+        collector: 'cryptopanic',
+        source_name: post.source?.title ?? post.domain ?? 'CryptoPanic',
+        source_url: post.url,
+        title: post.title.trim(),
+        summary: null,
+        full_text: null,
+        published_at: new Date(post.published_at).toISOString(),
+        tags: tags.length > 0 ? tags : ['stablecoin'],
+        language: post.source?.region === 'zh' ? 'zh' : 'en',
+        processed: false,
+      })
+    }
+  } catch (err) {
+    console.error('[A2] CryptoPanic fetch failed:', err)
   }
 
   return collected
@@ -125,24 +98,30 @@ async function collectFromFreeCryptoNews(): Promise<RawNews[]> {
 // ─── Part 2: RSS feeds ────────────────────────────────────────────────────────
 
 const rssParser = new RSSParser()
-
-const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 async function collectFromRssFeed(
   feed: { name: string; url: string }
 ): Promise<RawNews[]> {
-  const cutoff = new Date(Date.now() - TWENTY_FOUR_HOURS_MS)
+  const cutoff = new Date(Date.now() - SEVEN_DAYS_MS)
   const collected: RawNews[] = []
 
   try {
     const parsed = await rssParser.parseURL(feed.url)
     let count = 0
 
+    // 检测是否为中文源
+    const zhSources = ['chaincatcher', 'blockbeats', 'odaily', 'foresight', 'panewslab']
+    const isZh = zhSources.some(s => feed.url.toLowerCase().includes(s) || feed.name.toLowerCase().includes(s))
+
     for (const item of parsed.items) {
       if (!item.link || !item.title) continue
 
       const publishedAt = item.pubDate ? new Date(item.pubDate) : null
       if (!publishedAt || isNaN(publishedAt.getTime()) || publishedAt < cutoff) continue
+
+      // 过滤 GitHub 链接
+      if (item.link.includes('github.com')) continue
 
       collected.push({
         collector: 'rss',
@@ -153,14 +132,14 @@ async function collectFromRssFeed(
         full_text: null,
         published_at: publishedAt.toISOString(),
         tags: null,
-        language: null,
+        language: isZh ? 'zh' : 'en',
         processed: false,
       })
 
       count++
     }
 
-    console.log(`[A2] RSS "${feed.name}" → ${count} items in last 24h`)
+    console.log(`[A2] RSS "${feed.name}" → ${count} items in last 7 days`)
   } catch (err) {
     console.error(`[A2] RSS feed failed for "${feed.name}" (${feed.url}):`, err)
   }
@@ -178,7 +157,6 @@ async function collectFromRssFeeds(): Promise<RawNews[]> {
     if (result.status === 'fulfilled') {
       collected.push(...result.value)
     }
-    // Rejected promises are already logged inside collectFromRssFeed
   }
 
   return collected
@@ -212,12 +190,12 @@ export async function collectNews(): Promise<void> {
   console.log('[A2] collectNews start')
 
   // Fetch from both sources in parallel
-  const [freeCryptoNewsItems, rssItems] = await Promise.all([
-    collectFromFreeCryptoNews(),
+  const [cryptoPanicItems, rssItems] = await Promise.all([
+    collectFromCryptoPanic(),
     collectFromRssFeeds(),
   ])
 
-  const allItems = [...freeCryptoNewsItems, ...rssItems]
+  const allItems = [...cryptoPanicItems, ...rssItems]
   console.log(`[A2] Total collected before dedup: ${allItems.length}`)
 
   // In-memory deduplication by source_url (keep first occurrence)

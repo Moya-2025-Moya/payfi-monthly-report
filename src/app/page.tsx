@@ -18,7 +18,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const facts = (data ?? []) as AtomicFact[]
   return (
     <div>
-      <PageHeader title="StablePulse Feed" description={`${week.replace('-', ' ')} · ${facts.length} verified facts`} />
+      <PageHeader title="信息流" description={`${week.replace('-W', ' 第')}周 · ${facts.length} 条已验证事实`} />
       <FeedClient facts={facts} currentWeek={week} />
     </div>
   )

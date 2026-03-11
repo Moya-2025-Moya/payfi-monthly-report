@@ -12,10 +12,10 @@ export function ChatClient() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   const examples = [
-    'What are the top stablecoins by market cap this week?',
-    'Any new regulatory developments?',
-    'Compare USDT and USDC recent metrics',
-    'What funding rounds happened recently?',
+    '本周市值最大的稳定币有哪些？',
+    '最近有什么监管新动态？',
+    '对比 USDT 和 USDC 的最新指标',
+    '近期有哪些融资事件？',
   ]
 
   async function send(e: React.FormEvent) {
@@ -34,7 +34,7 @@ export function ChatClient() {
       const data = await res.json()
       setMessages(prev => [...prev, { role: 'assistant', content: data.content }])
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Failed to get response.' }])
+      setMessages(prev => [...prev, { role: 'assistant', content: '错误：未能获取响应，请稍后重试。' }])
     } finally { setLoading(false) }
   }
 
@@ -44,7 +44,7 @@ export function ChatClient() {
         {messages.length === 0 && (
           <div className="py-16 space-y-6 text-center">
             <p className="text-[13px] font-mono" style={{ color: 'var(--fg-dim)' }}>
-              Ask anything about the stablecoin industry.
+              关于稳定币行业，随便问。
             </p>
             <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
               {examples.map(q => (
@@ -76,13 +76,13 @@ export function ChatClient() {
         <div ref={bottomRef} />
       </div>
       <form onSubmit={send} className="flex gap-2 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-        <input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask a question..."
+        <input value={input} onChange={e => setInput(e.target.value)} placeholder="输入你的问题..."
           className="flex-1 rounded-lg border px-4 py-2.5 text-[13px] outline-none font-mono transition-colors"
           style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)' }} />
         <button type="submit" disabled={loading}
           className="rounded-lg px-6 py-2.5 text-[13px] font-medium transition-opacity hover:opacity-80 disabled:opacity-30"
           style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}>
-          Send
+          发送
         </button>
       </form>
     </div>

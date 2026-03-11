@@ -14,7 +14,7 @@ export function CoverageMatrix({ data }: { data: BlindSpotData }) {
         <thead>
           <tr>
             <th className="text-left p-3 text-[10px] font-mono tracking-wider uppercase sticky left-0"
-              style={{ background: 'var(--bg)', color: 'var(--fg-faint)' }}>Entity</th>
+              style={{ background: 'var(--bg)', color: 'var(--fg-faint)' }}>实体</th>
             {dims.map(d => (
               <th key={d} className="p-3 text-[10px] font-mono tracking-wider uppercase text-center"
                 style={{ color: 'var(--fg-faint)' }}>

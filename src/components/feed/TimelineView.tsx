@@ -7,7 +7,8 @@ export function TimelineView({ facts }: { facts: AtomicFact[] }) {
   return (
     <div className="relative pl-6 border-l" style={{ borderColor: 'var(--border)' }}>
       {sorted.map(fact => {
-        const date = new Date(fact.fact_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        const date = new Date(fact.fact_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+        const displayContent = fact.content_zh || fact.content_en
         return (
           <div key={fact.id} className="relative mb-6 pb-2">
             <div className="absolute -left-[25px] top-1.5 w-2 h-2 rounded-full"
@@ -16,7 +17,7 @@ export function TimelineView({ facts }: { facts: AtomicFact[] }) {
               <time className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{date}</time>
               <ConfidenceBadge confidence={fact.confidence} />
             </div>
-            <p className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{fact.content_en}</p>
+            <p className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{displayContent}</p>
             <div className="flex gap-1.5 mt-2">
               {fact.tags.slice(0, 3).map(t => (
                 <span key={t} className="text-[10px] font-mono" style={{ color: 'var(--fg-faint)' }}>{t}</span>

@@ -29,9 +29,9 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
   const [view, setView] = useState<View>('aggregate')
   const router = useRouter()
   const views: { key: View; label: string; desc: string }[] = [
-    { key: 'aggregate', label: 'Aggregate', desc: 'Facts grouped by topic' },
-    { key: 'timeline', label: 'Timeline', desc: 'Chronological view' },
-    { key: 'matrix', label: 'Matrix', desc: 'Sector × type heatmap' },
+    { key: 'aggregate', label: '聚合视图', desc: '按主题分组' },
+    { key: 'timeline', label: '时间线', desc: '按时间排列' },
+    { key: 'matrix', label: '矩阵视图', desc: '板块 × 类型 热力图' },
   ]
 
   function navigate(week: string) {
@@ -44,20 +44,20 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
       <div className="flex items-center justify-between mb-6">
         <button
           onClick={() => navigate(shiftWeek(currentWeek, -1))}
-          className="px-3 py-1.5 rounded-md text-[12px] font-mono tracking-wider uppercase transition-colors"
+          className="px-3 py-1.5 rounded-md text-[12px] font-mono tracking-wider transition-colors"
           style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}
-          aria-label="Previous week"
+          aria-label="上一周"
         >
           &lt; {shiftWeek(currentWeek, -1).replace('-', ' ')}
         </button>
-        <span className="text-[13px] font-mono tracking-wider uppercase" style={{ color: 'var(--fg-title)' }}>
+        <span className="text-[13px] font-mono tracking-wider" style={{ color: 'var(--fg-title)' }}>
           {currentWeek.replace('-', ' ')}
         </span>
         <button
           onClick={() => navigate(shiftWeek(currentWeek, 1))}
-          className="px-3 py-1.5 rounded-md text-[12px] font-mono tracking-wider uppercase transition-colors"
+          className="px-3 py-1.5 rounded-md text-[12px] font-mono tracking-wider transition-colors"
           style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}
-          aria-label="Next week"
+          aria-label="下一周"
         >
           {shiftWeek(currentWeek, 1).replace('-', ' ')} &gt;
         </button>
@@ -65,14 +65,14 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
 
       {/* Fact count */}
       <p className="text-[12px] font-mono mb-4" style={{ color: 'var(--fg-faint)' }}>
-        {facts.length} fact{facts.length === 1 ? '' : 's'} this week
+        本周共 {facts.length} 条已验证事实
       </p>
 
       {/* View switcher */}
       <div className="flex gap-0 mb-8 border-b" style={{ borderColor: 'var(--border)' }}>
         {views.map(v => (
           <button key={v.key} onClick={() => setView(v.key)}
-            className="px-4 py-2 text-[12px] font-mono tracking-wider uppercase transition-colors -mb-px border-b-2"
+            className="px-4 py-2 text-[12px] font-medium tracking-wider transition-colors -mb-px border-b-2"
             style={{
               borderColor: view === v.key ? 'var(--accent)' : 'transparent',
               color: view === v.key ? 'var(--accent)' : 'var(--fg-faint)',

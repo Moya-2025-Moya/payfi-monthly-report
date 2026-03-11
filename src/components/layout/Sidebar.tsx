@@ -43,32 +43,32 @@ function ThemeToggle() {
 
 const NAV_SECTIONS = [
   {
-    label: 'Browse',
+    label: '浏览',
     items: [
-      { href: '/', label: 'Feed' },
-      { href: '/entities', label: 'Entities' },
-      { href: '/timelines', label: 'Timelines' },
-      { href: '/graph', label: 'Graph' },
-      { href: '/search', label: 'Search' },
+      { href: '/', label: '信息流' },
+      { href: '/entities', label: '实体' },
+      { href: '/timelines', label: '时间线' },
+      { href: '/graph', label: '关系图谱' },
+      { href: '/search', label: '搜索' },
     ]
   },
   {
-    label: 'Analysis',
+    label: '分析',
     items: [
-      { href: '/regulatory', label: 'Regulatory' },
-      { href: '/twitter', label: 'Twitter' },
-      { href: '/diff', label: 'Diff' },
-      { href: '/density', label: 'Density' },
-      { href: '/blind-spots', label: 'Blind Spots' },
-      { href: '/contradictions', label: 'Contradictions' },
+      { href: '/regulatory', label: '监管追踪' },
+      { href: '/twitter', label: '推特声音' },
+      { href: '/diff', label: '周对比' },
+      { href: '/density', label: '信息密度' },
+      { href: '/blind-spots', label: '盲区检测' },
+      { href: '/contradictions', label: '矛盾检测' },
     ]
   },
   {
-    label: 'System',
+    label: '系统',
     items: [
-      { href: '/snapshots', label: 'Snapshots' },
-      { href: '/chat', label: 'Chat' },
-      { href: '/settings', label: 'Settings' },
+      { href: '/snapshots', label: '周报快照' },
+      { href: '/chat', label: 'AI 对话' },
+      { href: '/settings', label: '设置' },
     ]
   },
 ]

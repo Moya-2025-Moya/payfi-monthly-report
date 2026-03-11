@@ -9,11 +9,11 @@ export default async function SnapshotsPage() {
   const snapshots = (data ?? []) as WeeklySnapshot[]
   return (
     <div>
-      <PageHeader title="Weekly Snapshots" description="Archived weekly knowledge reports" />
+      <PageHeader title="周报快照" description="历史周报知识存档" />
       {snapshots.length === 0 ? (
         <Card className="text-center py-8">
-          <p className="text-lg mb-1">No snapshots yet</p>
-          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>Weekly snapshots archive the state of knowledge each week. Generate one in Settings or wait for the next pipeline run.</p>
+          <p className="text-lg mb-1">暂无快照</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>周报快照会记录每周的知识状态。可在设置页面手动生成，或等待流水线自动运行。</p>
         </Card>
       ) : (
       <div className="space-y-2">
@@ -23,12 +23,12 @@ export default async function SnapshotsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold">{s.week_number}</p>
-                  <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>{new Date(s.generated_at).toLocaleDateString()}</p>
+                  <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>{new Date(s.generated_at).toLocaleDateString('zh-CN')}</p>
                 </div>
                 <div className="flex gap-4 text-xs" style={{ color: 'var(--fg-muted)' }}>
-                  <span>{s.snapshot_data.total_facts} facts</span>
-                  <span>{s.snapshot_data.new_facts} new</span>
-                  <span>{s.snapshot_data.high_confidence} high</span>
+                  <span>{s.snapshot_data.total_facts} 条事实</span>
+                  <span>{s.snapshot_data.new_facts} 条新增</span>
+                  <span>{s.snapshot_data.high_confidence} 高可信</span>
                 </div>
               </div>
             </Card>

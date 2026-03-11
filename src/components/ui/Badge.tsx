@@ -1,9 +1,9 @@
 import type { Confidence, VerificationStatus } from '@/lib/types'
 
 const CONFIDENCE_STYLES: Record<string, { color: string; label: string }> = {
-  high:   { color: 'var(--success)', label: 'High' },
-  medium: { color: 'var(--info)', label: 'Medium' },
-  low:    { color: 'var(--warning)', label: 'Low' },
+  high:   { color: 'var(--success)', label: '高可信' },
+  medium: { color: 'var(--info)', label: '中可信' },
+  low:    { color: 'var(--warning)', label: '低可信' },
 }
 
 export function ConfidenceBadge({ confidence }: { confidence: Confidence | null }) {
@@ -19,10 +19,10 @@ export function ConfidenceBadge({ confidence }: { confidence: Confidence | null 
 }
 
 const STATUS_STYLES: Record<VerificationStatus, { color: string; label: string }> = {
-  verified:             { color: 'var(--success)', label: 'Verified' },
-  partially_verified:   { color: 'var(--warning)', label: 'Partial' },
-  pending_verification: { color: 'var(--fg-dim)', label: 'Pending' },
-  rejected:             { color: 'var(--danger)', label: 'Rejected' },
+  verified:             { color: 'var(--success)', label: '已验证' },
+  partially_verified:   { color: 'var(--warning)', label: '部分验证' },
+  pending_verification: { color: 'var(--fg-dim)', label: '待验证' },
+  rejected:             { color: 'var(--danger)', label: '已拒绝' },
 }
 
 export function StatusBadge({ status }: { status: VerificationStatus }) {

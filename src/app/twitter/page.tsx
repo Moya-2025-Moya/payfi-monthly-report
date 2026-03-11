@@ -18,11 +18,11 @@ export default async function TwitterPage() {
   const facts = (data ?? []) as AtomicFact[]
   return (
     <div>
-      <PageHeader title="Twitter Voices" description={`${facts.length} verified facts from Twitter this week`} />
+      <PageHeader title="推特声音" description={`本周 ${facts.length} 条来自推特的已验证事实`} />
       {facts.length === 0 ? (
         <Card className="text-center py-8">
-          <p className="text-lg mb-1">No verified Twitter facts this week</p>
-          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>Verified tweets are collected and processed each week. Check back after the next pipeline run.</p>
+          <p className="text-lg mb-1">本周暂无推特事实</p>
+          <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>推特数据每周采集并处理，请在下次流水线运行后查看。</p>
         </Card>
       ) : (
         <FactList facts={facts} />

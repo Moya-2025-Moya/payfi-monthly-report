@@ -28,11 +28,11 @@ function Row({ label, status, detail }: { label: string; status: string; detail?
 export function VerificationDetail({ v1, v2, v3, v4, v5 }: Props) {
   return (
     <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-      <p className="text-[10px] font-mono tracking-wider uppercase mb-3" style={{ color: 'var(--fg-faint)' }}>Verification</p>
+      <p className="text-[10px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-faint)' }}>验证详情</p>
       {v1 && <Row label="V1" status={v1.status} detail={v1.evidence_quote ? `"${v1.evidence_quote.slice(0, 120)}..."` : undefined} />}
-      {v2 && <Row label="V2" status={v2.cross_validation} detail={v2.independent_sources ? `${v2.source_count} independent sources` : v2.source_independence_note} />}
+      {v2 && <Row label="V2" status={v2.cross_validation} detail={v2.independent_sources ? `${v2.source_count} 个独立来源` : v2.source_independence_note} />}
       {v3 && <Row label="V3" status={v3.sanity} detail={v3.reason} />}
-      {v4 && <Row label="V4" status={v4.anchor_status} detail={v4.deviation_pct != null ? `${v4.deviation_pct.toFixed(1)}% deviation` : undefined} />}
+      {v4 && <Row label="V4" status={v4.anchor_status} detail={v4.deviation_pct != null ? `偏差 ${v4.deviation_pct.toFixed(1)}%` : undefined} />}
       {v5 && <Row label="V5" status={v5.temporal_status} detail={v5.conflict_detail} />}
     </div>
   )

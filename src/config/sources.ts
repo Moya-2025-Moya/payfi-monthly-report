@@ -12,35 +12,28 @@ export const SOURCES = {
       raises: '/raises', // 融资数据（免费）
     },
   },
-  // [ROADMAP] CoinGecko — 后续集成，用于链上数据交叉验证
-  // coingecko: {
-  //   baseUrl: 'https://api.coingecko.com/api/v3',
-  //   apiKey: process.env.COINGECKO_API_KEY || '',
-  //   endpoints: {
-  //     coinMarkets: '/coins/markets',
-  //     coinDetail: '/coins/{id}',
-  //   },
-  // },
 
   // ── 新闻 (全免费，多源交叉验证) ──
-  freeCryptoNews: {
-    baseUrl: 'https://cryptocurrency.cv/api',
-    // 完全免费，无需 API key
+  // CryptoPanic — 免费聚合器，汇集 300+ 来源
+  cryptoPanic: {
+    baseUrl: 'https://cryptopanic.com/api/free/v1',
+    // 免费 tier: 不需要 API key 也可以用 /posts/ 端点
+    // 有 key 可以获得更多字段: 在 https://cryptopanic.com/developers/api/ 注册
+    apiKey: process.env.CRYPTOPANIC_API_KEY || '',
     endpoints: {
-      news: '/news',           // 最新新闻
-      search: '/search',       // 全文搜索
-      archive: '/archive',     // 历史文章 (66万+)
-      stream: '/stream',       // 实时 SSE 推送
+      posts: '/posts/',  // ?currencies=USDC,USDT&filter=important&kind=news
     },
-    // 过滤参数示例: /news?limit=50&q=stablecoin
   },
   rssFeeds: [
     { name: 'The Block', url: 'https://www.theblock.co/rss.xml' },
     { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
     { name: 'Decrypt', url: 'https://decrypt.co/feed' },
-    { name: 'Bloomberg Crypto', url: 'https://www.bloomberg.com/crypto/feed' },
     { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },
     { name: 'DeFi Llama News', url: 'https://feed.defillama.com/' },
+    // 中文源
+    { name: 'ChainCatcher', url: 'https://www.chaincatcher.com/rss' },
+    { name: 'BlockBeats', url: 'https://www.theblockbeats.info/rss' },
+    { name: 'Odaily', url: 'https://www.odaily.news/rss' },
   ],
 
   // ── SEC (免费) ──
@@ -52,12 +45,6 @@ export const SOURCES = {
 
   // ── 融资 (全免费) ──
   // 策略: DeFiLlama /raises (结构化) + 新闻提取
-  // [ROADMAP] CryptoRank — 后续集成，用于融资数据交叉验证
-  // cryptorank: {
-  //   baseUrl: 'https://api.cryptorank.io/v1',
-  //   apiKey: process.env.CRYPTORANK_API_KEY || '',
-  //   endpoints: { funding: '/funding-rounds' },
-  // },
 
   // ── Twitter (twitterapi.io) ──
   twitter: {
@@ -66,8 +53,7 @@ export const SOURCES = {
     // Starter plan: $29/月, 6个账号
     // 认证: X-API-Key header
     endpoints: {
-      addMonitor: '/oapi/x_user_stream/add_user_to_monitor_tweet',   // POST 添加监控账号
-      // WebSocket 接收实时推文
+      addMonitor: '/oapi/x_user_stream/add_user_to_monitor_tweet',
     },
   },
 

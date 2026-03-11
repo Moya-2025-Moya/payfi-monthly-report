@@ -25,7 +25,7 @@ export default async function DiffPage() {
 
   return (
     <div>
-      <PageHeader title="Weekly Diff" description={`Compare fact changes between any two weeks`} />
+      <PageHeader title="周对比" description="对比任意两周之间的事实变化" />
       <DiffClient initialDiff={diff} defaultWeekA={weekA} defaultWeekB={weekB} />
     </div>
   )

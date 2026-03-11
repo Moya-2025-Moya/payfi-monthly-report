@@ -6,7 +6,7 @@ interface FactSearchProps {
   placeholder?: string
 }
 
-export function FactSearch({ onSearch, placeholder = 'Search facts...' }: FactSearchProps) {
+export function FactSearch({ onSearch, placeholder = '搜索事实...' }: FactSearchProps) {
   const [query, setQuery] = useState('')
 
   function handleSubmit(e: React.FormEvent) {
@@ -27,7 +27,7 @@ export function FactSearch({ onSearch, placeholder = 'Search facts...' }: FactSe
       <button type="submit"
         className="rounded-lg px-5 py-2 text-[13px] font-medium transition-opacity hover:opacity-80"
         style={{ background: 'var(--fg-title)', color: 'var(--bg)' }}>
-        Search
+        搜索
       </button>
     </form>
   )

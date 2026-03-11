@@ -4,13 +4,14 @@ import { EntityCard } from '@/components/entity/EntityCard'
 import type { Entity, EntityCategory } from '@/lib/types'
 
 const CATEGORY_FILTERS: { key: EntityCategory | 'all'; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'stablecoin_issuer', label: 'Stablecoin Issuer' },
-  { key: 'b2b_infra', label: 'B2B Infra' },
-  { key: 'tradfi', label: 'TradFi' },
-  { key: 'public_company', label: 'Public Company' },
+  { key: 'all', label: '全部' },
+  { key: 'stablecoin_issuer', label: '稳定币发行方' },
+  { key: 'b2c_product', label: 'B2C 产品' },
+  { key: 'b2b_infra', label: 'B2B 基础设施' },
+  { key: 'tradfi', label: '传统金融' },
+  { key: 'public_company', label: '上市公司' },
   { key: 'defi', label: 'DeFi' },
-  { key: 'regulator', label: 'Regulator' },
+  { key: 'regulator', label: '监管机构' },
 ]
 
 export function EntitiesClient({ entities }: { entities: Entity[] }) {
@@ -35,7 +36,7 @@ export function EntitiesClient({ entities }: { entities: Entity[] }) {
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name or alias..."
+          placeholder="按名称或别名搜索..."
           className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
           style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)' }}
         />
@@ -55,12 +56,12 @@ export function EntitiesClient({ entities }: { entities: Entity[] }) {
           ))}
         </div>
         <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>
-          {filtered.length} {filtered.length === 1 ? 'entity' : 'entities'} shown
-          {filtered.length !== entities.length && ` (of ${entities.length} total)`}
+          显示 {filtered.length} 个实体
+          {filtered.length !== entities.length && `（共 ${entities.length} 个）`}
         </p>
       </div>
       {filtered.length === 0 ? (
-        <p className="text-sm py-8 text-center" style={{ color: 'var(--fg-muted)' }}>No entities match your filters.</p>
+        <p className="text-sm py-8 text-center" style={{ color: 'var(--fg-muted)' }}>没有匹配的实体。</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map(e => <EntityCard key={e.id} entity={e} />)}

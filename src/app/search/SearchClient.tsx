@@ -47,7 +47,7 @@ export function SearchClient({ initialQuery, initialResults }: { initialQuery: s
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search facts by keyword..."
+          placeholder="输入关键词搜索事实..."
           className="flex-1 rounded-lg border px-4 py-2.5 text-[13px] outline-none font-mono transition-colors"
           style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--fg)' }}
         />
@@ -56,7 +56,7 @@ export function SearchClient({ initialQuery, initialResults }: { initialQuery: s
           className="rounded-lg px-6 py-2.5 text-[13px] font-medium transition-opacity hover:opacity-80"
           style={{ background: 'var(--accent)', color: 'var(--accent-fg)' }}
         >
-          Search
+          搜索
         </button>
       </form>
 
@@ -64,25 +64,25 @@ export function SearchClient({ initialQuery, initialResults }: { initialQuery: s
         results.length > 0 ? (
           <>
             <div className="flex items-center gap-3">
-              <p className="text-[12px] font-mono tracking-wider uppercase" style={{ color: 'var(--fg-faint)' }}>
-                {results.length} result{results.length === 1 ? '' : 's'} found
+              <p className="text-[12px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>
+                找到 {results.length} 条结果
               </p>
-              {loading && <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>updating...</span>}
+              {loading && <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>更新中...</span>}
             </div>
             <FactList facts={results} />
           </>
         ) : loading ? (
-          <p className="text-[13px] font-mono" style={{ color: 'var(--fg-faint)' }}>Searching...</p>
+          <p className="text-[13px] font-mono" style={{ color: 'var(--fg-faint)' }}>搜索中...</p>
         ) : (
           <div className="py-16 text-center space-y-2">
-            <p className="text-[13px] font-medium" style={{ color: 'var(--fg-secondary)' }}>No results found</p>
+            <p className="text-[13px] font-medium" style={{ color: 'var(--fg-secondary)' }}>未找到结果</p>
             <p className="text-[12px] font-mono" style={{ color: 'var(--fg-faint)' }}>
-              Try different keywords, or check for typos.
+              试试其他关键词，或检查拼写。
             </p>
           </div>
         )
       ) : (
-        <p className="text-[13px] font-mono" style={{ color: 'var(--fg-faint)' }}>Enter a keyword to search across all verified atomic facts.</p>
+        <p className="text-[13px] font-mono" style={{ color: 'var(--fg-faint)' }}>输入关键词搜索所有已验证的原子事实。</p>
       )}
     </div>
   )

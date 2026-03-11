@@ -18,7 +18,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   }
   return (
     <div>
-      <PageHeader title="Search Facts" description="Search across all verified atomic facts" />
+      <PageHeader title="搜索" description="搜索所有已验证的原子事实" />
       <SearchClient initialQuery={q ?? ''} initialResults={facts} />
     </div>
   )

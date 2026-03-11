@@ -15,7 +15,7 @@ export default async function DensityPage() {
   const anomalies = await fetchAnomalies()
   return (
     <div>
-      <PageHeader title="Information Density" description="Anomalous spikes in fact volume by topic, entity, or sector" />
+      <PageHeader title="信息密度" description="按主题、实体或板块检测事实数量异常波动" />
       <DensityChart anomalies={anomalies} />
     </div>
   )

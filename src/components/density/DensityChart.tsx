@@ -1,6 +1,10 @@
 'use client'
 import type { DensityAnomaly } from '@/lib/types'
 
+const TREND_ZH: Record<string, string> = {
+  spike: '急增', sustained_high: '持续高位', declining: '下降', normal: '正常',
+}
+
 export function DensityChart({ anomalies }: { anomalies: DensityAnomaly[] }) {
   const sorted = [...anomalies].sort((a, b) => b.multiple - a.multiple)
   const max = Math.max(...anomalies.map(x => x.multiple), 1)
@@ -16,14 +20,14 @@ export function DensityChart({ anomalies }: { anomalies: DensityAnomaly[] }) {
               <div className="flex items-center gap-3">
                 <span className="text-[13px] font-medium" style={{ color: 'var(--fg-body)' }}>{a.topic}</span>
                 <span className="text-[10px] font-mono" style={{ color: 'var(--fg-faint)' }}>{a.topic_type}</span>
-                {isSpike && <span className="text-[10px] font-mono" style={{ color: 'var(--danger)' }}>spike</span>}
+                {isSpike && <span className="text-[10px] font-mono" style={{ color: 'var(--danger)' }}>{TREND_ZH[a.trend]}</span>}
               </div>
               <span className="text-[11px] font-mono" style={{ color: 'var(--fg-dim)' }}>{a.multiple.toFixed(1)}x</span>
             </div>
             <div className="flex gap-4 text-[10px] font-mono mb-3" style={{ color: 'var(--fg-faint)' }}>
-              <span>now {a.current_count}</span>
-              <span>prev {a.previous_count}</span>
-              <span>avg {a.avg_count.toFixed(0)}</span>
+              <span>当前 {a.current_count}</span>
+              <span>上期 {a.previous_count}</span>
+              <span>均值 {a.avg_count.toFixed(0)}</span>
             </div>
             <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--surface-alt)' }}>
               <div className="h-full rounded-full transition-all" style={{ width: `${barWidth}%`, background: isSpike ? 'var(--danger)' : 'var(--fg-faint)' }} />
@@ -32,7 +36,7 @@ export function DensityChart({ anomalies }: { anomalies: DensityAnomaly[] }) {
         )
       })}
       {anomalies.length === 0 && (
-        <p className="text-[13px] font-mono text-center py-16" style={{ color: 'var(--fg-faint)' }}>No anomalies</p>
+        <p className="text-[13px] font-mono text-center py-16" style={{ color: 'var(--fg-faint)' }}>暂无异常</p>
       )}
     </div>
   )

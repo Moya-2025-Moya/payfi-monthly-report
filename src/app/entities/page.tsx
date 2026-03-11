@@ -8,7 +8,7 @@ export default async function EntitiesPage() {
   const entities = (data ?? []) as Entity[]
   return (
     <div>
-      <PageHeader title="Entities" description={`${entities.length} tracked entities`} />
+      <PageHeader title="实体" description={`共 ${entities.length} 个追踪实体`} />
       <EntitiesClient entities={entities} />
     </div>
   )

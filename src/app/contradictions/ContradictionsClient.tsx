@@ -7,10 +7,10 @@ import type { FactContradiction, AtomicFact } from '@/lib/types'
 type StatusFilter = 'all' | 'unresolved' | 'resolved' | 'dismissed'
 
 const TABS: { key: StatusFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'unresolved', label: 'Unresolved' },
-  { key: 'resolved', label: 'Resolved' },
-  { key: 'dismissed', label: 'Dismissed' },
+  { key: 'all', label: '全部' },
+  { key: 'unresolved', label: '未解决' },
+  { key: 'resolved', label: '已解决' },
+  { key: 'dismissed', label: '已忽略' },
 ]
 
 interface Props {
@@ -33,8 +33,8 @@ export function ContradictionsClient({ contradictions, factsMap }: Props) {
   if (contradictions.length === 0) {
     return (
       <Card className="text-center py-8">
-        <p className="text-lg mb-1" style={{ color: 'var(--fg-title)' }}>No contradictions detected</p>
-        <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>The system automatically detects conflicting facts. None found yet.</p>
+        <p className="text-lg mb-1" style={{ color: 'var(--fg-title)' }}>暂未检测到矛盾</p>
+        <p className="text-sm" style={{ color: 'var(--fg-muted)' }}>系统会自动检测相互矛盾的事实，目前暂无。</p>
       </Card>
     )
   }
@@ -63,7 +63,7 @@ export function ContradictionsClient({ contradictions, factsMap }: Props) {
       </div>
       {filtered.length === 0 ? (
         <p className="text-sm py-8 text-center" style={{ color: 'var(--fg-muted)' }}>
-          No {filter === 'all' ? '' : filter} contradictions found.
+          暂无{filter === 'all' ? '' : TABS.find(t => t.key === filter)?.label ?? ''}矛盾。
         </p>
       ) : (
         <div className="space-y-3">

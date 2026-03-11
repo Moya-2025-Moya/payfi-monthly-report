@@ -19,7 +19,7 @@ export default async function ContradictionsPage() {
 
   return (
     <div>
-      <PageHeader title="Fact Contradictions" description={`${unresolved.length} unresolved, ${resolved.length} resolved/dismissed`} />
+      <PageHeader title="矛盾检测" description={`${unresolved.length} 条未解决，${resolved.length} 条已解决/忽略`} />
       <ContradictionsClient contradictions={contradictions} factsMap={factsMap} />
     </div>
   )
