@@ -14,7 +14,7 @@ interface Props {
 const SIG_COLORS = {
   high: { dot: '#ef4444', bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.2)' },
   medium: { dot: '#f59e0b', bg: 'rgba(245,158,11,0.05)', border: 'rgba(245,158,11,0.15)' },
-  low: { dot: 'var(--fg-faint)', bg: 'var(--surface-alt)', border: 'var(--border)' },
+  low: { dot: 'var(--fg-muted)', bg: 'var(--surface-alt)', border: 'var(--border)' },
 }
 
 const EXTERNAL_COLORS = {
@@ -24,7 +24,7 @@ const EXTERNAL_COLORS = {
 }
 
 const PREDICTION_COLORS = {
-  dot: 'var(--fg-faint)',
+  dot: 'var(--fg-muted)',
   bg: 'transparent',
   border: 'var(--border)',
 }
@@ -88,7 +88,7 @@ function EventCard({ data, onClick }: { data: NarrativeNodeData; onClick: () => 
             </span>
           ))}
           {data.entityNames.length > 4 && (
-            <span className="text-[11px] px-1.5 py-0.5" style={{ color: 'var(--fg-faint)' }}>
+            <span className="text-[11px] px-1.5 py-0.5" style={{ color: 'var(--fg-muted)' }}>
               +{data.entityNames.length - 4}
             </span>
           )}
@@ -123,7 +123,7 @@ function EventCard({ data, onClick }: { data: NarrativeNodeData; onClick: () => 
                   查看来源
                 </a>
               )}
-              <span className="text-[11px]" style={{ color: 'var(--fg-faint)' }}>
+              <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
                 {data.factIds.length} 条事实 · 点击追问
               </span>
             </div>
@@ -169,8 +169,8 @@ export function NarrativeTimeline({ nodes, branches, status, onNodeClick }: Prop
                 <div className="absolute -left-6 top-3 w-[22px] flex items-center justify-center">
                   <div className="w-2.5 h-2.5 rounded-full border-2"
                     style={{
-                      background: data.isPrediction ? 'transparent' : data.isExternal ? EXTERNAL_COLORS.dot : data.isMerged ? 'var(--accent)' : SIG_COLORS[data.significance]?.dot ?? 'var(--fg-faint)',
-                      borderColor: data.isPrediction ? 'var(--fg-faint)' : 'var(--surface)',
+                      background: data.isPrediction ? 'transparent' : data.isExternal ? EXTERNAL_COLORS.dot : data.isMerged ? 'var(--accent)' : SIG_COLORS[data.significance]?.dot ?? 'var(--fg-muted)',
+                      borderColor: data.isPrediction ? 'var(--fg-muted)' : 'var(--surface)',
                       ...(data.isPrediction ? { borderStyle: 'dashed' } : {}),
                     }} />
                 </div>
@@ -242,8 +242,8 @@ export function NarrativeTimeline({ nodes, branches, status, onNodeClick }: Prop
         <div className="space-y-4">
           {allEvents.map(({ node, column }) => {
             const data = node.data
-            const dotColor = data.isPrediction ? 'transparent' : data.isExternal ? EXTERNAL_COLORS.dot : data.isMerged ? 'var(--accent)' : SIG_COLORS[data.significance]?.dot ?? 'var(--fg-faint)'
-            const dotBorder = data.isPrediction ? 'var(--fg-faint)' : 'var(--surface)'
+            const dotColor = data.isPrediction ? 'transparent' : data.isExternal ? EXTERNAL_COLORS.dot : data.isMerged ? 'var(--accent)' : SIG_COLORS[data.significance]?.dot ?? 'var(--fg-muted)'
+            const dotBorder = data.isPrediction ? 'var(--fg-muted)' : 'var(--surface)'
             const dotStyle = data.isPrediction ? 'dashed' : 'solid'
 
             if (column === 'center') {

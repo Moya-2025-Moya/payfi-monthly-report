@@ -14,7 +14,7 @@ const TYPE_LABELS: Record<string, string> = { numerical: '数值', textual: '文
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   unresolved: { label: '未解决', color: 'var(--danger)' },
   resolved: { label: '已解决', color: 'var(--success)' },
-  dismissed: { label: '已忽略', color: 'var(--fg-dim)' },
+  dismissed: { label: '已忽略', color: 'var(--fg-muted)' },
 }
 
 /* Highlight contradiction keywords in fact text by bolding & coloring them */
@@ -73,7 +73,7 @@ export function ContradictionCard({ contradiction, factA, factB, onStatusChange 
             {sc.label}
           </span>
           <span className="text-[11px] font-mono px-1.5 py-0.5 rounded"
-            style={{ background: 'var(--surface-alt)', color: 'var(--fg-dim)' }}>
+            style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
             {TYPE_LABELS[contradiction.contradiction_type] ?? contradiction.contradiction_type}
           </span>
         </div>
@@ -99,7 +99,7 @@ export function ContradictionCard({ contradiction, factA, factB, onStatusChange 
       {/* Side-by-side facts with conflict highlighting */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
-          <p className="text-[11px] font-mono tracking-wider uppercase mb-2" style={{ color: 'var(--fg-faint)' }}>事实 A</p>
+          <p className="text-[11px] font-mono tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>事实 A</p>
           <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
             {highlightConflict(contentA, contradiction.difference_description)}
           </p>
@@ -111,7 +111,7 @@ export function ContradictionCard({ contradiction, factA, factB, onStatusChange 
           )}
         </div>
         <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
-          <p className="text-[11px] font-mono tracking-wider uppercase mb-2" style={{ color: 'var(--fg-faint)' }}>事实 B</p>
+          <p className="text-[11px] font-mono tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>事实 B</p>
           <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
             {highlightConflict(contentB, contradiction.difference_description)}
           </p>
@@ -125,7 +125,7 @@ export function ContradictionCard({ contradiction, factA, factB, onStatusChange 
       </div>
 
       {contradiction.resolved_note && (
-        <p className="text-[11px] font-mono mt-4 pt-3 border-t" style={{ borderColor: 'var(--border)', color: 'var(--fg-dim)' }}>
+        <p className="text-[11px] font-mono mt-4 pt-3 border-t" style={{ borderColor: 'var(--border)', color: 'var(--fg-muted)' }}>
           {contradiction.resolved_note}
         </p>
       )}

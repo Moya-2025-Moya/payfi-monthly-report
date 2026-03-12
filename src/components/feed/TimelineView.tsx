@@ -41,10 +41,10 @@ function DateGroup({ dateKey, facts }: { dateKey: string; facts: AtomicFact[] })
     <section>
       <div className="flex items-center gap-3 mb-3">
         <div className="w-2 h-2 rounded-full" style={{ background: 'var(--info)' }} />
-        <h3 className="text-[13px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>
+        <h3 className="text-[13px] font-mono tracking-wider" style={{ color: 'var(--fg-muted)' }}>
           {label}
         </h3>
-        <span className="text-[11px] font-mono" style={{ color: 'var(--fg-dim)' }}>
+        <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
           {facts.length} 条
         </span>
       </div>

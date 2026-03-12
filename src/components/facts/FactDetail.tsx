@@ -42,7 +42,7 @@ export function FactDetail({ fact }: { fact: AtomicFact }) {
 
       {showSources && sourceUrls.length > 0 && (
         <div className="p-3 rounded-md space-y-2" style={{ background: 'var(--surface-alt)' }}>
-          <p className="text-[11px] font-mono mb-1.5" style={{ color: 'var(--fg-faint)' }}>信息源</p>
+          <p className="text-[11px] font-mono mb-1.5" style={{ color: 'var(--fg-muted)' }}>信息源</p>
           {sourceUrls.map((url, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="text-[11px] font-mono truncate flex-1" style={{ color: 'var(--fg-muted)' }}>
@@ -68,32 +68,32 @@ export function FactDetail({ fact }: { fact: AtomicFact }) {
 
       <div>
         <p className="text-[15px] leading-relaxed" style={{ color: 'var(--fg)' }}>{displayContent}</p>
-        {secondaryContent && <p className="text-[13px] mt-2 italic" style={{ color: 'var(--fg-dim)' }}>{secondaryContent}</p>}
+        {secondaryContent && <p className="text-[13px] mt-2 italic" style={{ color: 'var(--fg-muted)' }}>{secondaryContent}</p>}
       </div>
       {fact.fact_type === 'metric' && fact.metric_value != null && (
         <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-faint)' }}>指标详情</p>
+          <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-muted)' }}>指标详情</p>
           <div className="grid grid-cols-2 gap-3 text-[13px] font-mono">
-            <div><span style={{ color: 'var(--fg-faint)' }}>名称 </span><span style={{ color: 'var(--fg-body)' }}>{fact.metric_name}</span></div>
-            <div><span style={{ color: 'var(--fg-faint)' }}>数值 </span><span style={{ color: 'var(--fg-title)' }}>{fact.metric_value.toLocaleString()} {fact.metric_unit}</span></div>
-            {fact.metric_period && <div><span style={{ color: 'var(--fg-faint)' }}>周期 </span><span style={{ color: 'var(--fg-body)' }}>{fact.metric_period}</span></div>}
-            {fact.metric_change && <div><span style={{ color: 'var(--fg-faint)' }}>变化 </span><span style={{ color: 'var(--accent)' }}>{fact.metric_change}</span></div>}
+            <div><span style={{ color: 'var(--fg-muted)' }}>名称 </span><span style={{ color: 'var(--fg-body)' }}>{fact.metric_name}</span></div>
+            <div><span style={{ color: 'var(--fg-muted)' }}>数值 </span><span style={{ color: 'var(--fg-title)' }}>{fact.metric_value.toLocaleString()} {fact.metric_unit}</span></div>
+            {fact.metric_period && <div><span style={{ color: 'var(--fg-muted)' }}>周期 </span><span style={{ color: 'var(--fg-body)' }}>{fact.metric_period}</span></div>}
+            {fact.metric_change && <div><span style={{ color: 'var(--fg-muted)' }}>变化 </span><span style={{ color: 'var(--accent)' }}>{fact.metric_change}</span></div>}
           </div>
         </div>
       )}
       <div className="flex gap-1.5 flex-wrap">
         {fact.tags.map(tag => (
           <span key={tag} className="px-2 py-0.5 rounded-lg text-[11px] font-mono"
-            style={{ color: 'var(--fg-dim)', border: '1px solid var(--border)' }}>
+            style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
             {tag}
           </span>
         ))}
       </div>
-      <div className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
+      <div className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
         {fact.source_type} / {fact.source_credibility}
       </div>
       <VerificationDetail v1={fact.v1_result} v2={fact.v2_result} v3={fact.v3_result} v4={fact.v4_result} v5={fact.v5_result} />
-      <div className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
+      <div className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
         {fact.week_number} · {new Date(fact.fact_date).toLocaleDateString('zh-CN')}
       </div>
     </div>

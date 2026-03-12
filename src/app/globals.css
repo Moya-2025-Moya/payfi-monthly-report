@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 /* ─── Light Mode (default) ─── */
+/* Text color hierarchy: --fg (primary) > --fg-secondary (secondary) > --fg-muted (tertiary/faint) */
 :root {
   color-scheme: light;
   --bg: #ffffff;
@@ -8,9 +9,7 @@
   --fg-title: #0a0a0a;
   --fg-body: #404040;
   --fg-secondary: #666666;
-  --fg-muted: #888888;
-  --fg-dim: #aaaaaa;
-  --fg-faint: #cccccc;
+  --fg-muted: #999999;
   --surface: #ffffff;
   --surface-alt: #f7f7f7;
   --surface-hover: #f0f0f0;
@@ -34,9 +33,6 @@
   --danger: #dc2626;
   --danger-soft: rgba(220, 38, 38, 0.1);
   /* layout */
-  --sidebar-w: 220px;
-  --sidebar-bg: #fafafa;
-  --sidebar-border: #ebebeb;
   --topbar-bg: #fafafa;
   --topbar-border: #ebebeb;
   --input-bg: #f5f5f5;
@@ -52,9 +48,7 @@
   --fg-title: #f5f5f5;
   --fg-body: #cccccc;
   --fg-secondary: #a0a0a0;
-  --fg-muted: #8a8a8a;
-  --fg-dim: #707070;
-  --fg-faint: #555555;
+  --fg-muted: #707070;
   --surface: #1a1a1a;
   --surface-alt: #222222;
   --surface-hover: #2a2a2a;
@@ -78,8 +72,6 @@
   --danger: #ef4444;
   --danger-soft: rgba(239, 68, 68, 0.12);
   /* layout */
-  --sidebar-bg: #181818;
-  --sidebar-border: #2a2a2a;
   --topbar-bg: #181818;
   --topbar-border: #2a2a2a;
   --input-bg: #1e1e1e;
@@ -87,9 +79,6 @@
   --selection: rgba(59, 130, 246, 0.25);
 }
 
-@media (max-width: 767px) {
-  :root, .dark { --sidebar-w: 0px; }
-}
 
 @theme inline {
   --color-background: var(--bg);

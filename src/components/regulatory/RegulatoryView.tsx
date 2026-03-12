@@ -40,7 +40,7 @@ function StageBar({ status }: { status: string }) {
                   background: done ? 'var(--info)' : 'transparent',
                   boxShadow: isCurrent ? '0 0 0 3px color-mix(in srgb, var(--info) 20%, transparent)' : 'none',
                 }} />
-              <span className="text-[11px] font-mono" style={{ color: done ? 'var(--info)' : 'var(--fg-faint)' }}>
+              <span className="text-[11px] font-mono" style={{ color: done ? 'var(--info)' : 'var(--fg-muted)' }}>
                 {stage}
               </span>
             </div>
@@ -76,7 +76,7 @@ function TrackerCard({ tracker }: { tracker: RegulatoryTracker }) {
           </div>
         </div>
         {dateStr && (
-          <span className="text-[11px] font-mono shrink-0" style={{ color: 'var(--fg-dim)' }}>{dateStr}</span>
+          <span className="text-[11px] font-mono shrink-0" style={{ color: 'var(--fg-muted)' }}>{dateStr}</span>
         )}
       </div>
       <StageBar status={tracker.status} />
@@ -97,7 +97,7 @@ function TimelineItem({ tracker }: { tracker: RegulatoryTracker }) {
       </div>
       <div className="pb-6 min-w-0 flex-1">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-[11px] font-mono" style={{ color: 'var(--fg-dim)' }}>{dateStr}</span>
+          <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>{dateStr}</span>
           <span className="text-[11px] font-mono px-1.5 py-0.5 rounded"
             style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
             {tracker.region}

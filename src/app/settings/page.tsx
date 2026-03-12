@@ -208,7 +208,7 @@ function PipelineTrigger({
       <div className="flex items-start justify-between gap-4 mb-3">
         <div>
           <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>{label}</p>
-          <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-faint)' }}>{description}</p>
+          <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{description}</p>
         </div>
         <button
           onClick={handleClick}
@@ -237,14 +237,14 @@ function PipelineTrigger({
         >
           {logs.map((log, i) => (
             <div key={i} className="flex gap-2">
-              <span className="shrink-0 opacity-50" style={{ color: 'var(--fg-faint)' }}>{log.time}</span>
+              <span className="shrink-0 opacity-50" style={{ color: 'var(--fg-muted)' }}>{log.time}</span>
               <span style={{ color: logColors[log.type] }}>{log.message}</span>
             </div>
           ))}
           {state === 'loading' && (
             <div className="flex items-center gap-1 mt-1">
               <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--info)' }} />
-              <span style={{ color: 'var(--fg-faint)' }}>处理中...</span>
+              <span style={{ color: 'var(--fg-muted)' }}>处理中...</span>
             </div>
           )}
         </div>
@@ -307,7 +307,7 @@ function DevResetButton({
     <div className="flex items-start justify-between gap-4">
       <div className="flex-1">
         <p className="text-[11px] font-medium" style={{ color: 'var(--fg)' }}>{label}</p>
-        <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-faint)' }}>{description}</p>
+        <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{description}</p>
         {result && (
           <p className="text-[11px] mt-1" style={{ color: state === 'success' ? 'var(--success)' : 'var(--danger)' }}>
             {result}
@@ -332,7 +332,7 @@ function DevResetButton({
             confirming
               ? { borderColor: 'var(--danger)', color: 'var(--danger)', background: 'rgba(239,68,68,0.08)' }
               : state === 'loading'
-              ? { borderColor: 'var(--border)', color: 'var(--fg-faint)', opacity: 0.7 }
+              ? { borderColor: 'var(--border)', color: 'var(--fg-muted)', opacity: 0.7 }
               : { borderColor: 'var(--danger)', color: 'var(--danger)' }
           }
         >
@@ -427,7 +427,7 @@ export default function SettingsPage() {
             className="px-4 py-2 text-[13px] font-medium tracking-wider transition-colors -mb-px border-b-2"
             style={{
               borderColor: tab === t.key ? 'var(--accent)' : 'transparent',
-              color: tab === t.key ? 'var(--accent)' : 'var(--fg-faint)',
+              color: tab === t.key ? 'var(--accent)' : 'var(--fg-muted)',
             }}>
             {t.label}
           </button>

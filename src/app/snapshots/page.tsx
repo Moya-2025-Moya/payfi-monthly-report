@@ -46,7 +46,7 @@ export default async function SnapshotsPage() {
                     <span className="text-[13px] font-semibold font-mono" style={{ color: 'var(--fg-title)' }}>
                       {s.week_number.replace('-W', ' 第')}周
                     </span>
-                    <div className="flex items-center gap-3 text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
+                    <div className="flex items-center gap-3 text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
                       <span>{factCount} 条事实</span>
                       <span>{new Date(s.generated_at).toLocaleDateString('zh-CN')}</span>
                     </div>
@@ -61,13 +61,13 @@ export default async function SnapshotsPage() {
                         </p>
                       ))}
                       {(summary?.split(/\n\n/).filter(l => l.trim()).length ?? 0) > 3 && (
-                        <p className="text-[11px]" style={{ color: 'var(--fg-faint)' }}>
+                        <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
                           ...还有 {(summary?.split(/\n\n/).filter(l => l.trim()).length ?? 0) - 3} 条
                         </p>
                       )}
                     </div>
                   ) : (
-                    <p className="text-[12px]" style={{ color: 'var(--fg-faint)' }}>
+                    <p className="text-[12px]" style={{ color: 'var(--fg-muted)' }}>
                       无摘要内容
                     </p>
                   )}

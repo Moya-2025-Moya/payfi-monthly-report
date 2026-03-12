@@ -12,7 +12,7 @@ function StatBox({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center p-3 rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
       <span className="text-[15px] font-semibold font-mono" style={{ color: 'var(--fg-title)' }}>{value}</span>
-      <span className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--fg-faint)' }}>{label}</span>
+      <span className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--fg-muted)' }}>{label}</span>
     </div>
   )
 }
@@ -71,7 +71,7 @@ export function EntityProfile({ entity, facts }: { entity: Entity; facts: Atomic
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <h1 className="text-[24px] font-semibold" style={{ color: 'var(--fg-title)' }}>{entity.name}</h1>
-            <p className="text-[13px] font-mono mt-1" style={{ color: 'var(--fg-faint)' }}>
+            <p className="text-[13px] font-mono mt-1" style={{ color: 'var(--fg-muted)' }}>
               {CATEGORY_LABELS[entity.category] ?? entity.category}
               {entity.aliases.length > 0 && ` · ${entity.aliases.join(', ')}`}
             </p>
@@ -102,14 +102,14 @@ export function EntityProfile({ entity, facts }: { entity: Entity; facts: Atomic
       {/* Key metrics with sparklines */}
       {metricGroups.size > 0 && (
         <div>
-          <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-faint)' }}>
+          <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-muted)' }}>
             关键指标
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {[...metricGroups.entries()].slice(0, 8).map(([name, group], idx) => (
               <div key={name} className="rounded-lg border p-3 flex items-center justify-between gap-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-mono mb-1 truncate" style={{ color: 'var(--fg-dim)' }}>{name}</p>
+                  <p className="text-[11px] font-mono mb-1 truncate" style={{ color: 'var(--fg-muted)' }}>{name}</p>
                   <p className="text-[15px] font-semibold font-mono" style={{ color: 'var(--fg-title)' }}>
                     {group.latest.metric_value?.toLocaleString()} {group.unit}
                   </p>
@@ -126,7 +126,7 @@ export function EntityProfile({ entity, facts }: { entity: Entity; facts: Atomic
 
       {/* Related facts */}
       <div>
-        <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-faint)' }}>
+        <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-muted)' }}>
           相关事实 ({facts.length})
         </p>
         <FactList facts={facts} />

@@ -71,12 +71,12 @@ export function NotesClient({ initialNotes, factsMap }: Props) {
                 <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
                   {factContent}
                 </p>
-                <div className="mt-1.5 flex items-center gap-2 text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
+                <div className="mt-1.5 flex items-center gap-2 text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
                   {factSource && <span>{factSource}</span>}
                   {factDate && <span>{factDate}</span>}
                   {fact.source_url && (
                     <a href={fact.source_url} target="_blank" rel="noopener noreferrer"
-                      className="underline" style={{ color: 'var(--fg-dim)' }}
+                      className="underline" style={{ color: 'var(--fg-muted)' }}
                       onClick={e => e.stopPropagation()}>
                       原文
                     </a>
@@ -91,7 +91,7 @@ export function NotesClient({ initialNotes, factsMap }: Props) {
                 <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-title)' }}>
                   {note.content}
                 </p>
-                <time className="block mt-1 text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
+                <time className="block mt-1 text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
                   {new Date(note.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </time>
               </div>

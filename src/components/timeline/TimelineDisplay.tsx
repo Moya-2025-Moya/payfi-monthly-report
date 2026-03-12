@@ -28,9 +28,9 @@ export function TimelineDisplay({ timeline, nodes }: { timeline: Timeline; nodes
     <div className="space-y-8">
       <div>
         <h2 className="text-lg font-semibold" style={{ color: 'var(--fg-title)' }}>{timeline.name}</h2>
-        {timeline.description && <p className="text-[13px] mt-1" style={{ color: 'var(--fg-dim)' }}>{timeline.description}</p>}
+        {timeline.description && <p className="text-[13px] mt-1" style={{ color: 'var(--fg-muted)' }}>{timeline.description}</p>}
         <span className="inline-block mt-2 text-[11px] font-mono tracking-wider uppercase px-2 py-0.5 rounded-lg"
-          style={{ color: timeline.status === 'active' ? 'var(--success)' : 'var(--fg-faint)', border: `1px solid ${timeline.status === 'active' ? 'var(--success)' : 'var(--border)'}` }}>
+          style={{ color: timeline.status === 'active' ? 'var(--success)' : 'var(--fg-muted)', border: `1px solid ${timeline.status === 'active' ? 'var(--success)' : 'var(--border)'}` }}>
           {timeline.status}
         </span>
       </div>
@@ -42,7 +42,7 @@ export function TimelineDisplay({ timeline, nodes }: { timeline: Timeline; nodes
             <div key={fact.id} className="relative mb-8">
               <div className="absolute -left-[25px] top-1.5 w-2 h-2 rounded-full" style={{ background: dotColor(attribution_status) }} />
               <div className="flex items-center gap-3 mb-1">
-                <time className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{date}</time>
+                <time className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>{date}</time>
                 <SourceCountBadge count={getSourceCount(fact)} />
                 {attribution_status === 'uncertain' && (
                   <span className="text-[11px] font-mono" style={{ color: 'var(--accent)' }}>待确认</span>

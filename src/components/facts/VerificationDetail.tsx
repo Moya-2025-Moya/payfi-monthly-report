@@ -10,7 +10,7 @@ interface Props {
 
 function statusColor(status: string): string {
   if (['matched', 'anchored', 'consistent', 'normal'].includes(status)) return 'var(--success)'
-  if (['source_unavailable', 'not_applicable', 'unchecked', 'single_source', 'no_anchor_data'].includes(status)) return 'var(--fg-faint)'
+  if (['source_unavailable', 'not_applicable', 'unchecked', 'single_source', 'no_anchor_data'].includes(status)) return 'var(--fg-muted)'
   if (['partial', 'deviation', 'partially_consistent', 'anomaly'].includes(status)) return 'var(--accent)'
   return 'var(--danger)'
 }
@@ -18,9 +18,9 @@ function statusColor(status: string): string {
 function Row({ label, status, detail }: { label: string; status: string; detail?: string | null }) {
   return (
     <div className="flex items-start gap-4 py-2 border-b last:border-0" style={{ borderColor: 'var(--border)' }}>
-      <span className="text-[11px] font-mono w-6 shrink-0" style={{ color: 'var(--fg-faint)' }}>{label}</span>
+      <span className="text-[11px] font-mono w-6 shrink-0" style={{ color: 'var(--fg-muted)' }}>{label}</span>
       <span className="text-[11px] font-mono w-36 shrink-0" style={{ color: statusColor(status) }}>{status}</span>
-      {detail && <span className="text-[11px] flex-1" style={{ color: 'var(--fg-faint)' }}>{detail}</span>}
+      {detail && <span className="text-[11px] flex-1" style={{ color: 'var(--fg-muted)' }}>{detail}</span>}
     </div>
   )
 }
@@ -28,7 +28,7 @@ function Row({ label, status, detail }: { label: string; status: string; detail?
 export function VerificationDetail({ v1, v2, v3, v4, v5 }: Props) {
   return (
     <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-      <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-faint)' }}>验证详情</p>
+      <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-muted)' }}>验证详情</p>
       {v1 && <Row label="V1" status={v1.status} detail={v1.evidence_quote ? `"${v1.evidence_quote.slice(0, 120)}..."` : undefined} />}
       {v2 && <Row label="V2" status={v2.cross_validation} detail={v2.independent_sources ? `${v2.source_count} 个独立来源` : v2.source_independence_note} />}
       {v3 && <Row label="V3" status={v3.sanity} detail={v3.reason} />}

@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { TopBar } from '@/components/layout/TopBar'
-import { Sidebar } from '@/components/layout/Sidebar'
 import { MobileNav } from '@/components/layout/MobileNav'
 import { ThemeProvider } from '@/components/theme/ThemeProvider'
 import './globals.css'
@@ -18,7 +17,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Prevent dark flash — default to light */}
         <script dangerouslySetInnerHTML={{ __html: `
           try {
             const t = localStorage.getItem('stablepulse-theme');
@@ -29,12 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
           <TopBar />
-          <div className="flex min-h-screen pt-[var(--topbar-h)]">
-            <Sidebar />
-            <main className="flex-1 md:ml-[var(--sidebar-w)] p-4 pb-16 md:p-8 md:pb-8 max-w-[1200px]">
-              {children}
-            </main>
-          </div>
+          <main className="pt-[var(--topbar-h)] p-4 pb-16 md:p-8 md:pb-8 mx-auto max-w-[1200px]">
+            {children}
+          </main>
           <MobileNav />
         </ThemeProvider>
       </body>

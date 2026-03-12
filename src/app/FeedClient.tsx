@@ -24,6 +24,21 @@ function shiftWeek(week: string, delta: number): string {
   return formatWeek(year, newNum)
 }
 
+/** Convert ISO week string (2026-W11) to date range (3月10日 - 3月16日) */
+function weekToDateRange(week: string): string {
+  const { year, num } = parseWeek(week)
+  // ISO week: Jan 4 is always in week 1
+  const jan4 = new Date(Date.UTC(year, 0, 4))
+  const dayOfWeek = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
+  const monday = new Date(jan4)
+  monday.setUTCDate(jan4.getUTCDate() - (dayOfWeek - 1) + (num - 1) * 7)
+  const sunday = new Date(monday)
+  sunday.setUTCDate(monday.getUTCDate() + 6)
+
+  const fmt = (d: Date) => `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
+  return `${fmt(monday)} - ${fmt(sunday)}`
+}
+
 export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; currentWeek: string }) {
   const [view, setView] = useState<View>('aggregate')
   const router = useRouter()
@@ -38,31 +53,31 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
 
   return (
     <div>
-      {/* Week navigator */}
+      {/* Week navigator — date range format */}
       <div className="flex items-center justify-between mb-6">
         <button
           onClick={() => navigate(shiftWeek(currentWeek, -1))}
-          className="px-3 py-1.5 rounded-md text-[13px] font-mono tracking-wider transition-colors"
-          style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}
+          className="px-3 py-1.5 rounded-md text-[12px] tracking-wide transition-colors"
+          style={{ background: 'var(--surface-alt)', color: 'var(--fg-secondary)', border: '1px solid var(--border)' }}
           aria-label="上一周"
         >
-          &lt; {shiftWeek(currentWeek, -1).replace('-', ' ')}
+          ← {weekToDateRange(shiftWeek(currentWeek, -1))}
         </button>
-        <span className="text-[13px] font-mono tracking-wider" style={{ color: 'var(--fg-title)' }}>
-          {currentWeek.replace('-', ' ')}
+        <span className="text-[14px] font-medium" style={{ color: 'var(--fg-title)' }}>
+          {weekToDateRange(currentWeek)}
         </span>
         <button
           onClick={() => navigate(shiftWeek(currentWeek, 1))}
-          className="px-3 py-1.5 rounded-md text-[13px] font-mono tracking-wider transition-colors"
-          style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}
+          className="px-3 py-1.5 rounded-md text-[12px] tracking-wide transition-colors"
+          style={{ background: 'var(--surface-alt)', color: 'var(--fg-secondary)', border: '1px solid var(--border)' }}
           aria-label="下一周"
         >
-          {shiftWeek(currentWeek, 1).replace('-', ' ')} &gt;
+          {weekToDateRange(shiftWeek(currentWeek, 1))} →
         </button>
       </div>
 
       {/* Fact count */}
-      <p className="text-[13px] font-mono mb-4" style={{ color: 'var(--fg-faint)' }}>
+      <p className="text-[12px] mb-4" style={{ color: 'var(--fg-muted)' }}>
         本周共 {facts.length} 条已验证事实
       </p>
 
@@ -73,7 +88,7 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
             className="px-4 py-2 text-[13px] font-medium tracking-wider transition-colors -mb-px border-b-2"
             style={{
               borderColor: view === v.key ? 'var(--accent)' : 'transparent',
-              color: view === v.key ? 'var(--accent)' : 'var(--fg-faint)',
+              color: view === v.key ? 'var(--accent)' : 'var(--fg-muted)',
             }}
             title={v.desc}>
             {v.label}

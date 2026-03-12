@@ -77,9 +77,9 @@ export function DiffDisplay({ diff }: { diff: DiffResult }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
+      <div className="flex items-center gap-2 text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
         <span>{diff.week_a}</span>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="var(--fg-faint)" strokeWidth="1.5"><path d="M2 6h8m0 0L7 3m3 3L7 9" /></svg>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="var(--fg-muted)" strokeWidth="1.5"><path d="M2 6h8m0 0L7 3m3 3L7 9" /></svg>
         <span>{diff.week_b}</span>
       </div>
 
@@ -91,25 +91,25 @@ export function DiffDisplay({ diff }: { diff: DiffResult }) {
         <Card>
           <p className="text-[24px] font-semibold" style={{ color: 'var(--fg-title)' }}>{diff.fact_count.week_b}</p>
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>事实总数</p>
+            <p className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>事实总数</p>
             <Delta value={factDelta} />
           </div>
         </Card>
         <Card>
           <p className="text-[24px] font-semibold" style={{ color: 'var(--fg-title)' }}>{diff.entity_count.week_b}</p>
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>实体数</p>
+            <p className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>实体数</p>
             <Delta value={entityDelta} />
           </div>
         </Card>
         <Card>
           <p className="text-[24px] font-semibold" style={{ color: 'var(--fg-title)' }}>{diff.new_entities.length}</p>
-          <p className="text-[11px] font-mono mt-1" style={{ color: 'var(--fg-faint)' }}>新增实体</p>
+          <p className="text-[11px] font-mono mt-1" style={{ color: 'var(--fg-muted)' }}>新增实体</p>
         </Card>
         <Card>
           <p className="text-[24px] font-semibold" style={{ color: 'var(--fg-title)' }}>{diff.new_contradictions}</p>
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>新增矛盾</p>
+            <p className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>新增矛盾</p>
             {diff.resolved_contradictions > 0 && (
               <span className="text-[11px] font-mono" style={{ color: 'var(--success)' }}>已解决 {diff.resolved_contradictions}</span>
             )}

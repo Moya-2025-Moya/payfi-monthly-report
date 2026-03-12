@@ -5,7 +5,7 @@ export function FactList({ facts, compact = false }: { facts: AtomicFact[]; comp
   if (facts.length === 0) {
     return (
       <div className="text-center py-16">
-        <p className="text-[13px] font-mono" style={{ color: 'var(--fg-faint)' }}>暂无事实数据</p>
+        <p className="text-[13px] font-mono" style={{ color: 'var(--fg-muted)' }}>暂无事实数据</p>
       </div>
     )
   }

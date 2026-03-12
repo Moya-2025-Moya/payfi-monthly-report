@@ -73,7 +73,7 @@ export function NarrativesClient({ narratives }: { narratives: StoredNarrative[]
         <p className="text-[13px] mb-2" style={{ color: 'var(--fg-muted)' }}>
           本周尚未生成叙事时间线
         </p>
-        <p className="text-[11px]" style={{ color: 'var(--fg-faint)' }}>
+        <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
           前往 设置 → 流水线操作 → 生成叙事时间线
         </p>
       </div>
@@ -125,7 +125,7 @@ export function NarrativesClient({ narratives }: { narratives: StoredNarrative[]
           网络补充
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2 h-2 rounded-full border-2 border-dashed" style={{ borderColor: 'var(--fg-faint)' }} />
+          <span className="inline-block w-2 h-2 rounded-full border-2 border-dashed" style={{ borderColor: 'var(--fg-muted)' }} />
           后续关注
         </span>
       </div>

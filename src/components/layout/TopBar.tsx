@@ -47,7 +47,6 @@ function SearchIcon() {
   )
 }
 
-/* ── Search Result Type ── */
 interface SearchResult {
   id: string
   content_en: string
@@ -56,16 +55,11 @@ interface SearchResult {
   source_url: string
 }
 
-/* ── Extract domain from URL ── */
 function getDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return url
-  }
+  try { return new URL(url).hostname.replace(/^www\./, '') }
+  catch { return url }
 }
 
-/* ── Truncate text ── */
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text
   return text.slice(0, max) + '...'
@@ -80,28 +74,19 @@ function SearchBar() {
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const closeDropdown = useCallback(() => {
-    setOpen(false)
-  }, [])
+  const closeDropdown = useCallback(() => { setOpen(false) }, [])
 
-  // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        closeDropdown()
-      }
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) closeDropdown()
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [closeDropdown])
 
-  // Close on Escape
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        closeDropdown()
-        inputRef.current?.blur()
-      }
+      if (e.key === 'Escape') { closeDropdown(); inputRef.current?.blur() }
     }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
@@ -124,86 +109,38 @@ function SearchBar() {
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleSearch()
-    }
-  }
-
   return (
-    <div ref={containerRef} className="relative" style={{ marginLeft: 'auto', marginRight: '12px' }}>
-      <div
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md border"
-        style={{
-          background: 'var(--surface)',
-          borderColor: 'var(--border)',
-        }}
-      >
-        <span style={{ color: 'var(--fg-faint)', display: 'flex', alignItems: 'center' }}>
-          <SearchIcon />
-        </span>
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
+    <div ref={containerRef} className="relative">
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        <span style={{ color: 'var(--fg-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon /></span>
+        <input ref={inputRef} type="text" value={query}
           onChange={e => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Search facts..."
+          onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleSearch())}
+          placeholder="搜索事实..."
           className="bg-transparent border-none outline-none text-[12px]"
-          style={{
-            color: 'var(--fg-body)',
-            width: '140px',
-          }}
-        />
+          style={{ color: 'var(--fg-body)', width: '160px' }} />
       </div>
 
-      {/* Dropdown */}
       {open && (
-        <div
-          className="absolute right-0 mt-1 rounded-lg border shadow-lg overflow-hidden"
-          style={{
-            background: 'var(--surface)',
-            borderColor: 'var(--border)',
-            width: '380px',
-            maxHeight: '420px',
-            overflowY: 'auto',
-            zIndex: 50,
-          }}
-        >
-          {loading && (
-            <div className="px-3 py-4 text-center text-[12px]" style={{ color: 'var(--fg-muted)' }}>
-              Searching...
-            </div>
-          )}
-          {!loading && results.length === 0 && (
-            <div className="px-3 py-4 text-center text-[12px]" style={{ color: 'var(--fg-muted)' }}>
-              No results found
-            </div>
-          )}
+        <div className="absolute right-0 mt-1 rounded-lg border shadow-lg overflow-hidden"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)', width: '380px', maxHeight: '420px', overflowY: 'auto', zIndex: 50 }}>
+          {loading && <div className="px-3 py-4 text-center text-[12px]" style={{ color: 'var(--fg-muted)' }}>搜索中...</div>}
+          {!loading && results.length === 0 && <div className="px-3 py-4 text-center text-[12px]" style={{ color: 'var(--fg-muted)' }}>未找到结果</div>}
           {!loading && results.map(fact => (
-            <button
-              key={fact.id}
-              className="w-full text-left px-3 py-2.5 border-b transition-colors"
-              style={{
-                borderColor: 'var(--border)',
-                cursor: 'pointer',
-                background: 'transparent',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-hover, var(--border))')}
+            <button key={fact.id} className="w-full text-left px-3 py-2.5 border-b transition-colors"
+              style={{ borderColor: 'var(--border)', cursor: 'pointer', background: 'transparent' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-hover)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              onClick={() => closeDropdown()}
-            >
+              onClick={() => closeDropdown()}>
               <div className="text-[12px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
-                {truncate(fact.content_en, 120)}
+                {truncate(fact.content_zh || fact.content_en, 120)}
               </div>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[11px]" style={{ color: 'var(--fg-faint)' }}>
-                  {fact.fact_date ? new Date(fact.fact_date).toLocaleDateString() : '--'}
+                <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
+                  {fact.fact_date ? new Date(fact.fact_date).toLocaleDateString('zh-CN') : '--'}
                 </span>
-                <span className="text-[11px]" style={{ color: 'var(--fg-faint)' }}>
-                  {getDomain(fact.source_url)}
-                </span>
+                <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{getDomain(fact.source_url)}</span>
               </div>
             </button>
           ))}
@@ -213,53 +150,28 @@ function SearchBar() {
   )
 }
 
-export const TAB_GROUPS = [
-  {
-    key: 'browse',
-    label: '浏览',
-    items: [
-      { href: '/', label: '周报' },
-      { href: '/entities', label: '实体' },
-      { href: '/notes', label: '笔记' },
-    ],
-  },
-  {
-    key: 'analysis',
-    label: '分析',
-    items: [
-      { href: '/narratives', label: '叙事时间线' },
-    ],
-  },
-  {
-    key: 'system',
-    label: '系统',
-    items: [
-      { href: '/snapshots', label: '历史周报' },
-      { href: '/settings', label: '设置' },
-    ],
-  },
+/* ── Flat navigation items ── */
+const NAV_ITEMS = [
+  { href: '/', label: '周报' },
+  { href: '/entities', label: '实体' },
+  { href: '/narratives', label: '叙事' },
+  { href: '/snapshots', label: '历史' },
 ] as const
 
+// Keep for MobileNav compatibility
 export function getActiveGroup(pathname: string): string {
-  for (const group of TAB_GROUPS) {
-    for (const item of group.items) {
-      if (item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)) {
-        return group.key
-      }
-    }
+  for (const item of NAV_ITEMS) {
+    if (item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)) return 'browse'
   }
   return 'browse'
 }
 
 export function TopBar() {
   const pathname = usePathname()
-  const activeGroup = getActiveGroup(pathname)
 
   return (
-    <header
-      className="fixed top-0 left-0 right-0 z-30 flex items-center h-[var(--topbar-h)] px-4 border-b"
-      style={{ background: 'var(--topbar-bg)', borderColor: 'var(--topbar-border)' }}
-    >
+    <header className="fixed top-0 left-0 right-0 z-30 flex items-center h-[var(--topbar-h)] px-4 border-b"
+      style={{ background: 'var(--topbar-bg)', borderColor: 'var(--topbar-border)' }}>
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2 mr-6 shrink-0">
         <MountainLogo />
@@ -268,32 +180,33 @@ export function TopBar() {
         </span>
       </Link>
 
-      {/* Tab groups */}
-      <nav className="flex items-center gap-1">
-        {TAB_GROUPS.map(group => {
-          const isActive = activeGroup === group.key
+      {/* Flat nav */}
+      <nav className="flex items-center gap-1 overflow-x-auto">
+        {NAV_ITEMS.map(item => {
+          const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
           return (
-            <Link
-              key={group.key}
-              href={group.items[0].href}
-              className="px-3 py-1.5 rounded-md text-[13px] font-medium tracking-wide transition-colors"
+            <Link key={item.href} href={item.href}
+              className="px-3 py-1.5 rounded-md text-[13px] font-medium tracking-wide transition-colors whitespace-nowrap"
               style={{
-                color: isActive ? 'var(--accent)' : 'var(--fg-muted)',
+                color: isActive ? 'var(--accent)' : 'var(--fg-secondary)',
                 background: isActive ? 'var(--accent-soft)' : 'transparent',
-              }}
-            >
-              {group.label}
+              }}>
+              {item.label}
             </Link>
           )
         })}
       </nav>
 
-      {/* Search bar - fills remaining space, pushed right */}
+      <div className="flex-1" />
+
       <SearchBar />
 
-      {/* Right side */}
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>v0.1.0</span>
+      <div className="flex items-center gap-2 shrink-0 ml-3">
+        <Link href="/admin"
+          className="text-[11px] px-2 py-1 rounded transition-colors"
+          style={{ color: pathname.startsWith('/admin') ? 'var(--accent)' : 'var(--fg-muted)' }}>
+          管理
+        </Link>
         <ThemeToggle />
       </div>
     </header>

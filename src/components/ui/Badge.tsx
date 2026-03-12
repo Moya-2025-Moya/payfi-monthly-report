@@ -9,7 +9,7 @@ export function SourceCountBadge({ count, onClick }: { count: number; onClick?: 
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono transition-colors hover:opacity-80"
       style={{ border: '1px solid var(--border)', color: count >= 2 ? 'var(--success)' : 'var(--fg-muted)' }}
     >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: count >= 2 ? 'var(--success)' : 'var(--fg-faint)' }} />
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: count >= 2 ? 'var(--success)' : 'var(--fg-muted)' }} />
       {count} 个信息源
     </button>
   )
@@ -20,7 +20,7 @@ export function SourceCountBadge({ count, onClick }: { count: number; onClick?: 
 const STATUS_STYLES: Record<VerificationStatus, { color: string; label: string }> = {
   verified:             { color: 'var(--success)', label: '已验证' },
   partially_verified:   { color: 'var(--warning)', label: '部分验证' },
-  pending_verification: { color: 'var(--fg-dim)', label: '待验证' },
+  pending_verification: { color: 'var(--fg-muted)', label: '待验证' },
   rejected:             { color: 'var(--danger)', label: '已拒绝' },
 }
 
@@ -38,7 +38,7 @@ export function StatusBadge({ status }: { status: VerificationStatus }) {
 export function FactTypeBadge({ type }: { type: string }) {
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono"
-      style={{ color: 'var(--fg-dim)', border: '1px solid var(--border)' }}>
+      style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
       {type}
     </span>
   )
@@ -52,7 +52,7 @@ export function ConfidenceBadge({ confidence }: { confidence: string | null }) {
     medium: { color: 'var(--info)', label: '中可信' },
     low:    { color: 'var(--warning)', label: '低可信' },
   }
-  const s = styles[confidence] ?? { color: 'var(--fg-faint)', label: confidence }
+  const s = styles[confidence] ?? { color: 'var(--fg-muted)', label: confidence }
   return (
     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono"
       style={{ border: `1px solid var(--border)`, color: s.color }}>

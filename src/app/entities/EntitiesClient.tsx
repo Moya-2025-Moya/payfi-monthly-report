@@ -27,7 +27,7 @@ export function EntitiesClient({ entities }: { entities: (Entity & { _factCount?
         return (
           <section key={key}>
             <h3 className="text-[11px] font-mono tracking-widest uppercase mb-3"
-              style={{ color: 'var(--fg-faint)' }}>
+              style={{ color: 'var(--fg-muted)' }}>
               {label}
             </h3>
             <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
@@ -46,13 +46,13 @@ export function EntitiesClient({ entities }: { entities: (Entity & { _factCount?
                       {e.name}
                     </span>
                     {e.aliases.length > 0 && (
-                      <span className="text-[11px] font-mono truncate hidden sm:inline" style={{ color: 'var(--fg-dim)' }}>
+                      <span className="text-[11px] font-mono truncate hidden sm:inline" style={{ color: 'var(--fg-muted)' }}>
                         {e.aliases.join(', ')}
                       </span>
                     )}
                   </div>
                   {(e._factCount ?? 0) > 0 && (
-                    <span className="text-[11px] font-mono shrink-0 ml-3" style={{ color: 'var(--fg-faint)' }}>
+                    <span className="text-[11px] font-mono shrink-0 ml-3" style={{ color: 'var(--fg-muted)' }}>
                       {e._factCount} 条
                     </span>
                   )}

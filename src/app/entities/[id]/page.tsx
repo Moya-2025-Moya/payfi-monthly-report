@@ -80,7 +80,7 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
       {/* Related entities section (from old /graph) */}
       {relationships.length > 0 && (
         <div className="mt-8">
-          <p className="text-[11px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-faint)' }}>
+          <p className="text-[11px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-muted)' }}>
             关联实体 ({relationships.length})
           </p>
           <div className="space-y-2">
@@ -102,7 +102,7 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
 
       {/* Notes section */}
       <div className="mt-8">
-        <p className="text-[11px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-faint)' }}>
+        <p className="text-[11px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-muted)' }}>
           笔记
         </p>
         <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>

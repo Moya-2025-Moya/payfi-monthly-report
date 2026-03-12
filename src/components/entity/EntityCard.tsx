@@ -14,15 +14,15 @@ export function EntityCard({ entity, factCount }: { entity: Entity; factCount?: 
       style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-[13px] font-medium" style={{ color: 'var(--fg-title)' }}>{entity.name}</span>
-        <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
+        <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
           {CATEGORY_LABELS[entity.category] ?? entity.category}
         </span>
       </div>
       {desc && (
-        <p className="text-[13px] line-clamp-2 mb-2" style={{ color: 'var(--fg-dim)' }}>{desc}</p>
+        <p className="text-[13px] line-clamp-2 mb-2" style={{ color: 'var(--fg-muted)' }}>{desc}</p>
       )}
       {factCount != null && (
-        <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{factCount} 条事实</span>
+        <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>{factCount} 条事实</span>
       )}
     </Link>
   )

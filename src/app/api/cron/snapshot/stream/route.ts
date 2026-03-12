@@ -199,9 +199,20 @@ ${factsText}`,
           logger.log(`  AI 摘要生成失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
         }
 
-        // Step 7: Save snapshot
+        // Step 7: Save snapshot (merge with existing data to preserve narratives etc.)
         logger.progress('7/7', '保存快照到数据库...')
+
+        // Read existing snapshot_data first to preserve fields written by other pipelines
+        const { data: existingSnapshot } = await supabaseAdmin
+          .from('weekly_snapshots')
+          .select('snapshot_data')
+          .eq('week_number', weekNumber)
+          .single()
+
+        const existingData = (existingSnapshot?.snapshot_data ?? {}) as Record<string, unknown>
+
         const snapshotData = {
+          ...existingData,
           total_facts: totalFacts ?? 0,
           new_facts: totalFacts ?? 0,
           high_confidence: highCount ?? 0,

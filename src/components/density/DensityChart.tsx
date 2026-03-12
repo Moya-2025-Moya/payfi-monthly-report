@@ -11,7 +11,7 @@ const TREND_COLOR: Record<string, string> = {
   spike: 'var(--danger)',
   sustained_high: 'var(--warning)',
   declining: 'var(--info)',
-  normal: 'var(--fg-dim)',
+  normal: 'var(--fg-muted)',
 }
 
 export function DensityChart({ anomalies }: { anomalies: DensityAnomaly[] }) {
@@ -20,7 +20,7 @@ export function DensityChart({ anomalies }: { anomalies: DensityAnomaly[] }) {
   const [hovered, setHovered] = useState<number | null>(null)
 
   if (anomalies.length === 0) {
-    return <p className="text-[13px] text-center py-16" style={{ color: 'var(--fg-faint)' }}>暂无异常</p>
+    return <p className="text-[13px] text-center py-16" style={{ color: 'var(--fg-muted)' }}>暂无异常</p>
   }
 
   return (
@@ -59,14 +59,14 @@ export function DensityChart({ anomalies }: { anomalies: DensityAnomaly[] }) {
 
             {/* Hover detail */}
             {isHovered && (
-              <div className="shrink-0 flex gap-3 text-[11px] font-mono" style={{ color: 'var(--fg-dim)' }}>
+              <div className="shrink-0 flex gap-3 text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
                 <span>当前 {a.current_count}</span>
                 <span>上期 {a.previous_count}</span>
                 <span>均值 {a.avg_count.toFixed(0)}</span>
               </div>
             )}
             {!isHovered && (
-              <span className="shrink-0 w-[48px] text-right text-[11px] font-mono" style={{ color: 'var(--fg-dim)' }}>
+              <span className="shrink-0 w-[48px] text-right text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
                 {a.current_count} 条
               </span>
             )}

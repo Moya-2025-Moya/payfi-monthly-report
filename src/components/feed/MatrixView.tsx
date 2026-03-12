@@ -27,7 +27,7 @@ export function MatrixView({ facts }: { facts: AtomicFact[] }) {
   }
 
   function cellStyle(count: number): React.CSSProperties {
-    if (count === 0) return { background: 'var(--surface)', color: 'var(--fg-faint)' }
+    if (count === 0) return { background: 'var(--surface)', color: 'var(--fg-muted)' }
     if (count <= 2) return { background: 'var(--accent-soft)', color: 'var(--accent)' }
     if (count <= 5) return { background: 'var(--accent-muted)', color: 'var(--accent)' }
     return { background: 'var(--accent)', color: 'var(--accent-fg)' }
@@ -38,9 +38,9 @@ export function MatrixView({ facts }: { facts: AtomicFact[] }) {
       <table className="w-full">
         <thead>
           <tr>
-            <th className="text-left p-3 text-[11px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>板块</th>
+            <th className="text-left p-3 text-[11px] font-mono tracking-wider" style={{ color: 'var(--fg-muted)' }}>板块</th>
             {FACT_TYPES.map(t => (
-              <th key={t} className="p-3 text-[11px] font-mono tracking-wider text-center" style={{ color: 'var(--fg-faint)' }}>{FACT_TYPE_ZH[t]}</th>
+              <th key={t} className="p-3 text-[11px] font-mono tracking-wider text-center" style={{ color: 'var(--fg-muted)' }}>{FACT_TYPE_ZH[t]}</th>
             ))}
           </tr>
         </thead>

@@ -152,7 +152,7 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
             <ol className="space-y-2">
               {detailedItems.map((item, i) => (
                 <li key={i} className="flex gap-2 text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
-                  <span className="shrink-0 text-[11px] font-mono pt-0.5" style={{ color: 'var(--fg-faint)' }}>
+                  <span className="shrink-0 text-[11px] font-mono pt-0.5" style={{ color: 'var(--fg-muted)' }}>
                     {i + 1}.
                   </span>
                   <span>{getField(item, 'simple', lang)}</span>
@@ -165,7 +165,7 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
                 const text = line.replace(/^\d+\.\s*/, '')
                 return (
                   <li key={i} className="flex gap-2 text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
-                    <span className="shrink-0 text-[11px] font-mono pt-0.5" style={{ color: 'var(--fg-faint)' }}>
+                    <span className="shrink-0 text-[11px] font-mono pt-0.5" style={{ color: 'var(--fg-muted)' }}>
                       {i + 1}.
                     </span>
                     <span>{text}</span>
@@ -179,7 +179,7 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
             {detailedItems.map((item, i) => (
               <div key={i} className="rounded-md border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)' }}>
                 <div className="flex items-start gap-2 mb-2">
-                  <span className="shrink-0 text-[11px] font-mono pt-0.5" style={{ color: 'var(--fg-faint)' }}>
+                  <span className="shrink-0 text-[11px] font-mono pt-0.5" style={{ color: 'var(--fg-muted)' }}>
                     {i + 1}.
                   </span>
                   <p className="text-[13px] font-medium leading-snug" style={{ color: 'var(--fg-title)' }}>
@@ -202,7 +202,7 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
                   )}
                   {item.tags?.map(tag => (
                     <span key={tag} className="text-[11px] px-1 py-0.5 rounded font-mono"
-                      style={{ color: 'var(--fg-faint)', border: '1px solid var(--border)' }}>
+                      style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
                       {tag}
                     </span>
                   ))}

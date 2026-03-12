@@ -2,14 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { getActiveGroup } from './TopBar'
 
-/* Mobile bottom tab bar — simplified read-only navigation */
 const MOBILE_TABS = [
-  { href: '/', label: '信息流', group: 'browse' },
-  { href: '/entities', label: '实体', group: 'browse' },
-  { href: '/search', label: '搜索', group: 'browse' },
-  { href: '/chat', label: 'AI', group: 'system' },
+  { href: '/', label: '周报' },
+  { href: '/entities', label: '实体' },
+  { href: '/narratives', label: '叙事' },
+  { href: '/snapshots', label: '历史' },
 ]
 
 export function MobileNav() {
@@ -26,10 +24,8 @@ export function MobileNav() {
           <Link
             key={tab.href}
             href={tab.href}
-            className="flex-1 flex items-center justify-center py-2 text-[11px] font-medium tracking-wide transition-colors"
-            style={{
-              color: isActive ? 'var(--accent)' : 'var(--fg-muted)',
-            }}
+            className="flex-1 flex items-center justify-center py-2 text-[12px] font-medium tracking-wide transition-colors"
+            style={{ color: isActive ? 'var(--accent)' : 'var(--fg-muted)' }}
           >
             {tab.label}
           </Link>

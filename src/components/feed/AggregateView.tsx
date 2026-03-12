@@ -44,7 +44,7 @@ function EntitySummary({ entity, facts }: { entity: string; facts: AtomicFact[] 
   return (
     <div className="text-[13px] mt-1 mb-3" style={{ color: 'var(--fg-secondary)' }}>
       {loading ? (
-        <span className="text-[11px]" style={{ color: 'var(--fg-dim)' }}>生成摘要...</span>
+        <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>生成摘要...</span>
       ) : summary ? (
         summary
       ) : null}
@@ -73,7 +73,7 @@ export function AggregateView({ facts }: { facts: AtomicFact[] }) {
         <section key={entity}>
           <div className="flex items-center gap-3">
             <h3 className="text-[15px] font-semibold" style={{ color: 'var(--fg-title)' }}>{entity}</h3>
-            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-alt)', color: 'var(--fg-dim)' }}>
+            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
               {entityFacts.length}
             </span>
           </div>
