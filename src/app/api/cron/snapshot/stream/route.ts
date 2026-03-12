@@ -177,7 +177,7 @@ export async function GET() {
 
 本周事实 (共 ${topFacts.length} 条):
 ${factsText}`,
-              { system: '你是稳定币行业分析师。输出严格 JSON，不要任何 markdown 格式。items 数组必须恰好 10 个元素。每条必须同时包含中英文版本。' }
+              { system: '你是稳定币行业分析师。输出严格 JSON，不要任何 markdown 格式。items 数组必须恰好 10 个元素。每条必须同时包含中英文版本。', maxTokens: 8192 }
             )
 
             if (summaryResult.items?.length > 0) {

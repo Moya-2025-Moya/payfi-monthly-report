@@ -6,7 +6,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { callHaikuJSON } from '@/lib/ai-client'
 import { supabaseAdmin } from '@/db/client'
-import type { CandidateFact, FactType, SourceType } from '@/lib/types'
+import type { CandidateFact, FactType, Objectivity, SourceType } from '@/lib/types'
 
 // ─── Prompt 模板 ───
 
@@ -31,6 +31,8 @@ interface RawRecord {
 interface ExtractedFact {
   content: string
   fact_type: FactType
+  objectivity?: Objectivity
+  speaker?: string | null
   evidence_sentence: string
   tags: string[]
   metric_name?: string | null
@@ -81,6 +83,8 @@ function mergeToCandidates(facts: ExtractedFact[], verdicts: VerifyVerdict[]): C
     return {
       content: fact.content,
       fact_type: fact.fact_type,
+      objectivity: fact.objectivity ?? 'fact',
+      speaker: fact.speaker ?? null,
       evidence_sentence: fact.evidence_sentence,
       tags: fact.tags,
       metric_name: fact.metric_name ?? null,
@@ -191,6 +195,8 @@ async function saveCandidates(
     content_zh: c.content,
     content_en: '',
     fact_type: c.fact_type,
+    objectivity: c.objectivity ?? 'fact',
+    speaker: c.speaker ?? null,
     tags: c.tags,
     source_id: raw.id,
     source_table: raw.source_table,

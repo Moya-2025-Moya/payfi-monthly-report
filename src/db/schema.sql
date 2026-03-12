@@ -160,6 +160,8 @@ CREATE TABLE atomic_facts (
   content_zh TEXT,
   -- 分类
   fact_type TEXT NOT NULL CHECK (fact_type IN ('event', 'metric', 'quote', 'relationship', 'status_change')),
+  objectivity TEXT NOT NULL DEFAULT 'fact' CHECK (objectivity IN ('fact', 'opinion', 'analysis')),
+  speaker TEXT,
   tags TEXT[] DEFAULT '{}',
   -- 来源
   source_id UUID NOT NULL,

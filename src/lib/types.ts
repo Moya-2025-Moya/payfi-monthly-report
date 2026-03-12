@@ -8,6 +8,7 @@
 export type SourceType = 'news' | 'filing' | 'onchain' | 'product' | 'funding' | 'tweet' | 'regulatory'
 export type SourceCredibility = 'official' | 'media' | 'social' | 'derived'
 export type FactType = 'event' | 'metric' | 'quote' | 'relationship' | 'status_change'
+export type Objectivity = 'fact' | 'opinion' | 'analysis'
 export type Confidence = 'high' | 'medium' | 'low'
 export type VerificationStatus = 'pending_verification' | 'verified' | 'partially_verified' | 'rejected'
 
@@ -151,6 +152,8 @@ export interface AtomicFact {
   content_zh: string | null
   // 分类
   fact_type: FactType
+  objectivity: Objectivity
+  speaker: string | null // 观点/分析的归因（人名+头衔 或 机构名）
   tags: string[]
   // 来源
   source_id: string
@@ -236,6 +239,8 @@ export interface Verdict {
 export interface CandidateFact {
   content: string
   fact_type: FactType
+  objectivity: Objectivity
+  speaker: string | null // 观点/分析的归因
   evidence_sentence: string
   tags: string[]
   metric_name: string | null

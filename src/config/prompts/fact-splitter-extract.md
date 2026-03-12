@@ -74,8 +74,9 @@
 - ✅ 有明确的主语和谓语
 - ✅ 描述了一个具体的事件、数字、引用、关系或状态变化
 - ✅ 能在原文中找到对应的原句
-- ❌ 是作者的分析、推测、观点
+- ❌ 是作者自己的无归因分析、推测、观点
 - ❌ 是模糊的描述（"据报道"、"有消息称"但无具体来源）
+- ✅ 是有具名来源的观点/预测/分析（提取为 opinion 或 analysis，见 Step 4.5）
 
 ## Step 3: 拆解复合句
 
@@ -96,6 +97,28 @@
 | quote | 某人的原话 | 有引号或明确的"某人说" |
 | relationship | 两个实体间的关系变化 | 涉及合作/投资/竞争等 |
 | status_change | 某事物的状态发生了流转 | 从A状态变为B状态 |
+
+## Step 4.5: 判断客观性（objectivity）
+
+对每条提取的内容，判断它是客观事实还是主观观点/分析：
+
+| objectivity | 定义 | speaker 要求 |
+|---|---|---|
+| `fact` | 可客观验证的事实（事件发生、数据指标、状态变更） | speaker = null |
+| `opinion` | 具名个人的观点、判断、预测 | speaker = "人名 + 头衔"（必填） |
+| `analysis` | 机构/研报的分析结论 | speaker = "机构名"（必填） |
+
+**判断规则：**
+1. 默认为 `fact`，只有明确是某人/机构的主观判断才标为 opinion/analysis
+2. `opinion`：必须有具体人名 + 头衔（如 "Circle CEO Jeremy Allaire"）
+3. `analysis`：机构级归因即可（如 "Bernstein"、"高盛研报"）
+4. 无归因的主观内容（"市场认为"、"分析师预计"）→ 不提取
+5. quote 类型不一定是 opinion — 如果引述的是客观陈述（如 CEO 宣布公司计划），objectivity 应为 `fact`
+
+**示例：**
+- "Circle CEO Jeremy Allaire 认为稳定币将取代跨境汇款" → fact_type=quote, objectivity=opinion, speaker="Circle CEO Jeremy Allaire"
+- "Bernstein 分析师预测 Circle 股价将达到 $80" → fact_type=quote, objectivity=analysis, speaker="Bernstein"
+- "Jeremy Allaire 宣布 Circle 将于Q2上市" → fact_type=event, objectivity=fact, speaker=null（这是客观事件公告）
 
 ## Step 5: 提取指标字段（仅metric类型）
 
@@ -127,6 +150,8 @@
   {
     "content": "Circle于2026年3月8日向SEC提交了S-1修订版",
     "fact_type": "event",
+    "objectivity": "fact",
+    "speaker": null,
     "evidence_sentence": "原文中的对应原句，逐字复制",
     "tags": ["circle", "sec", "ipo", "s-1", "regulation"],
     "metric_name": null,
@@ -138,12 +163,27 @@
   {
     "content": "Circle年收入为17亿美元",
     "fact_type": "metric",
+    "objectivity": "fact",
+    "speaker": null,
     "evidence_sentence": "原文中的对应原句",
     "tags": ["circle", "revenue", "financial"],
     "metric_name": "annual_revenue",
     "metric_value": 1700000000,
     "metric_unit": "USD",
     "metric_period": "2025-FY",
+    "metric_change": null
+  },
+  {
+    "content": "Bernstein 分析师认为 Circle 股价有进一步上涨空间，目标价 $80",
+    "fact_type": "quote",
+    "objectivity": "analysis",
+    "speaker": "Bernstein",
+    "evidence_sentence": "原文中的对应原句",
+    "tags": ["circle", "stock", "analyst"],
+    "metric_name": null,
+    "metric_value": null,
+    "metric_unit": null,
+    "metric_period": null,
     "metric_change": null
   }
 ]

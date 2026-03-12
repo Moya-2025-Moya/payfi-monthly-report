@@ -8,6 +8,26 @@ const FACT_TYPE_LABELS: Record<string, string> = {
   relationship: '关系', status_change: '状态变更',
 }
 
+/* ── Objectivity labels ── */
+const OBJECTIVITY_LABELS: Record<string, string> = {
+  fact: '事实',
+  opinion: '个人观点',
+  analysis: '机构分析',
+}
+
+/* ── Confidence dot colors ── */
+const CONFIDENCE_COLORS: Record<string, string> = {
+  high: 'var(--success)',
+  medium: 'var(--warning)',
+  low: 'var(--danger)',
+}
+
+const CONFIDENCE_LABELS: Record<string, string> = {
+  high: '高可信',
+  medium: '中可信',
+  low: '低可信',
+}
+
 function extractDomain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
@@ -26,7 +46,6 @@ function getVerificationIndicators(fact: AtomicFact): { label: string; detail?: 
   if (v1?.match_score != null && v1.match_score > 0) {
     indicators.push({ label: `原文${v1.match_score}%`, detail: `来源原文匹配度 ${v1.match_score}%` })
   } else if (!fact.source_url && (v1?.status === 'source_unavailable' || (v1?.match_score != null && v1.match_score === 0))) {
-    // 只在真正没有 source_url 时才显示"原文不可达"
     indicators.push({ label: '原文不可达', detail: '来源原文无法获取或解析' })
   }
   const v2 = fact.v2_result as { source_count?: number; independent_sources?: boolean } | null
@@ -86,6 +105,55 @@ function QuoteContent({ content }: { content: string }) {
   )
 }
 
+/* ── Pill label for fact_type (Q33) ── */
+function TypePill({ type }: { type: string }) {
+  const label = FACT_TYPE_LABELS[type] ?? '其他'
+  return (
+    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none"
+      style={{ background: 'var(--surface-alt)', color: 'var(--fg-secondary)', border: '1px solid var(--border)' }}>
+      {label}
+    </span>
+  )
+}
+
+/* ── Confidence dot (Q21) ── */
+function ConfidenceDot({ confidence }: { confidence: string | null }) {
+  if (!confidence || !CONFIDENCE_COLORS[confidence]) return null
+  return (
+    <span className="inline-flex items-center gap-1" title={CONFIDENCE_LABELS[confidence] ?? ''}>
+      <span className="w-[6px] h-[6px] rounded-full inline-block" style={{ background: CONFIDENCE_COLORS[confidence] }} />
+      <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{CONFIDENCE_LABELS[confidence]}</span>
+    </span>
+  )
+}
+
+/* ── Attribution bar for opinion/analysis (Q5) ── */
+function AttributionBar({ fact }: { fact: AtomicFact }) {
+  const objectivity = fact.objectivity as string | undefined
+  if (!objectivity || objectivity === 'fact') return null
+
+  const speaker = fact.speaker || extractSpeaker(fact.content_zh || fact.content_en).speaker
+  const label = OBJECTIVITY_LABELS[objectivity] ?? objectivity
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-[12px]"
+      style={{ background: objectivity === 'opinion' ? 'rgba(139, 92, 246, 0.08)' : 'rgba(59, 130, 246, 0.08)' }}>
+      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+        style={{
+          background: objectivity === 'opinion' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+          color: objectivity === 'opinion' ? '#8b5cf6' : '#3b82f6',
+        }}>
+        {label}
+      </span>
+      {speaker && (
+        <span style={{ color: objectivity === 'opinion' ? '#8b5cf6' : '#3b82f6' }}>
+          {speaker}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -95,7 +163,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
   const sourceUrls = getSourceUrls(fact)
   const verificationIndicators = getVerificationIndicators(fact)
   const contradiction = getContradiction(fact)
-  const typeLabel = FACT_TYPE_LABELS[fact.fact_type] ?? '其他'
+  const isSubjective = fact.objectivity === 'opinion' || fact.objectivity === 'analysis'
 
   // "原文不可达" shown in default state as trust signal
   const unreachable = verificationIndicators.find(i => i.label === '原文不可达')
@@ -109,6 +177,9 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
     return (
       <div className="flex items-start gap-2 py-2 px-1 rounded-md cursor-pointer transition-colors hover:bg-[var(--surface-alt)]"
         onClick={toggleExpand}>
+        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+          <TypePill type={fact.fact_type} />
+        </div>
         <p className="text-[14px] leading-relaxed flex-1 min-w-0" style={{ color: 'var(--fg-body)' }}>{displayContent}</p>
         <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
           {unreachable && (
@@ -127,8 +198,14 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
   return (
     <div
       className={compact ? 'rounded-lg border overflow-hidden transition-colors mb-1' : 'rounded-lg border overflow-hidden transition-colors'}
-      style={{ borderColor: expanded ? 'var(--border-hover)' : 'var(--border)', background: 'var(--surface)' }}
+      style={{
+        borderColor: expanded ? 'var(--border-hover)' : 'var(--border)',
+        background: isSubjective ? 'var(--surface-alt)' : 'var(--surface)',
+      }}
     >
+      {/* Q5: Attribution bar for opinion/analysis */}
+      <AttributionBar fact={fact} />
+
       <div className="p-4">
         {/* Content area */}
         <div className="flex items-start justify-between gap-2">
@@ -170,8 +247,9 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
           </div>
         )}
 
-        {/* Default metadata: source + date + type label + "原文不可达" warning */}
+        {/* Default metadata: pill + source + date + confidence dot + "原文不可达" warning */}
         <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: 'var(--fg-muted)' }}>
+          <TypePill type={fact.fact_type} />
           {sourceUrls.length > 0 && (
             <a href={sourceUrls[0]} target="_blank" rel="noopener noreferrer"
               className="hover:underline" onClick={e => e.stopPropagation()}>
@@ -180,8 +258,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
           )}
           <span>·</span>
           <time>{date}</time>
-          <span>·</span>
-          <span>{typeLabel}</span>
+          <ConfidenceDot confidence={fact.confidence} />
           {unreachable && (
             <>
               <span>·</span>
@@ -195,6 +272,21 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
           style={{ maxHeight: expanded ? '2000px' : '0', opacity: expanded ? 1 : 0 }}>
           {expanded && (
             <div className="mt-4 pt-4 border-t space-y-4" style={{ borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
+
+              {/* Source URLs (Q22: sources first) */}
+              {sourceUrls.length > 0 && (
+                <div>
+                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>信息源</p>
+                  <div className="space-y-1">
+                    {sourceUrls.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                        className="block text-[12px] truncate hover:underline" style={{ color: 'var(--info)' }}>
+                        {extractDomain(url)} — {url}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Verification details */}
               {verificationIndicators.length > 0 && (
@@ -212,35 +304,26 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
                 </div>
               )}
 
-              {/* English content if bilingual */}
-              {fact.content_zh && fact.content_en && (
-                <p className="text-[13px] italic" style={{ color: 'var(--fg-secondary)' }}>{fact.content_en}</p>
-              )}
-
-              {/* Source URLs */}
-              {sourceUrls.length > 0 && (
+              {/* Tags */}
+              {fact.tags.length > 0 && (
                 <div>
-                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>信息源</p>
-                  <div className="space-y-1">
-                    {sourceUrls.map((url, i) => (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                        className="block text-[12px] truncate hover:underline" style={{ color: 'var(--info)' }}>
-                        {extractDomain(url)} — {url}
-                      </a>
+                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>标签</p>
+                  <div className="flex gap-1 flex-wrap">
+                    {fact.tags.map(tag => (
+                      <span key={tag} className="px-1.5 py-0.5 rounded text-[11px]"
+                        style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
+                        {tag}
+                      </span>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Tags */}
-              {fact.tags.length > 0 && (
-                <div className="flex gap-1 flex-wrap">
-                  {fact.tags.map(tag => (
-                    <span key={tag} className="px-1.5 py-0.5 rounded text-[11px]"
-                      style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
-                      {tag}
-                    </span>
-                  ))}
+              {/* English content if bilingual */}
+              {fact.content_zh && fact.content_en && (
+                <div>
+                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>English</p>
+                  <p className="text-[13px] italic" style={{ color: 'var(--fg-secondary)' }}>{fact.content_en}</p>
                 </div>
               )}
             </div>

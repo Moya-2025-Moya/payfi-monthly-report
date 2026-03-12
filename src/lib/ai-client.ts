@@ -122,11 +122,12 @@ export async function callSonnet(
 // 便捷方法: 调用 AI 返回 JSON
 export async function callHaikuJSON<T>(
   prompt: string,
-  options: { system?: string } = {}
+  options: { system?: string; maxTokens?: number } = {}
 ): Promise<T> {
+  const { system, maxTokens } = options
   const response = await callHaiku(prompt, {
-    ...options,
-    system: (options.system || '') + '\n\nYou MUST respond with valid JSON only. No markdown, no explanation.',
+    maxTokens,
+    system: (system || '') + '\n\nYou MUST respond with valid JSON only. No markdown, no explanation.',
   })
 
   // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
