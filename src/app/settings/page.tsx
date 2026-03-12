@@ -224,8 +224,9 @@ function DevResetButton({
       })
       const json = await res.json()
       if (res.ok) {
+        const hasErrors = json.results?.some((r: { status: string }) => r.status === 'error')
         setResult(json.message)
-        setState('success')
+        setState(hasErrors ? 'error' : 'success')
       } else {
         setResult(`错误: ${json.error ?? `HTTP ${res.status}`}`)
         setState('error')

@@ -6,17 +6,29 @@
 import { supabaseAdmin } from '@/db/client'
 import { NextRequest, NextResponse } from 'next/server'
 
-// Dependency order matters: delete children before parents
+// Delete order matters: children (FK dependents) before parents
 const PROCESSED_TABLES = [
-  'timeline_facts',
-  'fact_entities',
-  'fact_contradictions',
-  'notes',
+  // FK leaves first
   'comments',
+  'notes',
+  'bookmarks',
+  'chat_history',
+  'user_preferences',
+  'shared_views',
+  'team_questions',
+  'fact_sectors',
+  'fact_entities',
+  'entity_relationships',
+  'timeline_facts',
+  'fact_contradictions',
+  'blind_spot_reports',
+  'regulatory_trackers',
+  // Then parents
   'atomic_facts',
   'timelines',
+  'sectors',
   'entities',
-  'snapshots',
+  'weekly_snapshots',
   'pipeline_runs',
 ]
 
@@ -32,20 +44,20 @@ const RAW_TABLES = [
 ]
 
 async function clearTable(table: string): Promise<string | null> {
-  // Supabase delete requires a filter. Use a tautology: delete where id is not null.
-  // For junction tables without `id`, try common key columns.
-  const keyCandidates = ['id', 'fact_id', 'timeline_id']
+  // Supabase delete requires a WHERE clause.
+  // .not('id', 'is', null) matches all rows where id exists (i.e., all rows).
+  // For junction tables without `id`, try alternative key columns.
+  const keyCandidates = ['id', 'fact_id', 'user_id', 'timeline_id']
 
   for (const key of keyCandidates) {
     const { error } = await supabaseAdmin.from(table).delete().not(key, 'is', null)
     if (!error) return null
-    // If column doesn't exist, try next candidate
-    if (error.message.includes('column') && error.message.includes('does not exist')) continue
-    // Other error — return it
+    // Column doesn't exist → try next
+    if (error.message.includes('column') || error.code === '42703') continue
     return error.message
   }
 
-  return `No suitable key column found for table ${table}`
+  return `no suitable key column found`
 }
 
 export async function POST(req: NextRequest) {
@@ -55,7 +67,7 @@ export async function POST(req: NextRequest) {
 
     const results: { table: string; status: 'ok' | 'error'; error?: string }[] = []
 
-    // 1. Clear processed/AI-generated tables
+    // 1. Clear processed/AI-generated tables (in FK-safe order)
     for (const table of PROCESSED_TABLES) {
       const err = await clearTable(table)
       results.push(err ? { table, status: 'error', error: err } : { table, status: 'ok' })
@@ -68,14 +80,14 @@ export async function POST(req: NextRequest) {
         results.push(err ? { table, status: 'error', error: err } : { table, status: 'ok' })
       }
     } else {
-      // mode === 'processed': reset processed flag so raw data can be re-processed
+      // mode === 'processed': reset processed flag
       for (const table of RAW_TABLES) {
         const { error } = await supabaseAdmin
           .from(table)
           .update({ processed: false })
           .eq('processed', true)
         if (error) {
-          results.push({ table, status: 'error', error: `reset flag: ${error.message}` })
+          results.push({ table, status: 'error', error: error.message })
         } else {
           results.push({ table, status: 'ok' })
         }
@@ -84,11 +96,12 @@ export async function POST(req: NextRequest) {
 
     const okCount = results.filter(r => r.status === 'ok').length
     const errCount = results.filter(r => r.status === 'error').length
+    const failedTables = results.filter(r => r.status === 'error').map(r => `${r.table}: ${r.error}`)
 
     return NextResponse.json({
       message: mode === 'all'
-        ? `全部重置完成 — 清空 ${okCount} 张表，失败 ${errCount}`
-        : `处理数据重置完成 — 清空 ${okCount} 张表，原始数据已标记为未处理，失败 ${errCount}`,
+        ? `全部重置完成 — 清空 ${okCount} 张表，失败 ${errCount}${failedTables.length ? '\n失败: ' + failedTables.join('; ') : ''}`
+        : `处理数据重置完成 — 清空 ${okCount} 张表，原始数据已标记为未处理，失败 ${errCount}${failedTables.length ? '\n失败: ' + failedTables.join('; ') : ''}`,
       mode,
       results,
     })

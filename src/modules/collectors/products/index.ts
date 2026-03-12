@@ -144,22 +144,31 @@ async function collectGitHubReleases(entity: (typeof WATCHLIST)[number]): Promis
   return updates
 }
 
-export async function collectProductUpdates(): Promise<number> {
+import type { CollectorResult } from '@/modules/collectors'
+
+export async function collectProductUpdates(): Promise<CollectorResult> {
   console.log('[products] Starting product updates collection...')
 
   const allUpdates: RawProductUpdate[] = []
+  const perEntity: Record<string, number> = {}
 
   for (const entity of WATCHLIST) {
     const [blogUpdates, githubUpdates] = await Promise.all([
       collectBlogUpdates(entity),
       collectGitHubReleases(entity),
     ])
+    const entityTotal = blogUpdates.length + githubUpdates.length
+    if (entityTotal > 0) {
+      perEntity[entity.name] = entityTotal
+    }
     allUpdates.push(...blogUpdates, ...githubUpdates)
   }
 
+  const breakdown = Object.entries(perEntity).map(([source, count]) => ({ source, count }))
+
   if (allUpdates.length === 0) {
     console.log('[products] No product updates found.')
-    return 0
+    return { total: 0, breakdown }
   }
 
   // Deduplicate by source_url
@@ -178,9 +187,9 @@ export async function collectProductUpdates(): Promise<number> {
 
   if (error) {
     console.error('[products] Upsert failed:', error)
-    return 0
+    return { total: 0, breakdown }
   } else {
     console.log(`[products] Successfully upserted ${deduped.length} product updates.`)
-    return deduped.length
+    return { total: deduped.length, breakdown }
   }
 }

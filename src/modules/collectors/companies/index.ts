@@ -220,12 +220,20 @@ async function collectStockData(): Promise<number> {
 
 // ─── Main Export ────────────────────────────────────────────
 
-export async function collectCompanyData(): Promise<number> {
+import type { CollectorResult } from '@/modules/collectors'
+
+export async function collectCompanyData(): Promise<CollectorResult> {
   console.log('[companies] Starting company data collection…')
 
   const filings = await collectSecFilings()
   const stocks = await collectStockData()
 
   console.log('[companies] Company data collection complete.')
-  return filings + stocks
+  return {
+    total: filings + stocks,
+    breakdown: [
+      { source: 'SEC Filings', count: filings },
+      { source: 'Stock Quotes', count: stocks },
+    ],
+  }
 }

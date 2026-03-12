@@ -146,7 +146,9 @@ async function filterExistingUrls(items: RawNews[]): Promise<RawNews[]> {
 
 // ─── Main collector ───────────────────────────────────────────────────────────
 
-export async function collectNews(): Promise<number> {
+import type { CollectorResult } from '@/modules/collectors'
+
+export async function collectNews(): Promise<CollectorResult> {
   console.log(`[A2] collectNews start — ${SOURCES.rssFeeds.length} RSS feeds`)
 
   // Fetch all feeds in parallel
@@ -157,12 +159,17 @@ export async function collectNews(): Promise<number> {
   const allItems: RawNews[] = []
   let successCount = 0
   let failCount = 0
+  const feedCounts: { source: string; count: number }[] = []
 
-  for (const result of results) {
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    const feedName = SOURCES.rssFeeds[i].name
     if (result.status === 'fulfilled') {
       allItems.push(...result.value)
+      feedCounts.push({ source: feedName, count: result.value.length })
       if (result.value.length > 0) successCount++
     } else {
+      feedCounts.push({ source: `${feedName} (失败)`, count: 0 })
       failCount++
     }
   }
@@ -184,7 +191,7 @@ export async function collectNews(): Promise<number> {
 
   if (newItems.length === 0) {
     console.log('[A2] No new news items to insert.')
-    return 0
+    return { total: 0, breakdown: feedCounts }
   }
 
   console.log(`[A2] Upserting ${newItems.length} new items (${newItems.filter(i => i.language === 'zh').length} 中文)...`)
@@ -208,5 +215,5 @@ export async function collectNews(): Promise<number> {
 
   console.log(`[A2] Successfully upserted ${inserted} news items.`)
   console.log('[A2] collectNews complete')
-  return inserted
+  return { total: inserted, breakdown: feedCounts }
 }

@@ -8,6 +8,7 @@ import {
   collectRegulatory,
   collectTweets,
 } from '@/modules/collectors'
+import type { CollectorResult } from '@/modules/collectors'
 
 export const maxDuration = 300
 
@@ -41,8 +42,19 @@ export async function GET() {
 
         const taskStart = Date.now()
         try {
-          const count = await task.fn()
+          const rawResult = await task.fn()
           const elapsed = ((Date.now() - taskStart) / 1000).toFixed(1)
+
+          // Support both number and CollectorResult return types
+          let count: number
+          let breakdown: CollectorResult['breakdown'] | undefined
+          if (typeof rawResult === 'number') {
+            count = rawResult
+          } else {
+            count = rawResult.total
+            breakdown = rawResult.breakdown
+          }
+
           results[task.key] = { status: 'ok', count }
           totalItems += count
           send({
@@ -50,6 +62,18 @@ export async function GET() {
             message: `${task.name} — 完成，采集 ${count} 条数据 (${elapsed}s)`,
             level: 'success',
           })
+
+          // Show per-source breakdown
+          if (breakdown && breakdown.length > 0) {
+            const nonZero = breakdown.filter(b => b.count > 0)
+            const zero = breakdown.filter(b => b.count === 0)
+            for (const b of nonZero) {
+              send({ type: 'log', message: `    ${b.source}: ${b.count} 条`, level: 'info' })
+            }
+            if (zero.length > 0) {
+              send({ type: 'log', message: `    无数据: ${zero.map(b => b.source).join(', ')}`, level: 'info' })
+            }
+          }
         } catch (err) {
           const elapsed = ((Date.now() - taskStart) / 1000).toFixed(1)
           results[task.key] = { status: 'error', count: 0 }

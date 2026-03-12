@@ -4,6 +4,8 @@ export const SOURCES = {
   // ── 链上数据 (免费) ──
   defillama: {
     baseUrl: process.env.DEFILLAMA_API_BASE || 'https://api.llama.fi',
+    // Stablecoin endpoints live on a separate subdomain
+    stablecoinBaseUrl: process.env.DEFILLAMA_STABLECOIN_API_BASE || 'https://stablecoins.llama.fi',
     endpoints: {
       stablecoins: '/stablecoins',
       stablecoinCharts: '/stablecoincharts/all',

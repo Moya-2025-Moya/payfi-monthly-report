@@ -19,6 +19,12 @@ export {
   collectRegulatory,
 }
 
+// Collector result with per-source breakdown
+export interface CollectorResult {
+  total: number
+  breakdown: { source: string; count: number }[]
+}
+
 // Daily collection: A1-A5, A7 in parallel
 export async function runDailyCollection(): Promise<{
   results: Record<string, { status: 'ok' | 'error'; count: number }>
@@ -40,7 +46,9 @@ export async function runDailyCollection(): Promise<{
 
   settled.forEach((result, i) => {
     if (result.status === 'fulfilled') {
-      results[tasks[i].name] = { status: 'ok', count: result.value }
+      const val = result.value
+      const count = typeof val === 'number' ? val : val.total
+      results[tasks[i].name] = { status: 'ok', count }
     } else {
       results[tasks[i].name] = { status: 'error', count: 0 }
       console.error(`[Collector] ${tasks[i].name} failed:`, result.reason)

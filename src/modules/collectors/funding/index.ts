@@ -51,7 +51,9 @@ function buildSourceUrl(raise: DefiLlamaRaise): string {
   return 'https://defillama.com/raises'
 }
 
-export async function collectFunding(): Promise<number> {
+import type { CollectorResult } from '@/modules/collectors'
+
+export async function collectFunding(): Promise<CollectorResult> {
   console.log('[funding] Starting funding collection...')
 
   const watchlistNames = new Set(
@@ -72,14 +74,15 @@ export async function collectFunding(): Promise<number> {
 
     if (!res.ok) {
       console.error(`[funding] DeFiLlama raises fetch failed: ${res.status}`)
-      return 0
+      return { total: 0, breakdown: [{ source: 'DeFiLlama Raises', count: 0 }] }
     }
 
     const data: DefiLlamaRaisesResponse = await res.json()
     raises = data.raises ?? []
+    console.log(`[funding] DeFiLlama API 返回 ${raises.length} 条融资记录`)
   } catch (err) {
     console.error('[funding] Failed to fetch DeFiLlama raises:', err)
-    return 0
+    return { total: 0, breakdown: [{ source: 'DeFiLlama Raises', count: 0 }] }
   }
 
   const cutoff = Date.now() - THIRTY_DAYS_MS
@@ -110,7 +113,7 @@ export async function collectFunding(): Promise<number> {
 
   if (mapped.length === 0) {
     console.log('[funding] No relevant funding rounds found.')
-    return 0
+    return { total: 0, breakdown: [{ source: 'DeFiLlama Raises', count: 0 }] }
   }
 
   // Deduplicate by (project_name, round, announced_at)
@@ -128,11 +131,13 @@ export async function collectFunding(): Promise<number> {
     .from('raw_funding')
     .upsert(deduped, { onConflict: 'project_name,round,announced_at' })
 
+  const breakdown = [{ source: 'DeFiLlama Raises', count: deduped.length }]
+
   if (error) {
     console.error('[funding] Upsert failed:', error)
-    return 0
+    return { total: 0, breakdown }
   } else {
     console.log(`[funding] Successfully upserted ${deduped.length} funding rounds.`)
-    return deduped.length
+    return { total: deduped.length, breakdown }
   }
 }
