@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
+import { TopBar } from '@/components/layout/TopBar'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { MobileNav } from '@/components/layout/MobileNav'
 import { ThemeProvider } from '@/components/theme/ThemeProvider'
 import './globals.css'
 
@@ -26,12 +28,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
-          <div className="flex min-h-screen">
+          <TopBar />
+          <div className="flex min-h-screen pt-[var(--topbar-h)]">
             <Sidebar />
-            <main className="flex-1 md:ml-[var(--sidebar-w)] p-8 max-w-[1200px]">
+            <main className="flex-1 md:ml-[var(--sidebar-w)] p-4 pb-16 md:p-8 md:pb-8 max-w-[1200px]">
               {children}
             </main>
           </div>
+          <MobileNav />
         </ThemeProvider>
       </body>
     </html>

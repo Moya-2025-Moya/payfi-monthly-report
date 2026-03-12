@@ -99,6 +99,83 @@ function filterCandidates(candidates: CandidateFact[]): CandidateFact[] {
   return candidates.filter(c => c.self_check !== 'unsupported')
 }
 
+// ─── 语义查重: trigram Jaccard 相似度 ───
+
+function trigrams(s: string): Set<string> {
+  const t = new Set<string>()
+  const lower = s.toLowerCase().replace(/\s+/g, '')
+  for (let i = 0; i <= lower.length - 3; i++) {
+    t.add(lower.slice(i, i + 3))
+  }
+  return t
+}
+
+function jaccardSimilarity(a: string, b: string): number {
+  const ta = trigrams(a)
+  const tb = trigrams(b)
+  if (ta.size === 0 && tb.size === 0) return 1
+  let intersection = 0
+  for (const t of ta) {
+    if (tb.has(t)) intersection++
+  }
+  return intersection / (ta.size + tb.size - intersection)
+}
+
+const DEDUP_SIMILARITY_THRESHOLD = 0.55
+
+// Deduplicate candidates against existing facts in DB for the same week
+async function deduplicateAgainstDB(
+  candidates: CandidateFact[],
+  weekNumber: string
+): Promise<CandidateFact[]> {
+  if (candidates.length === 0) return []
+
+  // Fetch existing facts for this week (content_zh only, for comparison)
+  const { data: existing } = await supabaseAdmin
+    .from('atomic_facts')
+    .select('content_zh')
+    .eq('week_number', weekNumber)
+    .limit(500)
+
+  const existingContents = (existing ?? []).map((r: { content_zh: string }) => r.content_zh).filter(Boolean)
+
+  if (existingContents.length === 0) return candidates
+
+  // Filter out candidates that are too similar to existing facts
+  const unique = candidates.filter(candidate => {
+    for (const ec of existingContents) {
+      if (jaccardSimilarity(candidate.content, ec) >= DEDUP_SIMILARITY_THRESHOLD) {
+        console.log(`[fact-splitter] Dedup: "${candidate.content.slice(0, 40)}..." similar to existing fact`)
+        return false
+      }
+    }
+    return true
+  })
+
+  const dropped = candidates.length - unique.length
+  if (dropped > 0) {
+    console.log(`[fact-splitter] Dedup: dropped ${dropped}/${candidates.length} duplicate candidates`)
+  }
+
+  return unique
+}
+
+// Deduplicate within a batch of candidates (same batch, cross-source)
+function deduplicateWithinBatch(candidates: CandidateFact[]): CandidateFact[] {
+  if (candidates.length <= 1) return candidates
+
+  const kept: CandidateFact[] = []
+  for (const c of candidates) {
+    const isDup = kept.some(k => jaccardSimilarity(c.content, k.content) >= DEDUP_SIMILARITY_THRESHOLD)
+    if (!isDup) {
+      kept.push(c)
+    } else {
+      console.log(`[fact-splitter] Intra-batch dedup: "${c.content.slice(0, 40)}..."`)
+    }
+  }
+  return kept
+}
+
 // ─── 写入 atomic_facts 表 (status: pending_verification) ───
 
 async function saveCandidates(
@@ -106,7 +183,11 @@ async function saveCandidates(
   raw: RawRecord,
   weekNumber: string
 ): Promise<string[]> {
-  const rows = candidates.map(c => ({
+  // Dedup against existing DB facts before inserting
+  const deduped = await deduplicateAgainstDB(candidates, weekNumber)
+  if (deduped.length === 0) return []
+
+  const rows = deduped.map(c => ({
     content_zh: c.content,
     content_en: '',
     fact_type: c.fact_type,
@@ -279,25 +360,61 @@ export async function processUnprocessedRaw(
   const allFactIds: string[] = []
   let totalDropped = 0
 
-  // 分批并发处理，每批 BATCH_SIZE 条
+  // In-memory dedup cache for this table's run (catches cross-source dupes within same run)
+  const recentContents: string[] = []
+
+  // 分批串行处理（保证查重能看到前一批的插入）
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE)
     const batchNum = Math.floor(i / BATCH_SIZE) + 1
     const totalBatches = Math.ceil(rows.length / BATCH_SIZE)
     console.log(`[fact-splitter] ${table} 批次 ${batchNum}/${totalBatches} (${batch.length} 条)`)
 
-    // 批内并发
-    const results = await Promise.allSettled(
-      batch.map(row => splitFacts(row, table, weekNumber))
+    // 批内并发提取，但串行保存（先收集candidates，再统一查重+保存）
+    const extractResults = await Promise.allSettled(
+      batch.map(async (row) => {
+        const raw = toRawRecord(row, table)
+        if (raw.text.length < 30) return { raw, candidates: [] as CandidateFact[], dropped: 0 }
+        const text = raw.text.length > 15000 ? raw.text.slice(0, 15000) : raw.text
+        const extracted = await extractFacts(raw.source_url, raw.published_at, text)
+        if (extracted.length === 0) return { raw, candidates: [], dropped: 0 }
+        const verdicts = await verifyFacts(text, extracted)
+        const allCandidates = mergeToCandidates(extracted, verdicts)
+        const filtered = filterCandidates(allCandidates)
+        return { raw, candidates: filtered, dropped: allCandidates.length - filtered.length }
+      })
     )
 
-    for (const r of results) {
-      if (r.status === 'fulfilled') {
-        allFactIds.push(...r.value.factIds)
-        totalDropped += r.value.dropped
-      } else {
+    // 串行保存：每条结果先做 in-memory dedup，再保存
+    for (const r of extractResults) {
+      if (r.status !== 'fulfilled') {
         console.error(`[fact-splitter] ${table} item failed:`, r.reason)
+        continue
       }
+
+      const { raw, candidates, dropped } = r.value
+      totalDropped += dropped
+
+      // In-memory cross-source dedup
+      const unique = candidates.filter(c => {
+        const isDup = recentContents.some(rc => jaccardSimilarity(c.content, rc) >= DEDUP_SIMILARITY_THRESHOLD)
+        if (isDup) {
+          console.log(`[fact-splitter] Cross-source dedup: "${c.content.slice(0, 40)}..."`)
+          totalDropped++
+          return false
+        }
+        return true
+      })
+
+      if (unique.length > 0) {
+        const factIds = await saveCandidates(unique, raw, weekNumber)
+        allFactIds.push(...factIds)
+        // Add to in-memory cache for cross-source dedup
+        for (const c of unique) recentContents.push(c.content)
+      }
+
+      // 标记原始数据为已处理
+      await supabaseAdmin.from(table).update({ processed: true }).eq('id', raw.id)
     }
 
     // 非最后一批时短暂等待

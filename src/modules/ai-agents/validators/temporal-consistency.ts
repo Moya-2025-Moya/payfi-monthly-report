@@ -118,14 +118,14 @@ async function getEntityTimeline(fact: AtomicFact): Promise<EntityTimelineData |
   const factIds = timelineFacts.map(tf => tf.fact_id)
   const { data: facts } = await supabaseAdmin
     .from('atomic_facts')
-    .select('id, content_en, fact_date')
+    .select('id, content_zh, content_en, fact_date')
     .in('id', factIds)
     .order('fact_date', { ascending: true })
 
   if (!facts || facts.length === 0) return null
 
   const events = facts
-    .map(f => `- [${new Date(f.fact_date).toISOString().split('T')[0]}] ${f.content_en}`)
+    .map(f => `- [${new Date(f.fact_date).toISOString().split('T')[0]}] ${f.content_zh || f.content_en}`)
     .join('\n')
 
   return { entityId, entityName: entity.name, events }
@@ -165,14 +165,14 @@ async function findTimelineByTags(tags: string[]): Promise<EntityTimelineData | 
   const factIds = timelineFacts.map(tf => tf.fact_id)
   const { data: facts } = await supabaseAdmin
     .from('atomic_facts')
-    .select('content_en, fact_date')
+    .select('content_zh, content_en, fact_date')
     .in('id', factIds)
     .order('fact_date', { ascending: true })
 
   if (!facts || facts.length === 0) return null
 
   const events = facts
-    .map(f => `- [${new Date(f.fact_date).toISOString().split('T')[0]}] ${f.content_en}`)
+    .map(f => `- [${new Date(f.fact_date).toISOString().split('T')[0]}] ${f.content_zh || f.content_en}`)
     .join('\n')
 
   return { entityId: entity.id, entityName: entity.name, events }

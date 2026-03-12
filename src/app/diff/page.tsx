@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DiffClient } from './DiffClient'
-import { getCurrentWeekNumber } from '@/db/client'
+import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
 import type { DiffResult } from '@/lib/types'
 
 async function fetchDiff(weekA: string, weekB: string): Promise<DiffResult | null> {
@@ -18,15 +18,34 @@ function prevWeek(w: string): string {
   return `${year}-W${String(wNum - 1).padStart(2, '0')}`
 }
 
+async function getAvailableWeeks(): Promise<string[]> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('atomic_facts')
+      .select('week_number')
+      .not('week_number', 'is', null)
+      .order('week_number', { ascending: false })
+
+    if (!data) return []
+    const unique = [...new Set(data.map((r: { week_number: string }) => r.week_number))]
+    return unique.slice(0, 20)
+  } catch {
+    return []
+  }
+}
+
 export default async function DiffPage() {
   const weekB = getCurrentWeekNumber()
   const weekA = prevWeek(weekB)
-  const diff = await fetchDiff(weekA, weekB)
+  const [diff, availableWeeks] = await Promise.all([
+    fetchDiff(weekA, weekB),
+    getAvailableWeeks(),
+  ])
 
   return (
     <div>
       <PageHeader title="周对比" description="对比任意两周之间的事实变化" />
-      <DiffClient initialDiff={diff} defaultWeekA={weekA} defaultWeekB={weekB} />
+      <DiffClient initialDiff={diff} defaultWeekA={weekA} defaultWeekB={weekB} availableWeeks={availableWeeks} />
     </div>
   )
 }

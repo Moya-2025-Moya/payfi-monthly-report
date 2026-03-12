@@ -43,7 +43,7 @@ async function fetchRecentFactsForTracker(
 
   const { data, error } = await supabaseAdmin
     .from('atomic_facts')
-    .select('id, content_en, fact_date, tags')
+    .select('id, content_zh, content_en, fact_date, tags')
     .overlaps('tags', lowerTerms)
     .eq('verification_status', 'verified')
     .order('fact_date', { ascending: false })
@@ -53,7 +53,7 @@ async function fetchRecentFactsForTracker(
 
   return data.map((f) => ({
     id: f.id as string,
-    content_en: f.content_en as string,
+    content_en: ((f.content_zh || f.content_en) ?? '') as string,
     fact_date: f.fact_date as string,
   }))
 }

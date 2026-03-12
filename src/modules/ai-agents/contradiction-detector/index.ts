@@ -88,7 +88,7 @@ async function detectNumericalContradictions(fact: AtomicFact, entityIds: string
   // Find facts with same metric_name, different source, linked to same entity, within ±14 days
   const { data: candidateFacts } = await supabaseAdmin
     .from('atomic_facts')
-    .select('id, content_en, metric_value, source_url, fact_date, source_id')
+    .select('id, content_zh, content_en, metric_value, source_url, fact_date, source_id')
     .eq('metric_name', fact.metric_name)
     .neq('source_id', fact.source_id)
     .neq('id', fact.id)

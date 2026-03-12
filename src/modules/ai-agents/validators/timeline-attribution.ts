@@ -27,15 +27,15 @@ async function getTimelineEvents(timelineId: string): Promise<string> {
   const factIds = tf.map((t: { fact_id: string }) => t.fact_id)
   const { data: facts } = await supabaseAdmin
     .from('atomic_facts')
-    .select('content_en, fact_date')
+    .select('content_zh, content_en, fact_date')
     .in('id', factIds)
     .order('fact_date', { ascending: true })
 
   if (!facts || facts.length === 0) return '(No existing events)'
 
   return facts
-    .map((f: { content_en: string; fact_date: string | Date }) =>
-      `- [${new Date(f.fact_date).toISOString().split('T')[0]}] ${f.content_en}`
+    .map((f: { content_zh: string; content_en: string; fact_date: string | Date }) =>
+      `- [${new Date(f.fact_date).toISOString().split('T')[0]}] ${f.content_zh || f.content_en}`
     )
     .join('\n')
 }
@@ -64,7 +64,7 @@ export async function validateTimelineAttribution(
     .replace('{timeline_name}', tl.name)
     .replace('{timeline_description}', tl.description ?? 'No description')
     .replace('{timeline_events}', events)
-    .replace('{fact_content}', fact.content_en)
+    .replace('{fact_content}', fact.content_zh || fact.content_en)
     .replace('{fact_date}', new Date(fact.fact_date).toISOString().split('T')[0])
 
   try {

@@ -71,16 +71,16 @@ const CONTEXT_WORDS = [
   '稳定币', '加密', '区块链', '支付', '数字资产',
 ]
 
-function matchesStablecoinKeywords(title: string, summary: string | null): boolean {
+function matchesStablecoinKeywords(title: string, summary: string | null): 'strong' | 'weak' | false {
   const text = `${title} ${summary ?? ''}`.toLowerCase()
 
   // 强关键词直接通过
-  if (STRONG_KEYWORDS.some(kw => text.includes(kw))) return true
+  if (STRONG_KEYWORDS.some(kw => text.includes(kw))) return 'strong'
 
   // 弱关键词 + 上下文词共现才通过
   const hasWeak = WEAK_KEYWORDS.some(kw => text.includes(kw))
   if (hasWeak) {
-    return CONTEXT_WORDS.some(ctx => text.includes(ctx))
+    return CONTEXT_WORDS.some(ctx => text.includes(ctx)) ? 'weak' : false
   }
 
   return false
@@ -96,9 +96,10 @@ function isZhSource(name: string, url: string): boolean {
 
 async function collectFromRssFeed(
   feed: { name: string; url: string }
-): Promise<RawNews[]> {
+): Promise<{ items: RawNews[]; strongUrls: Set<string> }> {
   const cutoff = new Date(Date.now() - SEVEN_DAYS_MS)
   const collected: RawNews[] = []
+  const strongUrls = new Set<string>()
   const isZh = isZhSource(feed.name, feed.url)
 
   try {
@@ -115,7 +116,12 @@ async function collectFromRssFeed(
       if (item.link.includes('github.com')) continue
 
       // 稳定币关键词预过滤（软过滤，B1 prompt 做硬过滤）
-      if (!matchesStablecoinKeywords(item.title, item.contentSnippet ?? null)) continue
+      const matchStrength = matchesStablecoinKeywords(item.title, item.contentSnippet ?? null)
+      if (!matchStrength) continue
+
+      if (matchStrength === 'strong') {
+        strongUrls.add(item.link)
+      }
 
       collected.push({
         collector: 'rss',
@@ -123,7 +129,7 @@ async function collectFromRssFeed(
         source_url: item.link,
         title: item.title.trim(),
         summary: item.contentSnippet?.slice(0, 500) ?? null,
-        full_text: null, // will be filled by full-text extraction below
+        full_text: null, // will be filled by full-text extraction for strong matches
         published_at: publishedAt.toISOString(),
         tags: null,
         language: isZh ? 'zh' : 'en',
@@ -133,12 +139,12 @@ async function collectFromRssFeed(
       count++
     }
 
-    console.log(`[A2] RSS "${feed.name}" → ${count} items (last 7 days)`)
+    console.log(`[A2] RSS "${feed.name}" → ${count} items (${strongUrls.size} strong, last 7 days)`)
   } catch (err) {
     console.error(`[A2] RSS "${feed.name}" failed:`, err instanceof Error ? err.message.slice(0, 100) : String(err))
   }
 
-  return collected
+  return { items: collected, strongUrls }
 }
 
 // ─── Full-text extraction ────────────────────────────────────────────────────
@@ -205,6 +211,7 @@ export async function collectNews(): Promise<CollectorResult> {
   )
 
   const allItems: RawNews[] = []
+  const allStrongUrls = new Set<string>()
   let successCount = 0
   let failCount = 0
   const feedCounts: { source: string; count: number }[] = []
@@ -213,9 +220,12 @@ export async function collectNews(): Promise<CollectorResult> {
     const result = results[i]
     const feedName = SOURCES.rssFeeds[i].name
     if (result.status === 'fulfilled') {
-      allItems.push(...result.value)
-      feedCounts.push({ source: feedName, count: result.value.length })
-      if (result.value.length > 0) successCount++
+      allItems.push(...result.value.items)
+      for (const url of result.value.strongUrls) {
+        allStrongUrls.add(url)
+      }
+      feedCounts.push({ source: feedName, count: result.value.items.length })
+      if (result.value.items.length > 0) successCount++
     } else {
       feedCounts.push({ source: `${feedName} (失败)`, count: 0 })
       failCount++
@@ -242,8 +252,12 @@ export async function collectNews(): Promise<CollectorResult> {
     return { total: 0, breakdown: feedCounts }
   }
 
-  // Fetch full text for filtered articles
-  await enrichWithFullText(newItems)
+  // Fetch full text only for strong keyword matches (weak matches rely on title+summary)
+  const strongItems = newItems.filter(item => allStrongUrls.has(item.source_url))
+  console.log(`[A2] Strong keyword matches: ${strongItems.length}/${newItems.length} — fetching full text for strong only`)
+  if (strongItems.length > 0) {
+    await enrichWithFullText(strongItems)
+  }
 
   console.log(`[A2] Upserting ${newItems.length} new items (${newItems.filter(i => i.language === 'zh').length} 中文)...`)
 

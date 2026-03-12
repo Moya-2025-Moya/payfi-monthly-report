@@ -3,12 +3,43 @@ import { useState, useEffect, useRef } from 'react'
 import { FactList } from '@/components/facts/FactList'
 import type { AtomicFact } from '@/lib/types'
 
+const FACT_TYPES = [
+  { key: '', label: '全部类型' },
+  { key: 'event', label: '事件' },
+  { key: 'metric', label: '指标' },
+  { key: 'quote', label: '引述' },
+  { key: 'relationship', label: '关系' },
+  { key: 'status_change', label: '状态变更' },
+]
+
+const TIME_RANGES = [
+  { key: '', label: '全部时间' },
+  { key: '7', label: '最近7天' },
+  { key: '30', label: '最近30天' },
+  { key: '90', label: '最近90天' },
+]
+
 export function SearchClient({ initialQuery, initialResults }: { initialQuery: string; initialResults: AtomicFact[] }) {
   const [query, setQuery] = useState(initialQuery)
   const [results, setResults] = useState(initialResults)
   const [loading, setLoading] = useState(false)
   const [hasSearched, setHasSearched] = useState(initialQuery.trim().length > 0)
+  const [factType, setFactType] = useState('')
+  const [timeRange, setTimeRange] = useState('')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function filterResults(facts: AtomicFact[]): AtomicFact[] {
+    let filtered = facts
+    if (factType) {
+      filtered = filtered.filter(f => f.fact_type === factType)
+    }
+    if (timeRange) {
+      const days = parseInt(timeRange, 10)
+      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+      filtered = filtered.filter(f => new Date(f.fact_date).toISOString() >= cutoff)
+    }
+    return filtered
+  }
 
   async function doSearch(q: string) {
     if (!q.trim()) return
@@ -40,8 +71,16 @@ export function SearchClient({ initialQuery, initialResults }: { initialQuery: s
     doSearch(query)
   }
 
+  const filteredResults = filterResults(results)
+
+  const selectStyle = {
+    borderColor: 'var(--input-border)',
+    background: 'var(--input-bg)',
+    color: 'var(--fg)',
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"
@@ -60,16 +99,41 @@ export function SearchClient({ initialQuery, initialResults }: { initialQuery: s
         </button>
       </form>
 
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2">
+        <select
+          value={factType}
+          onChange={e => setFactType(e.target.value)}
+          className="rounded-md border px-2.5 py-1.5 text-[12px] outline-none font-mono"
+          style={selectStyle}
+        >
+          {FACT_TYPES.map(t => (
+            <option key={t.key} value={t.key}>{t.label}</option>
+          ))}
+        </select>
+        <select
+          value={timeRange}
+          onChange={e => setTimeRange(e.target.value)}
+          className="rounded-md border px-2.5 py-1.5 text-[12px] outline-none font-mono"
+          style={selectStyle}
+        >
+          {TIME_RANGES.map(t => (
+            <option key={t.key} value={t.key}>{t.label}</option>
+          ))}
+        </select>
+      </div>
+
       {hasSearched ? (
-        results.length > 0 ? (
+        filteredResults.length > 0 ? (
           <>
             <div className="flex items-center gap-3">
               <p className="text-[12px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>
-                找到 {results.length} 条结果
+                找到 {filteredResults.length} 条结果
+                {filteredResults.length !== results.length && ` (共 ${results.length} 条，已过滤)`}
               </p>
               {loading && <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>更新中...</span>}
             </div>
-            <FactList facts={results} />
+            <FactList facts={filteredResults} />
           </>
         ) : loading ? (
           <p className="text-[13px] font-mono" style={{ color: 'var(--fg-faint)' }}>搜索中...</p>
@@ -77,7 +141,7 @@ export function SearchClient({ initialQuery, initialResults }: { initialQuery: s
           <div className="py-16 text-center space-y-2">
             <p className="text-[13px] font-medium" style={{ color: 'var(--fg-secondary)' }}>未找到结果</p>
             <p className="text-[12px] font-mono" style={{ color: 'var(--fg-faint)' }}>
-              试试其他关键词，或检查拼写。
+              试试其他关键词或调整过滤条件。
             </p>
           </div>
         )

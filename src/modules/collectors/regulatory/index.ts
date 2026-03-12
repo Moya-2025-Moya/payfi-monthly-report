@@ -20,16 +20,45 @@ const parser = new RSSParser()
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
-const REGULATORY_KEYWORDS = [
+const STRONG_REGULATORY_KEYWORDS = [
   'stablecoin',
   'stable coin',
+  'usdc',
+  'usdt',
+  'pyusd',
+  'circle',
+  'tether',
+  'paxos',
+  'cbdc',
+  'digital dollar',
+  'digital euro',
+  'genius act',
+  'mica regulation',
+  'money transmission',
+  'e-money',
+]
+
+const WEAK_REGULATORY_KEYWORDS = [
   'digital asset',
   'crypto',
-  'payment',
   'virtual currency',
-  'cbdc',
+  'payment',
   'defi',
   'decentralized finance',
+  'blockchain',
+]
+
+const WEAK_REGULATORY_CONTEXT = [
+  'stablecoin',
+  'stable',
+  'usdc',
+  'usdt',
+  'payment system',
+  'money service',
+  'remittance',
+  'settlement',
+  'e-money',
+  'stored value',
 ]
 
 const SEC_EFTS_URL = 'https://efts.sec.gov/LATEST/search-index'
@@ -66,7 +95,17 @@ function inferAgency(title: string, description: string | null, defaultAgency: s
 
 function containsRegulatoryKeyword(text: string): boolean {
   const lower = text.toLowerCase()
-  return REGULATORY_KEYWORDS.some((kw) => lower.includes(kw))
+
+  if (STRONG_REGULATORY_KEYWORDS.some((kw) => lower.includes(kw))) {
+    return true
+  }
+
+  const hasWeak = WEAK_REGULATORY_KEYWORDS.some((kw) => lower.includes(kw))
+  if (hasWeak) {
+    return WEAK_REGULATORY_CONTEXT.some((ctx) => lower.includes(ctx))
+  }
+
+  return false
 }
 
 async function collectSecRss(): Promise<RawRegulatory[]> {

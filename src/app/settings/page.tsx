@@ -287,7 +287,10 @@ type PipelineData = {
   facts_collected?: number; stats?: Record<string, unknown>; message?: string
 }
 
+type SettingsTab = 'config' | 'pipeline'
+
 export default function SettingsPage() {
+  const [tab, setTab] = useState<SettingsTab>('config')
   const [health, setHealth] = useState<HealthData | null>(null)
   const [healthError, setHealthError] = useState<string | null>(null)
   const [pipeline, setPipeline] = useState<PipelineData | null>(null)
@@ -305,13 +308,116 @@ export default function SettingsPage() {
       .catch(e => setPipelineError(e.message))
   }, [])
 
+  const tabs: { key: SettingsTab; label: string }[] = [
+    { key: 'config', label: '系统配置' },
+    { key: 'pipeline', label: '流水线操作' },
+  ]
+
   return (
     <div>
       <PageHeader title="设置" description="系统配置与流水线控制" />
-      <div className="space-y-4 max-w-2xl">
 
-        <div>
-          <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>流水线控制</h2>
+      {/* Tab switcher */}
+      <div className="flex gap-0 mb-6 border-b" style={{ borderColor: 'var(--border)' }}>
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className="px-4 py-2 text-[12px] font-medium tracking-wider transition-colors -mb-px border-b-2"
+            style={{
+              borderColor: tab === t.key ? 'var(--accent)' : 'transparent',
+              color: tab === t.key ? 'var(--accent)' : 'var(--fg-faint)',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-4 max-w-2xl">
+        {tab === 'config' && (
+          <>
+            <Card>
+              <p className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>系统健康</p>
+              {healthError ? (
+                <p className="text-xs" style={{ color: 'var(--danger)' }}>加载失败: {healthError}</p>
+              ) : health === null ? (
+                <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>检查中...</p>
+              ) : (
+                <div className="space-y-1 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full"
+                      style={{ background: health.status === 'ok' ? 'var(--success)' : 'var(--danger)' }} />
+                    <span className="font-medium" style={{ color: 'var(--fg)' }}>API: {health.status === 'ok' ? '正常' : health.status}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full"
+                      style={{ background: health.db === 'connected' ? 'var(--success)' : 'var(--danger)' }} />
+                    <span style={{ color: 'var(--fg)' }}>数据库: {health.db === 'connected' ? '已连接' : health.db}</span>
+                  </div>
+                  <p style={{ color: 'var(--fg-muted)' }}>检查时间: {new Date(health.timestamp).toLocaleTimeString('zh-CN')}</p>
+                </div>
+              )}
+            </Card>
+
+            <Card>
+              <p className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>流水线状态</p>
+              {pipelineError ? (
+                <p className="text-xs" style={{ color: 'var(--danger)' }}>加载失败: {pipelineError}</p>
+              ) : pipeline === null ? (
+                <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
+              ) : pipeline.message ? (
+                <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>{pipeline.message}</p>
+              ) : (
+                <div className="space-y-1 text-xs">
+                  {pipeline.status && (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block w-2 h-2 rounded-full"
+                        style={{ background: pipeline.status === 'completed' ? 'var(--success)' : pipeline.status === 'running' ? 'var(--info)' : 'var(--warning)' }} />
+                      <span className="font-medium" style={{ color: 'var(--fg)' }}>
+                        状态: {pipeline.status === 'completed' ? '已完成' : pipeline.status === 'running' ? '运行中' : pipeline.status === 'failed' ? '失败' : pipeline.status}
+                      </span>
+                    </div>
+                  )}
+                  {pipeline.started_at && (
+                    <p style={{ color: 'var(--fg-muted)' }}>开始时间: {new Date(pipeline.started_at).toLocaleString('zh-CN')}</p>
+                  )}
+                  {pipeline.completed_at && (
+                    <p style={{ color: 'var(--fg-muted)' }}>完成时间: {new Date(pipeline.completed_at).toLocaleString('zh-CN')}</p>
+                  )}
+                  {pipeline.facts_collected !== undefined && (
+                    <p style={{ color: 'var(--fg)' }}>采集事实数: {pipeline.facts_collected}</p>
+                  )}
+                </div>
+              )}
+            </Card>
+
+            {/* Dev Mode */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--danger)' }}>开发模式</h2>
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                  style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--danger)' }}>
+                  DEV
+                </span>
+              </div>
+              <Card>
+                <div className="space-y-4">
+                  <DevResetButton
+                    label="重置处理数据"
+                    description="清空所有 AI 处理结果（事实、实体、时间线、矛盾），保留原始采集数据并标记为未处理，可重新运行 AI 处理"
+                    mode="processed"
+                  />
+                  <div className="border-t" style={{ borderColor: 'var(--border)' }} />
+                  <DevResetButton
+                    label="全部清空"
+                    description="清空所有数据（包括原始采集数据），恢复到空白状态，需要重新采集"
+                    mode="all"
+                  />
+                </div>
+              </Card>
+            </div>
+          </>
+        )}
+
+        {tab === 'pipeline' && (
           <div className="space-y-3">
             <PipelineTrigger
               label="数据采集"
@@ -327,7 +433,7 @@ export default function SettingsPage() {
             />
             <PipelineTrigger
               label="AI 处理"
-              description="运行事实拆分 (B1)、六层验证 (V1-V5)、裁决 (V0)、实体识别 (B2)、时间线归并 (B3)、矛盾检测 (B4)、翻译 (B5)"
+              description="运行事实拆分 (B1)、六层验证 (V1-V5+V0)、实体识别 (B2)、时间线归并 (B3)、矛盾检测 (B4)"
               endpoint="/api/cron/process"
               method="GET"
             />
@@ -338,89 +444,7 @@ export default function SettingsPage() {
               method="GET"
             />
           </div>
-        </div>
-
-        <Card>
-          <p className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>系统健康</p>
-          {healthError ? (
-            <p className="text-xs" style={{ color: 'var(--danger)' }}>加载失败: {healthError}</p>
-          ) : health === null ? (
-            <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>检查中...</p>
-          ) : (
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full"
-                  style={{ background: health.status === 'ok' ? 'var(--success)' : 'var(--danger)' }} />
-                <span className="font-medium" style={{ color: 'var(--fg)' }}>API: {health.status === 'ok' ? '正常' : health.status}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full"
-                  style={{ background: health.db === 'connected' ? 'var(--success)' : 'var(--danger)' }} />
-                <span style={{ color: 'var(--fg)' }}>数据库: {health.db === 'connected' ? '已连接' : health.db}</span>
-              </div>
-              <p style={{ color: 'var(--fg-muted)' }}>检查时间: {new Date(health.timestamp).toLocaleTimeString('zh-CN')}</p>
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <p className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>流水线状态</p>
-          {pipelineError ? (
-            <p className="text-xs" style={{ color: 'var(--danger)' }}>加载失败: {pipelineError}</p>
-          ) : pipeline === null ? (
-            <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
-          ) : pipeline.message ? (
-            <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>{pipeline.message}</p>
-          ) : (
-            <div className="space-y-1 text-xs">
-              {pipeline.status && (
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full"
-                    style={{ background: pipeline.status === 'completed' ? 'var(--success)' : pipeline.status === 'running' ? 'var(--info)' : 'var(--warning)' }} />
-                  <span className="font-medium" style={{ color: 'var(--fg)' }}>
-                    状态: {pipeline.status === 'completed' ? '已完成' : pipeline.status === 'running' ? '运行中' : pipeline.status === 'failed' ? '失败' : pipeline.status}
-                  </span>
-                </div>
-              )}
-              {pipeline.started_at && (
-                <p style={{ color: 'var(--fg-muted)' }}>开始时间: {new Date(pipeline.started_at).toLocaleString('zh-CN')}</p>
-              )}
-              {pipeline.completed_at && (
-                <p style={{ color: 'var(--fg-muted)' }}>完成时间: {new Date(pipeline.completed_at).toLocaleString('zh-CN')}</p>
-              )}
-              {pipeline.facts_collected !== undefined && (
-                <p style={{ color: 'var(--fg)' }}>采集事实数: {pipeline.facts_collected}</p>
-              )}
-            </div>
-          )}
-        </Card>
-
-        {/* Dev Mode */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--danger)' }}>开发模式</h2>
-            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-              style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--danger)' }}>
-              DEV
-            </span>
-          </div>
-          <Card>
-            <div className="space-y-4">
-              <DevResetButton
-                label="重置处理数据"
-                description="清空所有 AI 处理结果（事实、实体、时间线、矛盾、翻译），保留原始采集数据并标记为未处理，可重新运行 AI 处理"
-                mode="processed"
-              />
-              <div className="border-t" style={{ borderColor: 'var(--border)' }} />
-              <DevResetButton
-                label="全部清空"
-                description="清空所有数据（包括原始采集数据），恢复到空白状态，需要重新采集"
-                mode="all"
-              />
-            </div>
-          </Card>
-        </div>
-
+        )}
       </div>
     </div>
   )

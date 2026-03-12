@@ -1,6 +1,7 @@
 // SSE streaming endpoint for snapshot generation with detailed progress
 import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
 import { getDensityAnomalies } from '@/modules/knowledge/density'
+import { callHaiku } from '@/lib/ai-client'
 
 export const maxDuration = 120
 
@@ -18,7 +19,7 @@ export async function GET() {
 
       try {
         // Step 1: Count facts
-        send({ type: 'progress', step: '1/6', message: '统计本周事实数据...' })
+        send({ type: 'progress', step: '1/7', message: '统计本周事实数据...' })
         const { count: totalFacts } = await supabaseAdmin
           .from('atomic_facts')
           .select('id', { count: 'exact', head: true })
@@ -26,7 +27,7 @@ export async function GET() {
         send({ type: 'log', message: `  总事实数: ${totalFacts ?? 0}`, level: 'info' })
 
         // Step 2: Confidence breakdown
-        send({ type: 'progress', step: '2/6', message: '统计置信度分布...' })
+        send({ type: 'progress', step: '2/7', message: '统计置信度分布...' })
         const { count: highCount } = await supabaseAdmin
           .from('atomic_facts').select('id', { count: 'exact', head: true })
           .eq('week_number', weekNumber).eq('confidence', 'high')
@@ -42,7 +43,7 @@ export async function GET() {
         send({ type: 'log', message: `  高可信: ${highCount ?? 0}，中可信: ${mediumCount ?? 0}，低可信: ${lowCount ?? 0}，拒绝: ${rejectedCount ?? 0}`, level: 'info' })
 
         // Step 3: Entity stats
-        send({ type: 'progress', step: '3/6', message: '统计实体数据...' })
+        send({ type: 'progress', step: '3/7', message: '统计实体数据...' })
         const weekMatch = weekNumber.match(/^(\d{4})-W(\d{2})$/)
         let newEntities = 0
         let activeEntities = 0
@@ -70,11 +71,11 @@ export async function GET() {
         send({ type: 'log', message: `  新增实体: ${newEntities}，活跃实体: ${activeEntities}`, level: 'info' })
 
         // Step 4: Contradictions
-        send({ type: 'progress', step: '4/6', message: '统计矛盾数据...' })
+        send({ type: 'progress', step: '4/7', message: '统计矛盾数据...' })
         send({ type: 'log', message: '  矛盾统计完成', level: 'info' })
 
         // Step 5: Density anomalies
-        send({ type: 'progress', step: '5/6', message: '检测信息密度异常...' })
+        send({ type: 'progress', step: '5/7', message: '检测信息密度异常...' })
         let topAnomalies: string[] = []
         try {
           const anomalies = await getDensityAnomalies(weekNumber)
@@ -84,8 +85,38 @@ export async function GET() {
           send({ type: 'log', message: '  密度异常检测跳过', level: 'info' })
         }
 
-        // Step 6: Save snapshot
-        send({ type: 'progress', step: '6/6', message: '保存快照到数据库...' })
+        // Step 6: Generate AI weekly summary
+        send({ type: 'progress', step: '6/7', message: 'AI 生成本周摘要...' })
+        let weeklySummary: string | null = null
+        try {
+          // Fetch top facts for summary
+          const { data: topFacts } = await supabaseAdmin
+            .from('atomic_facts')
+            .select('content_zh, fact_type, tags')
+            .eq('week_number', weekNumber)
+            .in('verification_status', ['verified', 'partially_verified'])
+            .order('fact_date', { ascending: false })
+            .limit(30)
+
+          if (topFacts && topFacts.length > 0) {
+            const factsText = topFacts
+              .map((f: { content_zh: string; fact_type: string }, i: number) => `${i + 1}. [${f.fact_type}] ${f.content_zh}`)
+              .join('\n')
+
+            weeklySummary = await callHaiku(
+              `你是稳定币行业分析师。根据以下本周事实，用中文写一段简洁的周摘要（3-5句话），突出最重要的动态和趋势。不要列举，要有分析视角。\n\n本周事实:\n${factsText}`,
+              { maxTokens: 500, temperature: 0.3 }
+            )
+            send({ type: 'log', message: '  AI 周摘要已生成', level: 'success' })
+          } else {
+            send({ type: 'log', message: '  本周无事实，跳过摘要生成', level: 'info' })
+          }
+        } catch (err) {
+          send({ type: 'log', message: `  AI 摘要生成失败: ${err instanceof Error ? err.message : String(err)}`, level: 'error' })
+        }
+
+        // Step 7: Save snapshot
+        send({ type: 'progress', step: '7/7', message: '保存快照到数据库...' })
         const snapshotData = {
           total_facts: totalFacts ?? 0,
           new_facts: totalFacts ?? 0,
@@ -99,6 +130,7 @@ export async function GET() {
           resolved_contradictions: 0,
           blind_spot_changes: [],
           top_density_anomalies: topAnomalies,
+          weekly_summary: weeklySummary,
         }
 
         const { error } = await supabaseAdmin

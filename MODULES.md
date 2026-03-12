@@ -1,4 +1,4 @@
-# MECE 模块划分 & 边界定义 V4
+# MECE 模块划分 & 边界定义 V5
 
 > 产品: StablePulse — 稳定币行业原子化知识引擎
 > 架构核心: 原子事实是最小信息单位，所有事实必须经过多维度验证
@@ -23,15 +23,16 @@
 │A5 融资    │ V3 数值合理性验证员    │C5 监管追踪 │          │      │           │
 │  (免费多源)│ V4 链上锚定验证员      │C6 盲区探测 │          │      │           │
 │A6 Twitter │ V5 时序一致性验证员    │C7 Diff    │          │      │           │
-│  (特定账号)│ V6 时间线归属验证员    │C8 密度统计 │          │      │           │
-│A7 监管    │ ─────────────────     │           │          │      │           │
-│           │ B2 实体识别Agent       │           │          │      │           │
+│  (特定账号)│ ─────────────────     │C8 密度统计 │          │      │           │
+│A7 监管    │ B2 实体识别Agent       │           │          │      │           │
 │           │ B3 时间线归并Agent     │           │          │      │           │
 │           │ B4 矛盾检测Agent      │           │          │      │           │
-│           │ B5 翻译Agent          │           │          │      │           │
 │           │ B6 编排Agent          │           │          │      │           │
 └──────────┴────────────────────────┴───────────┴──────────┴──────┴────────────┘
 ```
+
+> **V5 变更**: V6 时间线归属验证员尚未实现，暂不在流水线中。
+> **B5 变更**: 翻译Agent已从流水线移除。B1直接输出中文，系统仅保留中文输出。
 
 ---
 
@@ -44,27 +45,29 @@
 ### A1 链上数据采集器
 | 字段 | 说明 |
 |---|---|
-| **数据源** | DeFiLlama API (免费); [ROADMAP] +CoinGecko API 交叉验证 |
-| **采集内容** | 各稳定币市值、交易量、TVL、链分布、持有者数量变化 |
-| **频率** | 每日 |
+| **数据源** | DeFiLlama Stablecoins API (`stablecoins.llama.fi`，免费); [ROADMAP] +CoinGecko 交叉验证 |
+| **采集内容** | 各稳定币市值(market_cap)、总供应量(total_supply)、各链分布(chain_circulating) |
+| **匹配方式** | 按名称slug + symbol + aliases 匹配 watchlist 中的 `coin_ids.defillama` |
+| **频率** | 每周 |
 | **输出表** | `raw_onchain_metrics` |
-| **关键字段** | `source` ('defillama'), `metric_name`, `metric_value`, `fetched_at` |
-| **多源策略** | 当前仅用DeFiLlama。[ROADMAP] 后续集成CoinGecko做交叉验证 |
-| **接口** | `collectOnChainData(): Promise<void>` |
+| **关键字段** | `source` ('defillama'), `coin_id`, `coin_symbol`, `metric_name`, `metric_value`, `fetched_at` |
+| **接口** | `collectOnChainData(): Promise<CollectorResult>` |
 | **目录** | `src/modules/collectors/on-chain/` |
 
 ### A2 新闻媒体采集器 (全免费，多源)
 | 字段 | 说明 |
 |---|---|
-| **数据源1** | [free-crypto-news](https://cryptocurrency.cv/api) (免费，无需key) — 300+来源聚合，REST API，自带source_url |
-| **数据源2** | RSS feeds (免费) — The Block, CoinDesk, Decrypt, Bloomberg Crypto, Cointelegraph, DeFiLlama News, 各项目Blog |
-| **采集内容** | 标题、摘要、来源名、source_url (原文链接)、发布时间 |
-| **频率** | 每6小时 |
-| **去重** | 基于source_url去重；保留同一事件的不同来源版本(供V2交叉验证) |
-| **多源策略** | free-crypto-news提供结构化数据，RSS覆盖主流媒体。同一事件多来源版本交叉验证 |
+| **数据源** | RSS feeds (免费，14个源) — The Block, CoinDesk, Decrypt, Cointelegraph, DLNews, Blockworks, The Defiant, Crypto Briefing, Unchained, CryptoSlate, BeInCrypto, Protos + 2个中文源 |
+| **采集内容** | 标题、摘要、全文(强关键词命中时)、来源名、source_url、发布时间 |
+| **频率** | 每周 |
+| **关键词双层过滤** | ⭐ 减少无关内容进入系统的核心机制 |
+| | **强关键词**(直接通过): stablecoin, usdc, usdt, pyusd, circle, tether, ethena, makerdao, cbdc, genius act 等 |
+| | **弱关键词**(需配合上下文): visa, jpmorgan, coinbase, sec, stripe 等 + 必须同时出现 crypto/payment/blockchain 等上下文词 |
+| **全文抓取分层** | ⭐ 强关键词命中 → 抓取全文(信息量充分); 弱关键词命中 → 仅用 title+summary(省带宽+token) |
+| **去重** | 内存去重(source_url) + DB去重(批量查已有URL) |
 | **输出表** | `raw_news` |
-| **关键字段** | `source_url` (必填), `collector` ('free-crypto-news' | 'rss'), `title`, `summary`, `published_at` |
-| **接口** | `collectNews(): Promise<void>` |
+| **关键字段** | `source_url` (必填), `collector` ('rss'), `title`, `summary`, `full_text`, `published_at`, `language` |
+| **接口** | `collectNews(): Promise<CollectorResult>` |
 | **目录** | `src/modules/collectors/news/` |
 
 ### A3 上市公司数据采集器
@@ -73,7 +76,7 @@
 | **数据源** | SEC EDGAR API (免费), Yahoo Finance (`yahoo-finance2` npm), 公司IR页面RSS |
 | **关注公司** | 配置在 `config/watchlist.ts` |
 | **采集内容** | Filing (10-K/10-Q/8-K) 含filing URL, 股价, 持仓变化 |
-| **频率** | 每日检查新Filing，股价每日 |
+| **频率** | 每周 |
 | **输出表** | `raw_filings`, `raw_stock_data` |
 | **关键字段** | `source_url` (SEC filing直链), `filing_type`, `company_cik` |
 | **接口** | `collectCompanyData(): Promise<void>` |
@@ -85,24 +88,24 @@
 | **数据源** | 产品官方Blog RSS, GitHub Releases API, Changelog页面 |
 | **关注产品** | 配置在 `config/watchlist.ts` |
 | **采集内容** | 更新标题、描述、source_url、版本号 |
-| **频率** | 每日 |
+| **频率** | 每周 |
 | **输出表** | `raw_product_updates` |
 | **接口** | `collectProductUpdates(): Promise<void>` |
 | **目录** | `src/modules/collectors/products/` |
 
-### A5 融资事件采集器 (免费)
+### A5 融资事件采集器
 | 字段 | 说明 |
 |---|---|
-| **数据源1** | [DeFiLlama /raises](https://api.llama.fi/raises) (免费) — Crypto融资数据，结构化，含金额/轮次/投资方 |
-| **数据源2** | 新闻中的融资相关条目 (A2已采集，标签过滤提取) |
-| **[ROADMAP]** | CryptoRank API — 后续集成，用于融资数据交叉验证 |
+| **数据源1 (主)** | 新闻提取 — 从 A2 已采集的新闻中，用 AI (Claude Haiku) 识别融资事件，零额外 API 成本 |
+| **数据源2 (备)** | [DeFiLlama /raises](https://api.llama.fi/raises) — best-effort，免费额度已受限(429)，作为补充源 |
 | **采集内容** | 项目名、轮次、金额、估值、投资方、赛道、source_url |
-| **频率** | 每日 |
-| **多源策略** | DeFiLlama提供结构化数据(主源)，新闻提供上下文和交叉验证 |
+| **频率** | 每周 |
+| **多源策略** | 新闻提取为主源，DeFiLlama 为 fallback（可能 429），两源结果合并去重后入库 |
 | **输出表** | `raw_funding` |
-| **关键字段** | `source_url`, `collector` ('defillama_raises' | 'news_extraction'), `amount`, `round`, `investors[]` |
-| **接口** | `collectFunding(): Promise<void>` |
+| **关键字段** | `source_url`, `collector` ('news_extraction' &#124; 'defillama_raises'), `amount`, `round`, `investors[]` |
+| **接口** | `collectFunding(): Promise<CollectorResult>` |
 | **目录** | `src/modules/collectors/funding/` |
+| **Prompt** | `src/config/prompts/funding-extract.md` |
 
 ### A6 Twitter声音采集器 (twitterapi.io)
 | 字段 | 说明 |
@@ -121,11 +124,14 @@
 ### A7 监管动态采集器
 | 字段 | 说明 |
 |---|---|
-| **数据源** | SEC.gov RSS, Congress.gov API, EU Official Journal RSS, 各国央行公告 |
+| **数据源** | SEC.gov RSS, SEC EFTS 全文搜索, 各地区监管RSS (配置在 `config/regions.ts`) |
 | **采集内容** | 法案进展、监管公告、执法行动、牌照发放, source_url |
-| **频率** | 每日 |
+| **频率** | 每周 |
+| **关键词双层过滤** | ⭐ 与A2相同的双层过滤机制 |
+| | **强关键词**(直接通过): stablecoin, usdc, usdt, pyusd, circle, tether, paxos, cbdc, genius act, mica, money transmission, e-money |
+| | **弱关键词**(需配合上下文): digital asset, crypto, virtual currency, payment, defi, blockchain + 必须同时出现 stablecoin/payment system/remittance/settlement 等上下文词 |
 | **输出表** | `raw_regulatory` |
-| **接口** | `collectRegulatory(): Promise<void>` |
+| **接口** | `collectRegulatory(): Promise<CollectorResult>` |
 | **目录** | `src/modules/collectors/regulatory/` |
 
 ---
@@ -143,22 +149,22 @@
 ### 完整Pipeline
 
 ```
-raw_*表 (A层多源采集)
+raw_*表 (A层多源采集，双层关键词过滤)
       │
       ▼
 ══════════════════════════════════════════════════
-  PHASE 1: 提取
+  阶段 1: 提取
 ══════════════════════════════════════════════════
       │
 ┌─────▼──────┐
-│ B1 事实     │  两次prompt:
-│ 拆解Agent  │    Prompt1: 提取候选事实
+│ B1 事实     │  两次prompt (中文输出):
+│ 拆解Agent  │    Prompt1: 提取候选事实 → content_zh
 │            │    Prompt2: 反向自查 (有依据/无依据)
 └─────┬──────┘   输出: 候选原子事实[] (状态: pending_verification)
-      │
+      │          批处理: 5条并发，批间2秒
       ▼
 ══════════════════════════════════════════════════
-  PHASE 2: 多维度独立验证 (5个验证员并行)
+  阶段 2: 多维度独立验证 (5个验证员并行)
 ══════════════════════════════════════════════════
       │
       ├──→ V1 来源回溯验证员     fetch source_url → 事实是否在原文中?
@@ -176,37 +182,30 @@ raw_*表 (A层多源采集)
       │ 只有 verified/partially_verified 的事实继续
       ▼
 ══════════════════════════════════════════════════
-  PHASE 3: 归集
+  阶段 3-5: 归集
 ══════════════════════════════════════════════════
       │
 ┌─────▼──────┐
 │ B2 实体     │  识别涉及的实体，关联到实体档案
-│ 识别Agent  │
+│ 识别Agent  │  (串行处理)
 └─────┬──────┘
       │
 ┌─────▼──────┐
 │ B3 时间线   │  判断事实是否属于已有时间线
-│ 归并Agent  │
-└─────┬──────┘
-      │
-┌─────▼──────┐
-│ V6 时间线   │  独立确认B3的归属判断 (第二双眼睛)
-│ 归属验证员  │
+│ 归并Agent  │  (串行处理)
 └─────┬──────┘
       │
 ┌─────▼──────┐
 │ B4 矛盾     │  检测已验证事实之间的矛盾
-│ 检测Agent  │
-└─────┬──────┘
-      │
-┌─────▼──────┐
-│ B5 翻译     │  英→中翻译
-│ Agent      │
+│ 检测Agent  │  数值矛盾(纯代码) + 文本矛盾(AI)
 └─────┬──────┘
       │
       ▼
-  atomic_facts表 (status: verified, confidence: high/medium/low)
+  atomic_facts表 (status: verified, confidence: high/medium/low, 仅中文)
 ```
+
+> **B5 翻译已移除**: B1 直接输出中文。系统仅保留 `content_zh`，不翻译英文。
+> **V6 时间线归属验证**: 设计中，尚未实现。未来可作为B3后的独立验证。
 
 ---
 
@@ -218,34 +217,17 @@ raw_*表 (A层多源采集)
 | **输入** | raw_*表中的新记录 |
 | **实现** | 两次prompt流水线 |
 
-#### Prompt 1: 提取
+#### Prompt 1: 提取 (详见 `src/config/prompts/fact-splitter-extract.md`)
 
 ```
-你是一个严格的事实提取器。从以下文本中提取所有明确陈述的事实。
-
-规则:
-- 只提取原文中明确说了的事实，不推测、不推断、不补充
-- 每个事实必须是独立的、不可再拆的
-- 对于每个事实，标注它对应原文中的哪句话
-- 如果有具体数字，精确提取数字、单位、时间范围
-- 如果有人物发言，原文引用
-- 宁可少提取，也不要编造
-
-输出JSON格式:
-[{
-  content: "事实内容",
-  fact_type: "event|metric|quote|relationship|status_change",
-  evidence_sentence: "原文中的对应句子",
-  tags: ["标签1", "标签2"],
-  metric_name?: "指标名",
-  metric_value?: 数字,
-  metric_unit?: "单位",
-  metric_period?: "时间范围",
-  metric_change?: "变化描述"
-}]
-
-原文:
-{source_text}
+核心规则:
+- 中文输出: content字段一律用中文，保留专有名词英文 (USDC, SEC, S-1 等)
+- 范围限制: 只提取稳定币行业相关事实
+  覆盖: 稳定币发行、B2B基础设施、B2C支付、上市公司动态、监管、DeFi稳定币部分、传统金融布局
+  排除: BTC价格、NFT、GameFi、Meme、与稳定币无关的一般加密新闻
+- 宁缺毋滥: 无依据不提取，整篇无关则返回空数组 []
+- fact_type: event | metric | quote | relationship | status_change
+- 每条事实必须附带 evidence_sentence (原文引用)
 ```
 
 #### Prompt 2: 反向自查
@@ -558,25 +540,22 @@ B3建议将以下事实归入此时间线:
 | **关键** | difference_description只描述差异，不判断谁对 |
 | **目录** | `src/modules/ai-agents/contradiction-detector/` |
 
-### B5 翻译Agent
+### ~~B5 翻译Agent~~ (已移除)
 
-| 字段 | 说明 |
-|---|---|
-| **模型** | Claude Haiku 4.5 |
-| **输入** | verified原子事实的content_en |
-| **职责** | 英→中翻译，保留专业术语英文原文 |
-| **输出** | 更新 `atomic_facts.content_zh` |
-| **目录** | `src/modules/ai-agents/translator/` |
+> **已从流水线移除**。B1 直接输出中文 (`content_zh`)，系统仅保留中文输出，不再需要翻译步骤。
+> 代码文件保留在 `src/modules/ai-agents/translator/` 以备将来需要双语时重新启用。
 
 ### B6 编排Agent (Orchestrator)
 
 | 字段 | 说明 |
 |---|---|
-| **实现** | 纯TypeScript代码 |
-| **职责** | 协调完整pipeline: B1 → V1-V5(并行) → V0裁决 → B2 → B3 → V6 → B4 → B5 |
+| **实现** | 纯TypeScript代码 + SSE 流式进度汇报 |
+| **职责** | 协调完整pipeline: B1 → V1-V5(并行)+V0裁决 → B2 → B3 → B4 |
 | **错误处理** | 某验证员失败时标记该维度为unchecked，不阻塞流程 |
-| **日志** | 每次运行记录到 `pipeline_runs` 表 |
-| **目录** | `src/modules/ai-agents/orchestrator/` |
+| **超时** | maxDuration=600s，AI 单次请求超时 60s，3次重试 |
+| **批处理** | B1: 5条并发/批; V1-V5: 20条/批; B5已移除 |
+| **目录** | `src/app/api/cron/process/stream/route.ts` (SSE端点) |
+| | `src/modules/ai-agents/orchestrator/` (旧编排器) |
 
 ---
 
@@ -615,22 +594,26 @@ interface FactVerification {
 ### AI调用成本估算
 
 ```
-每篇原始数据的处理成本:
+每篇原始数据的处理成本 (Haiku 4.5):
   B1 事实拆解 (2次prompt):                ~$0.005
   V1 来源回溯 (~5事实/篇):                ~$0.010
   V2 多来源交叉 (event类型比对):           ~$0.003
   V3 数值合理性:                          $0 (纯代码)
   V4 链上锚定:                            $0 (纯代码)
   V5 时序一致性 (仅冲突时调AI):            ~$0.001
-  V6 时间线归属 (~2事实需归属):            ~$0.002
   B2 实体识别:                            ~$0.003
-  B5 翻译:                                ~$0.005
+  B3 时间线归并:                          ~$0.003
+  B4 矛盾检测 (条件性AI):                 ~$0.002
   ─────────────────────────────────────
-  每篇总成本:                             ~$0.03
+  每篇总成本:                             ~$0.027
 
-  每周~200篇原始数据:                      ~$6
-  月成本(AI部分):                         ~$24
+  优化后每周原始数据量 (双层过滤):          ~50-80篇 (之前~200篇)
+  每周AI成本:                             ~$1.5-2
+  月成本(AI部分):                         ~$6-8
 ```
+
+> **优化效果**: 双层关键词过滤使原始数据量减少 60-75%，去掉 B5 翻译再省 ~15%，
+> 弱关键词命中跳过全文抓取进一步减少 B1 的 token 消耗。
 
 ---
 
@@ -865,7 +848,7 @@ raw_news                  # 新闻 (free-crypto-news + RSS)
 raw_filings               # SEC Filing
 raw_stock_data            # 股价
 raw_product_updates       # 产品更新
-raw_funding               # 融资事件 (DeFiLlama raises + 新闻提取; [ROADMAP] +CryptoRank)
+raw_funding               # 融资事件 (新闻AI提取为主, DeFiLlama fallback; [ROADMAP] +CryptoRank/RootData 付费)
 raw_tweets                # Twitter推文 (twitterapi.io 特定账号流)
 raw_regulatory            # 监管公告
 
@@ -1084,23 +1067,47 @@ payfi-monthly-report/
 ## Pipeline 执行顺序
 
 ```
-每日 Pipeline:
-  Phase 1 (并行):   A1, A2, A3, A4, A5, A7         ← 多源数据采集
-  Phase 2:          B1                               ← 事实拆解 (提取+自查)
-  Phase 3 (并行):   V1, V2, V3, V4, V5              ← 5个验证员并行验证
-  Phase 4:          V0                               ← 裁决器汇总投票
-  Phase 5:          B2                               ← 实体识别 (只处理verified事实)
-  Phase 6:          B3 → V6                          ← 时间线归并 + 归属验证
-  Phase 7:          B4                               ← 矛盾检测
-  Phase 8:          B5                               ← 翻译
+每周 Pipeline (手动触发或 Cron):
 
-每周 Pipeline (周日):
-  Phase 1:          A6                               ← Twitter采集 (特定账号)
-  Phase 2-8:        同上 (处理Twitter数据)
-  Phase 9 (并行):   C6, C7, C8                       ← 盲区/Diff/密度
-  Phase 10:         组装周报快照
-  Phase 11 (并行):  E1, E2                           ← 推送
+  ┌─ 数据采集 (并行) ─────────────────────────────────────────────────┐
+  │  A1 链上数据 (DeFiLlama)                                         │
+  │  A2 新闻 (14个RSS源，双层关键词过滤，强匹配抓全文)                    │
+  │  A3 上市公司 (SEC + Yahoo Finance)                                │
+  │  A4 产品更新 (Blog RSS + GitHub)                                  │
+  │  A5 融资 (DeFiLlama Raises)                                      │
+  │  A6 Twitter (特定账号)                                            │
+  │  A7 监管 (SEC RSS/EFTS + 地区RSS，双层关键词过滤)                   │
+  └──────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+  ┌─ AI 处理流水线 (5个阶段，串行) ─────────────────────────────────────┐
+  │                                                                   │
+  │  阶段1: B1 事实拆解 (提取+自查，批内5条并发)                         │
+  │         输出: candidate_facts (status: pending_verification)       │
+  │                                                                   │
+  │  阶段2: V1-V5 并行验证 + V0 裁决 (批量20条)                        │
+  │         输出: verified / partially_verified / rejected             │
+  │                                                                   │
+  │  阶段3: B2 实体识别 (串行)                                         │
+  │         输出: fact_entities 关联                                   │
+  │                                                                   │
+  │  阶段4: B3 时间线归并 (串行)                                       │
+  │         输出: timelines + timeline_facts                          │
+  │                                                                   │
+  │  阶段5: B4 矛盾检测 (串行)                                        │
+  │         输出: fact_contradictions                                  │
+  └──────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+  ┌─ 周报生成 (可选) ─────────────────────────────────────────────────┐
+  │  C6 盲区检测, C7 Diff生成, C8 密度统计                              │
+  │  组装周报快照 → E1 邮件, E2 Telegram 推送                          │
+  └──────────────────────────────────────────────────────────────────┘
 ```
+
+> **频率**: 整个流水线每周运行一次（采集+AI处理一次性完成）。
+> **B5 翻译**: 已移除。B1 直接输出中文，不再翻译。
+> **V6 时间线归属验证**: 尚未实现，未来可作为 B3 后的第二双眼睛。
 
 ---
 
@@ -1160,10 +1167,30 @@ SHARE_TOKEN_SECRET=
 |---|---|
 | Vercel Hobby | $0 |
 | Supabase Free | $0 |
-| Claude Haiku (B1+V1-V6+B2-B5) | ~$24 |
+| Claude Haiku (B1+V1-V5+B2-B4) | ~$6-8 |
 | Claude Sonnet (D4对话) | ~$5-10 |
 | twitterapi.io Starter (6账号) | $29 |
-| 新闻采集 (free-crypto-news + RSS) | $0 |
-| 融资数据 (DeFiLlama raises + 新闻提取) | $0 |
+| 新闻采集 (RSS) | $0 |
+| 融资数据 (新闻提取 + DeFiLlama fallback) | $0 (AI 成本含在 Haiku 内) |
 | Resend/其他 | $0 |
-| **合计** | **~$58-63** |
+| **合计** | **~$40-47** |
+
+> 相比 V4 版本，AI 成本从 ~$24/月降至 ~$6-8/月（-70%），主要因为：
+> 1. 双层关键词过滤减少无关数据进入系统
+> 2. 移除 B5 翻译阶段
+> 3. 弱关键词命中跳过全文抓取，减少 token
+
+---
+
+## 未来方向：付费数据源升级
+
+以下数据源可显著提升融资数据覆盖率和准确性，但需要付费订阅：
+
+| 数据源 | 费用 | 能力 | 优先级 |
+|---|---|---|---|
+| **CryptoRank API** | 需注册免费 Sandbox 测试；正式版价格待确认 | 10,874 条融资轮次，含金额/轮次/投资方，结构化数据 | P1 |
+| **RootData API** | Basic 免费 (1,000 credits/月)；融资接口需 Plus ($128/月) | 9,815 条融资，含估值，投资方详细信息 | P2 |
+| **DeFiLlama Raises** | 免费额度已受限 (429)，付费 plan 价格见 defillama.com/subscription | 当前作为 fallback，恢复后可作为补充验证源 | P2 |
+
+> 当前实现：用 AI 从已采集的新闻中提取融资事件（零额外 API 成本），覆盖率取决于新闻源质量。
+> 建议：优先注册 CryptoRank Sandbox 测试免费额度是否够用，不够再考虑 RootData Plus。

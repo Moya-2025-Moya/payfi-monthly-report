@@ -448,6 +448,7 @@ export interface WeeklySnapshot {
     resolved_contradictions: number
     blind_spot_changes: string[]
     top_density_anomalies: string[]
+    weekly_summary?: string | null
   }
   generated_at: Date
 }

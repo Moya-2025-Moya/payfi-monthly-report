@@ -1,7 +1,66 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 
-interface Message { role: 'user' | 'assistant'; content: string }
+interface Citation {
+  index: number
+  content: string
+  source_url: string | null
+  source_type: string | null
+  fact_date: string | null
+}
+
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+  citations?: Citation[]
+}
+
+/* Render text with [N] citation markers as clickable links */
+function CitedText({ content, citations }: { content: string; citations?: Citation[] }) {
+  if (!citations || citations.length === 0) {
+    return <span className="whitespace-pre-wrap">{content}</span>
+  }
+
+  const parts = content.split(/(\[\d+\])/)
+  return (
+    <span className="whitespace-pre-wrap">
+      {parts.map((part, i) => {
+        const match = part.match(/^\[(\d+)\]$/)
+        if (match) {
+          const idx = parseInt(match[1], 10)
+          const cite = citations.find(c => c.index === idx)
+          if (cite) {
+            return (
+              <span key={i} className="inline-group relative">
+                {cite.source_url ? (
+                  <a
+                    href={cite.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-mono font-bold align-super -mt-1 mx-0.5 cursor-pointer transition-colors"
+                    style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+                    title={cite.content}
+                  >
+                    {idx}
+                  </a>
+                ) : (
+                  <span
+                    className="inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-mono font-bold align-super -mt-1 mx-0.5"
+                    style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+                    title={cite.content}
+                  >
+                    {idx}
+                  </span>
+                )}
+              </span>
+            )
+          }
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </span>
+  )
+}
 
 export function ChatClient() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -12,9 +71,9 @@ export function ChatClient() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   const examples = [
-    '本周市值最大的稳定币有哪些？',
-    '最近有什么监管新动态？',
-    '对比 USDT 和 USDC 的最新指标',
+    '本周稳定币行业有什么新动态？',
+    '最近有什么监管新进展？',
+    'USDC 和 USDT 最近有什么变化？',
     '近期有哪些融资事件？',
   ]
 
@@ -29,10 +88,10 @@ export function ChatClient() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...messages, userMsg] }),
+        body: JSON.stringify({ messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })) }),
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.content }])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.content, citations: data.citations }])
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '错误：未能获取响应，请稍后重试。' }])
     } finally { setLoading(false) }
@@ -59,12 +118,16 @@ export function ChatClient() {
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className="max-w-[75%] rounded-lg px-4 py-3 text-[13px] whitespace-pre-wrap"
+            <div className="max-w-[75%] rounded-lg px-4 py-3 text-[13px]"
               style={{
                 background: m.role === 'user' ? 'var(--accent)' : 'var(--surface-alt)',
                 color: m.role === 'user' ? 'var(--accent-fg)' : 'var(--fg-body)',
               }}>
-              {m.content}
+              {m.role === 'assistant' ? (
+                <CitedText content={m.content} citations={m.citations} />
+              ) : (
+                <span className="whitespace-pre-wrap">{m.content}</span>
+              )}
             </div>
           </div>
         ))}
