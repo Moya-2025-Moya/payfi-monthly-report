@@ -108,6 +108,7 @@ CREATE TABLE raw_funding (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX idx_funding_dedup ON raw_funding (project_name, round, announced_at);
 CREATE INDEX idx_funding_processed ON raw_funding (processed) WHERE processed = FALSE;
 CREATE INDEX idx_funding_project ON raw_funding (project_name);
 

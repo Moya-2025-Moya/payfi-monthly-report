@@ -125,19 +125,42 @@ export async function collectFunding(): Promise<CollectorResult> {
     return true
   })
 
-  console.log(`[funding] Upserting ${deduped.length} funding rounds...`)
+  console.log(`[funding] Inserting ${deduped.length} funding rounds...`)
+
+  // Filter out records that already exist in DB (round can be NULL so upsert with onConflict is unreliable)
+  const existingKeys = new Set<string>()
+  const { data: existing } = await supabaseAdmin
+    .from('raw_funding')
+    .select('project_name, round, announced_at')
+
+  for (const row of existing ?? []) {
+    const r = row as { project_name: string; round: string | null; announced_at: string }
+    existingKeys.add(`${r.project_name}|${r.round ?? ''}|${r.announced_at}`)
+  }
+
+  const newItems = deduped.filter((f) => {
+    const dateOnly = f.announced_at.slice(0, 10)
+    const key = `${f.project_name}|${f.round ?? ''}|${dateOnly}`
+    return !existingKeys.has(key)
+  })
+
+  const breakdown = [{ source: 'DeFiLlama Raises (找到)', count: deduped.length }]
+
+  if (newItems.length === 0) {
+    console.log('[funding] All funding rounds already exist in DB.')
+    return { total: 0, breakdown }
+  }
 
   const { error } = await supabaseAdmin
     .from('raw_funding')
-    .upsert(deduped, { onConflict: 'project_name,round,announced_at' })
-
-  const breakdown = [{ source: 'DeFiLlama Raises', count: deduped.length }]
+    .insert(newItems)
 
   if (error) {
-    console.error('[funding] Upsert failed:', error)
+    console.error('[funding] Insert failed:', error)
     return { total: 0, breakdown }
   } else {
-    console.log(`[funding] Successfully upserted ${deduped.length} funding rounds.`)
-    return { total: deduped.length, breakdown }
+    breakdown.push({ source: 'DeFiLlama Raises (新增)', count: newItems.length })
+    console.log(`[funding] Successfully inserted ${newItems.length} new funding rounds.`)
+    return { total: newItems.length, breakdown }
   }
 }
