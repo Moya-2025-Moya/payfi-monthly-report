@@ -46,10 +46,10 @@ function buildExportText(items: DetailedItem[], lang: Lang, weekInfo: string): s
     const wh = getField(item, 'what_happened', lang)
     const ins = getField(item, 'insight', lang)
     const parts = [`${i + 1}. ${simple}`]
-    if (bg) parts.push(`   ${lang === 'zh' ? '背景' : 'Background'}: ${bg}`)
-    if (wh) parts.push(`   ${lang === 'zh' ? '详情' : 'Details'}: ${wh}`)
-    if (ins) parts.push(`   ${lang === 'zh' ? '洞察' : 'Insight'}: ${ins}`)
-    if (item.source_url) parts.push(`   ${lang === 'zh' ? '来源' : 'Source'}: ${item.source_url}`)
+    if (bg) parts.push(`   - ${bg}`)
+    if (wh) parts.push(`   - ${wh}`)
+    if (ins) parts.push(`   - ${ins}`)
+    if (item.source_url) parts.push(`   ${item.source_url}`)
     return parts.join('\n')
   })
   return `${title}\n${'='.repeat(40)}\n\n${lines.join('\n\n')}\n`
