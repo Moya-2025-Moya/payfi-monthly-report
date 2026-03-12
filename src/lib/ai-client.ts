@@ -129,9 +129,15 @@ export async function callHaikuJSON<T>(
     system: (options.system || '') + '\n\nYou MUST respond with valid JSON only. No markdown, no explanation.',
   })
 
-  // 尝试提取 JSON (可能被包在 ```json ... ``` 中)
-  const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/)
-  const jsonStr = jsonMatch ? jsonMatch[1] : response.trim()
+  // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+  let jsonStr = response.trim()
+  const fenceMatch = jsonStr.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/m)
+  if (fenceMatch) {
+    jsonStr = fenceMatch[1].trim()
+  } else if (jsonStr.startsWith('```')) {
+    // Fallback: strip leading ```json and trailing ```
+    jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '').trim()
+  }
 
   return JSON.parse(jsonStr) as T
 }

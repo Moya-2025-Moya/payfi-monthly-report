@@ -14,11 +14,15 @@ export interface PipelineLogEntry {
 export interface PipelineRun {
   id: string
   pipeline_type: PipelineType
-  status: 'running' | 'completed' | 'failed'
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
   started_at: string
   completed_at: string | null
   logs: PipelineLogEntry[]
   stats: Record<string, unknown> | null
+}
+
+export class PipelineCancelledError extends Error {
+  constructor() { super('Pipeline cancelled by user') }
 }
 
 /**
@@ -79,6 +83,31 @@ export async function createPipelineLogger(
       const time = new Date().toISOString()
       send({ type: 'progress', step, message })
       appendLog({ time, message: `[${step}] ${message}`, level: 'progress' })
+    },
+
+    /** Check if cancellation was requested. Throws PipelineCancelledError if so. */
+    async checkCancelled() {
+      if (!runId) return
+      const { data } = await supabaseAdmin
+        .from('pipeline_runs')
+        .select('status')
+        .eq('id', runId)
+        .single()
+      if (data?.status === 'cancelled') {
+        throw new PipelineCancelledError()
+      }
+    },
+
+    async cancel() {
+      const time = new Date().toISOString()
+      logs.push({ time, message: '用户取消', level: 'error' })
+      send({ type: 'error', message: '用户取消' })
+      if (runId) {
+        await supabaseAdmin
+          .from('pipeline_runs')
+          .update({ status: 'cancelled', completed_at: time, logs })
+          .eq('id', runId)
+      }
     },
 
     async done(extraData?: Record<string, unknown>) {

@@ -15,7 +15,7 @@ import { validateOnchainAnchor } from '@/modules/ai-agents/validators/onchain-an
 import { validateTemporalConsistency } from '@/modules/ai-agents/validators/temporal-consistency'
 import { adjudicate } from '@/modules/ai-agents/validators/adjudicator'
 
-import { createPipelineLogger } from '@/lib/pipeline-logger'
+import { createPipelineLogger, PipelineCancelledError } from '@/lib/pipeline-logger'
 import type { AtomicFact } from '@/lib/types'
 
 export const maxDuration = 600
@@ -125,6 +125,8 @@ export async function GET(request: Request) {
           logger.log('阶段1 跳过（从后续阶段开始）', 'info')
         }
 
+        await logger.checkCancelled()
+
         // ── Stage 2: Validation ──
         if (fromStage <= 2) {
           logger.progress('阶段2/6', '六层验证 (V1-V5 + V0) — 验证候选事实')
@@ -187,6 +189,8 @@ export async function GET(request: Request) {
           logger.log('阶段2 跳过', 'info')
         }
 
+        await logger.checkCancelled()
+
         // ── Get verified fact IDs for stages 3-6 ──
         const { data: verifiedRows } = await supabaseAdmin
           .from('atomic_facts')
@@ -209,6 +213,8 @@ export async function GET(request: Request) {
           logger.log('阶段3 跳过', 'info')
         }
 
+        await logger.checkCancelled()
+
         // ── Stage 4: Timeline merging ──
         if (fromStage <= 4) {
           logger.progress('阶段4/6', '时间线归并 (B3) — 将事实分配到时间线')
@@ -225,6 +231,8 @@ export async function GET(request: Request) {
           logger.log('阶段4 跳过', 'info')
         }
 
+        await logger.checkCancelled()
+
         // ── Stage 5: Contradiction detection ──
         if (fromStage <= 5) {
           logger.progress('阶段5/6', '矛盾检测 (B4) — 检测事实间矛盾')
@@ -237,6 +245,8 @@ export async function GET(request: Request) {
         } else {
           logger.log('阶段5 跳过', 'info')
         }
+
+        await logger.checkCancelled()
 
         // ── Stage 6: Translation ──
         if (fromStage <= 6) {
@@ -260,7 +270,12 @@ export async function GET(request: Request) {
         logger.log(`  后处理: ${verifiedFactIds.length} 条事实`, 'info')
         await logger.done({ message: 'AI 处理流水线全部完成' })
       } catch (err) {
-        await logger.fail(`流水线异常: ${err instanceof Error ? err.message : String(err)}`)
+        if (err instanceof PipelineCancelledError) {
+          logger.log('流水线已被用户取消', 'error')
+          await logger.cancel()
+        } else {
+          await logger.fail(`流水线异常: ${err instanceof Error ? err.message : String(err)}`)
+        }
       }
 
       controller.close()

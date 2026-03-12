@@ -77,7 +77,7 @@ function PipelineTrigger({
         if (run.status === 'completed') {
           setState('success')
           if (pollRef.current) clearInterval(pollRef.current)
-        } else if (run.status === 'failed') {
+        } else if (run.status === 'failed' || run.status === 'cancelled') {
           setState('error')
           if (pollRef.current) clearInterval(pollRef.current)
         }
@@ -90,6 +90,21 @@ function PipelineTrigger({
       if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [state, runId])
+
+  async function handleCancel() {
+    if (!runId) return
+    addLog('正在取消...', 'info')
+    try {
+      await fetch('/api/pipeline/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId }),
+      })
+      addLog('已发送取消请求，等待当前批次完成后停止', 'info')
+    } catch {
+      addLog('取消请求失败', 'error')
+    }
+  }
 
   async function handleClick(useTestEndpoint = false) {
     const activeEndpoint = useTestEndpoint && testEndpoint ? testEndpoint : endpoint
@@ -207,32 +222,42 @@ function PipelineTrigger({
           <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{description}</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          {testEndpoint && (
+          {state === 'loading' && runId ? (
             <button
-              onClick={() => handleClick(true)}
-              disabled={state === 'loading'}
-              className="rounded-md px-3 py-2 text-[11px] font-medium border transition-colors"
-              style={{ borderColor: 'var(--info-muted)', color: 'var(--info)', opacity: state === 'loading' ? 0.5 : 1 }}
+              onClick={handleCancel}
+              className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
+              style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}
             >
-              测试
+              停止
             </button>
+          ) : (
+            <>
+              {testEndpoint && (
+                <button
+                  onClick={() => handleClick(true)}
+                  disabled={state === 'loading'}
+                  className="rounded-md px-3 py-2 text-[11px] font-medium border transition-colors"
+                  style={{ borderColor: 'var(--info-muted)', color: 'var(--info)', opacity: state === 'loading' ? 0.5 : 1 }}
+                >
+                  测试
+                </button>
+              )}
+              <button
+                onClick={() => handleClick(false)}
+                disabled={state === 'loading'}
+                className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
+                style={
+                  state === 'success'
+                    ? { borderColor: 'var(--success)', color: 'var(--success)' }
+                    : state === 'error'
+                    ? { borderColor: 'var(--danger)', color: 'var(--danger)' }
+                    : { borderColor: 'var(--border)', color: 'var(--fg-secondary)' }
+                }
+              >
+                {state === 'success' ? '已完成' : state === 'error' ? '失败' : '执行'}
+              </button>
+            </>
           )}
-          <button
-            onClick={() => handleClick(false)}
-            disabled={state === 'loading'}
-            className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
-            style={
-              state === 'loading'
-                ? { borderColor: 'var(--info)', color: 'var(--info)', opacity: 0.7 }
-                : state === 'success'
-                ? { borderColor: 'var(--success)', color: 'var(--success)' }
-                : state === 'error'
-                ? { borderColor: 'var(--danger)', color: 'var(--danger)' }
-                : { borderColor: 'var(--border)', color: 'var(--fg-secondary)' }
-            }
-          >
-            {state === 'loading' ? '执行中...' : state === 'success' ? '已完成' : state === 'error' ? '失败' : '执行'}
-          </button>
         </div>
       </div>
 
@@ -395,7 +420,7 @@ export default function AdminPage() {
           const state: ButtonState =
             run.status === 'running' ? 'loading' :
             run.status === 'completed' ? 'success' :
-            run.status === 'failed' ? 'error' : 'idle'
+            (run.status === 'failed' || run.status === 'cancelled') ? 'error' : 'idle'
 
           restoredState[type] = { logs, state, runId: run.id }
         }
