@@ -120,25 +120,33 @@ export async function GET() {
                 tags: string[]
               }>
             }>(
-              `你是稳定币行业分析师。从以下本周事实中，选出最重要的 10 条新闻（去重后），按影响力从高到低排序。
+              `你是稳定币行业分析师。从以下本周事实中，选出最重要的新闻，去重后按影响力从高到低排序。
 
-聚焦方向：稳定币 B2C 产品、B2B 基础设施/支付、美国上市公司动态、监管政策、重要融资/合作。
+**必须输出恰好 10 条**。如果去重后不足 10 条独立事件，将剩余的次要事实也纳入，确保总数为 10。如果事实总量极少（<5条），则有多少输出多少。
+
+聚焦方向（按优先级）：
+1. 稳定币发行方动态（Circle, Tether, PayPal PYUSD 等）
+2. B2B 基础设施/跨境支付（Stripe, Fireblocks, Bridge 等）
+3. 美国上市公司与稳定币（Coinbase, MicroStrategy, Visa 等）
+4. 监管政策（GENIUS Act, MiCA, SEC, OCC 等）
+5. 重要融资/合作/收购
 
 对每条新闻输出：
 - date: 事件日期，格式 YYYY.MM.DD
-- simple: 一句话简报，格式为 "YYYY.MM.DD, [公司/主体] did [行动 + 1-2个量化指标] to [目标/影响]."。用英文，简洁，包含关键数字。不要提及具体地域/国家。
+- simple: 一句话简报，格式为 "YYYY.MM.DD, [公司/主体] [action + 1-2 key metrics] [impact]."。英文，简洁，包含关键数字。不要提及具体地域/国家。
 - background: 组织背景（1句话，英文）
 - what_happened: 具体发生了什么（1-2句，英文，包含金额/用户数/时间线等量化信息）
 - insight: 对稳定币行业的影响分析（1句话，英文）
-- source_url: 最相关的来源 URL（从事实中提取，如果有的话）
+- source_url: 最相关的来源 URL（从事实的 [url: ...] 中提取，必须是完整 URL）
 - tags: 相关标签数组，如 ["B2C", "Stablecoin", "Regulation"]
 
 规则：
-1. 严格去重：同一事件只保留最完整的一条
-2. 不要使用任何 markdown 格式符号（不要 ** 加粗、不要 # 标题）
-3. 简报(simple)必须是纯英文一句话，不要换行
+1. 严格去重：同一事件（如 "Tether投资Ark Labs" 出现多次）只保留最完整的一条
+2. 不要使用任何 markdown 格式符号（不要 ** 加粗、不要 # 标题、不要 - 列表）
+3. simple 必须是纯英文一句话，不要换行
 4. 如果信息不足无法确认，用 [Uncertainty: ...] 标注
 5. 如果缺少关键数据，用 [Info gap: ...] 标注
+6. items 数组必须恰好 10 个元素（除非事实极少）
 
 输出严格 JSON：
 {
@@ -155,9 +163,9 @@ export async function GET() {
   ]
 }
 
-本周事实:
+本周事实 (共 ${topFacts.length} 条):
 ${factsText}`,
-              { system: '你是稳定币行业分析师。输出严格 JSON，不要任何 markdown 格式。' }
+              { system: '你是稳定币行业分析师。输出严格 JSON，不要任何 markdown 格式。items 数组必须恰好 10 个元素。' }
             )
 
             if (summaryResult.items?.length > 0) {
@@ -167,9 +175,11 @@ ${factsText}`,
 
               // Build detailed version as JSON for structured rendering
               weeklySummaryDetailed = JSON.stringify(summaryResult.items)
-            }
 
-            logger.log('  AI 周摘要已生成（简报+详细）', 'success')
+              logger.log(`  AI 周摘要已生成: ${summaryResult.items.length} 条（简报+详细）`, 'success')
+            } else {
+              logger.log('  AI 返回空 items，摘要生成失败', 'error')
+            }
           } else {
             logger.log('  本周无事实，跳过摘要生成', 'info')
           }

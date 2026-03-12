@@ -252,11 +252,10 @@ export async function collectNews(): Promise<CollectorResult> {
     return { total: 0, breakdown: feedCounts }
   }
 
-  // Fetch full text only for strong keyword matches (weak matches rely on title+summary)
-  const strongItems = newItems.filter(item => allStrongUrls.has(item.source_url))
-  console.log(`[A2] Strong keyword matches: ${strongItems.length}/${newItems.length} — fetching full text for strong only`)
-  if (strongItems.length > 0) {
-    await enrichWithFullText(strongItems)
+  // Fetch full text for ALL items (V1 source traceback needs it for validation)
+  console.log(`[A2] Fetching full text for all ${newItems.length} items (${newItems.filter(i => allStrongUrls.has(i.source_url)).length} strong keyword matches)`)
+  if (newItems.length > 0) {
+    await enrichWithFullText(newItems)
   }
 
   console.log(`[A2] Upserting ${newItems.length} new items (${newItems.filter(i => i.language === 'zh').length} 中文)...`)
