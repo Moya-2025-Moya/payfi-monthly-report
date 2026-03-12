@@ -25,7 +25,8 @@ function getVerificationIndicators(fact: AtomicFact): { label: string; detail?: 
   const v1 = fact.v1_result as { match_score?: number; status?: string } | null
   if (v1?.match_score != null && v1.match_score > 0) {
     indicators.push({ label: `原文${v1.match_score}%`, detail: `来源原文匹配度 ${v1.match_score}%` })
-  } else if (v1?.status === 'source_unavailable' || (v1?.match_score != null && v1.match_score === 0)) {
+  } else if (!fact.source_url && (v1?.status === 'source_unavailable' || (v1?.match_score != null && v1.match_score === 0))) {
+    // 只在真正没有 source_url 时才显示"原文不可达"
     indicators.push({ label: '原文不可达', detail: '来源原文无法获取或解析' })
   }
   const v2 = fact.v2_result as { source_count?: number; independent_sources?: boolean } | null
