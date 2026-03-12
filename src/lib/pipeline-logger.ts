@@ -125,7 +125,7 @@ export async function createPipelineLogger(
  * Get the latest run for each pipeline type.
  */
 export async function getLatestRuns(): Promise<Record<PipelineType, PipelineRun | null>> {
-  const types: PipelineType[] = ['collect', 'process', 'twitter', 'snapshot']
+  const types: PipelineType[] = ['collect', 'process', 'twitter', 'snapshot', 'narrative']
   const result: Record<string, PipelineRun | null> = {}
 
   for (const type of types) {
