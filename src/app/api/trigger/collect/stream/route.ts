@@ -32,7 +32,7 @@ export async function GET() {
         { name: '新闻采集 (14个RSS源)', key: 'news', fn: collectNews },
         { name: '公司数据 (SEC + Yahoo)', key: 'companies', fn: collectCompanyData },
         { name: '产品更新 (GitHub + Blog)', key: 'products', fn: collectProductUpdates },
-        { name: '融资事件 (DeFiLlama)', key: 'funding', fn: collectFunding },
+        { name: '融资事件 (新闻提取 + DeFiLlama)', key: 'funding', fn: collectFunding },
         { name: '监管动态 (SEC + Congress)', key: 'regulatory', fn: collectRegulatory },
       ]
 

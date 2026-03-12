@@ -29,7 +29,12 @@ const RAW_TABLE_NAMES: Record<string, string> = {
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const fromStage = parseInt(url.searchParams.get('from') ?? '1', 10)
+  const isTest = url.searchParams.get('test') === 'true'
   const encoder = new TextEncoder()
+
+  // Test mode: 每张表最多处理 3 条，验证最多 5 条
+  const RAW_LIMIT = isTest ? 3 : 200
+  const VERIFY_LIMIT = isTest ? 5 : Infinity
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -41,7 +46,8 @@ export async function GET(request: Request) {
       send({ type: 'init', runId: logger.runId })
 
       const weekNumber = getCurrentWeekNumber()
-      logger.log(`AI 处理流水线启动，当前周次: ${weekNumber}${fromStage > 1 ? `，从阶段 ${fromStage} 开始` : ''}`, 'info')
+      const modeLabel = isTest ? ' [测试模式: 每表3条]' : ''
+      logger.log(`AI 处理流水线启动，当前周次: ${weekNumber}${modeLabel}${fromStage > 1 ? `，从阶段 ${fromStage} 开始` : ''}`, 'info')
 
       try {
         // ── Pre-check ──
@@ -104,7 +110,9 @@ export async function GET(request: Request) {
             const tableName = RAW_TABLE_NAMES[table] ?? table
             logger.log(`  处理表: ${tableName} (${table})...`, 'info')
             try {
-              const result = await processUnprocessedRaw(table, weekNumber)
+              const result = await processUnprocessedRaw(table, weekNumber, RAW_LIMIT, (current, total) => {
+                logger.log(`  ${tableName}: ${current}/${total}`, 'progress')
+              })
               totalRaw += result.total
               totalFacts += result.factIds.length
               logger.log(`  ${tableName}: 处理 ${result.total} 条，提取 ${result.factIds.length} 条事实，丢弃 ${result.dropped}`, 'success')
@@ -126,15 +134,14 @@ export async function GET(request: Request) {
             .select('*')
             .eq('verification_status', 'pending_verification')
 
-          const facts = (pendingFacts ?? []) as AtomicFact[]
-          logger.log(`  待验证事实: ${facts.length} 条`, 'info')
+          const allPending = (pendingFacts ?? []) as AtomicFact[]
+          const facts = VERIFY_LIMIT < Infinity ? allPending.slice(0, VERIFY_LIMIT) : allPending
+          logger.log(`  待验证事实: ${facts.length} 条${isTest && allPending.length > facts.length ? ` (测试模式，跳过 ${allPending.length - facts.length} 条)` : ''}`, 'info')
 
           const BATCH = 20
           for (let i = 0; i < facts.length; i += BATCH) {
             const batch = facts.slice(i, i + BATCH)
-            const batchNum = Math.floor(i / BATCH) + 1
-            const totalBatches = Math.ceil(facts.length / BATCH)
-            logger.log(`  验证批次 ${batchNum}/${totalBatches} (${batch.length} 条)...`, 'info')
+            logger.log(`  验证: ${Math.min(i + BATCH, facts.length)}/${facts.length}`, 'progress')
 
             const results = await Promise.allSettled(batch.map(async (fact) => {
               const [r1, r2, r3, r4, r5] = await Promise.allSettled([

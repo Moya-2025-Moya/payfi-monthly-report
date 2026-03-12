@@ -28,6 +28,7 @@ function PipelineTrigger({
   initialLogs,
   initialState,
   initialRunId,
+  testEndpoint,
 }: {
   label: string
   description: string
@@ -36,6 +37,7 @@ function PipelineTrigger({
   initialLogs?: LogEntry[]
   initialState?: ButtonState
   initialRunId?: string
+  testEndpoint?: string
 }) {
   const [state, setState] = useState<ButtonState>(initialState ?? 'idle')
   const [logs, setLogs] = useState<LogEntry[]>(initialLogs ?? [])
@@ -89,16 +91,20 @@ function PipelineTrigger({
     }
   }, [state, runId])
 
-  async function handleClick() {
+  async function handleClick(useTestEndpoint = false) {
+    const activeEndpoint = useTestEndpoint && testEndpoint ? testEndpoint : endpoint
     setState('loading')
     setLogs([])
     setRunId(null)
-    addLog(`开始执行: ${label}`, 'info')
+    addLog(`开始执行: ${label}${useTestEndpoint ? ' [测试模式]' : ''}`, 'info')
 
-    const sseEndpoint = endpoint + '/stream'
+    // Build SSE URL: /api/cron/process?test=true → /api/cron/process/stream?test=true
+    const sseUrl = activeEndpoint.includes('?')
+      ? activeEndpoint.replace('?', '/stream?')
+      : activeEndpoint + '/stream'
 
     try {
-      const evtSource = new EventSource(sseEndpoint)
+      const evtSource = new EventSource(sseUrl)
       let gotMessage = false
 
       const timeout = setTimeout(() => {
@@ -156,7 +162,7 @@ function PipelineTrigger({
     async function fallbackFetch() {
       addLog('使用普通请求模式...', 'info')
       try {
-        const res = await fetch(endpoint, { method })
+        const res = await fetch(activeEndpoint, { method })
         const json = await res.json().catch(() => ({}))
         if (res.ok) {
           if (json.results) {
@@ -200,22 +206,34 @@ function PipelineTrigger({
           <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>{label}</p>
           <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{description}</p>
         </div>
-        <button
-          onClick={handleClick}
-          disabled={state === 'loading'}
-          className="shrink-0 rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
-          style={
-            state === 'loading'
-              ? { borderColor: 'var(--info)', color: 'var(--info)', opacity: 0.7 }
-              : state === 'success'
-              ? { borderColor: 'var(--success)', color: 'var(--success)' }
-              : state === 'error'
-              ? { borderColor: 'var(--danger)', color: 'var(--danger)' }
-              : { borderColor: 'var(--border)', color: 'var(--fg-secondary)' }
-          }
-        >
-          {state === 'loading' ? '执行中...' : state === 'success' ? '已完成' : state === 'error' ? '失败' : '执行'}
-        </button>
+        <div className="flex gap-2 shrink-0">
+          {testEndpoint && (
+            <button
+              onClick={() => handleClick(true)}
+              disabled={state === 'loading'}
+              className="rounded-md px-3 py-2 text-[11px] font-medium border transition-colors"
+              style={{ borderColor: 'var(--info-muted)', color: 'var(--info)', opacity: state === 'loading' ? 0.5 : 1 }}
+            >
+              测试
+            </button>
+          )}
+          <button
+            onClick={() => handleClick(false)}
+            disabled={state === 'loading'}
+            className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
+            style={
+              state === 'loading'
+                ? { borderColor: 'var(--info)', color: 'var(--info)', opacity: 0.7 }
+                : state === 'success'
+                ? { borderColor: 'var(--success)', color: 'var(--success)' }
+                : state === 'error'
+                ? { borderColor: 'var(--danger)', color: 'var(--danger)' }
+                : { borderColor: 'var(--border)', color: 'var(--fg-secondary)' }
+            }
+          >
+            {state === 'loading' ? '执行中...' : state === 'success' ? '已完成' : state === 'error' ? '失败' : '执行'}
+          </button>
+        </div>
       </div>
 
       {logs.length > 0 && (
@@ -485,6 +503,7 @@ export default function AdminPage() {
               initialLogs={getRestored('/api/cron/process')?.logs}
               initialState={getRestored('/api/cron/process')?.state}
               initialRunId={getRestored('/api/cron/process')?.runId}
+              testEndpoint="/api/cron/process?test=true"
             />
             <PipelineTrigger
               label="生成周报快照"

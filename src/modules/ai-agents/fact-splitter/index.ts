@@ -346,7 +346,8 @@ function sleep(ms: number) {
 export async function processUnprocessedRaw(
   table: string,
   weekNumber: string,
-  limit = 200
+  limit = 200,
+  onProgress?: (current: number, total: number) => void
 ): Promise<{ total: number; factIds: string[]; dropped: number }> {
   const { data: rows, error } = await supabaseAdmin
     .from(table)
@@ -384,6 +385,10 @@ export async function processUnprocessedRaw(
         return { raw, candidates: filtered, dropped: allCandidates.length - filtered.length }
       })
     )
+
+    // Report progress at batch level
+    const batchEnd = Math.min(i + BATCH_SIZE, rows.length)
+    onProgress?.(batchEnd, rows.length)
 
     // 串行保存：每条结果先做 in-memory dedup，再保存
     for (const r of extractResults) {

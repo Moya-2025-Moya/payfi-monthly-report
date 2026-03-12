@@ -163,13 +163,24 @@ interface DefiLlamaRaise {
   otherInvestors: string[] | null
 }
 
-const RELEVANT_SECTORS = ['stablecoin', 'payments', 'defi', 'infrastructure', 'fintech', 'rwa']
+const RELEVANT_KEYWORDS = [
+  'stablecoin', 'stable coin', 'payments', 'payment', 'payfi', 'pay',
+  'defi', 'infrastructure', 'fintech', 'rwa', 'real world asset',
+  'cross-border', 'remittance', 'lending', 'credit', 'treasury',
+  'usdc', 'usdt', 'dai', 'frax', 'pyusd', 'eurc', 'gho',
+  'circle', 'tether', 'maker', 'aave', 'stripe', 'wise',
+  'bridge', 'settlement', 'clearing', 'tokenization', 'tokenize',
+]
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
 function isRelevantRaise(raise: DefiLlamaRaise, watchlistNames: Set<string>): boolean {
-  const sector = (raise.sector ?? '').toLowerCase()
+  // Check against watchlist names first
   const name = (raise.name ?? '').toLowerCase()
-  return RELEVANT_SECTORS.some(s => sector.includes(s)) || watchlistNames.has(name)
+  if (watchlistNames.has(name)) return true
+
+  // Check sector + name against broad keyword list
+  const haystack = `${raise.sector ?? ''} ${raise.name ?? ''}`.toLowerCase()
+  return RELEVANT_KEYWORDS.some(kw => haystack.includes(kw))
 }
 
 async function fetchDefiLlamaRaises(): Promise<RawFunding[]> {
