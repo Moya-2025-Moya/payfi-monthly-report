@@ -51,6 +51,7 @@ export const TAB_GROUPS = [
     key: 'analysis',
     label: '分析',
     items: [
+      { href: '/narratives', label: '叙事时间线' },
       { href: '/regulatory', label: '监管追踪' },
       { href: '/diff', label: '周报对比' },
       { href: '/quality', label: '数据质量' },

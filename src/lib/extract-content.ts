@@ -1,8 +1,6 @@
 // Full-text content extraction from URLs using Mozilla Readability
 // Used by all collectors to fetch article/page body text
-
-import { Readability } from '@mozilla/readability'
-import { JSDOM } from 'jsdom'
+// Dynamic imports to avoid bundling issues on Vercel serverless
 
 const FETCH_TIMEOUT_MS = 15_000
 const MAX_HTML_SIZE = 2_000_000 // 2MB — skip huge pages
@@ -19,6 +17,9 @@ export async function extractContent(
   url: string
 ): Promise<{ title: string; text: string } | null> {
   try {
+    const { JSDOM } = await import('jsdom')
+    const { Readability } = await import('@mozilla/readability')
+
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
@@ -57,8 +58,8 @@ export async function extractContent(
       title: article.title ?? '',
       text: text.trim(),
     }
-  } catch {
-    // Network error, timeout, parse failure — all return null
+  } catch (err) {
+    console.error('[extract-content] Failed for', url, ':', err instanceof Error ? err.message : String(err))
     return null
   }
 }
