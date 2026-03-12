@@ -730,20 +730,23 @@ GET  /api/entities/:id
 GET  /api/entities/:id/facts?week=...&type=...
 
 # 叙事时间线
-GET  /api/narratives/search?q=...           # 叙事搜索
+GET  /api/narratives/search?q=...           # 叙事搜索 (SSE streaming)
+GET  /api/narratives/hot-topics             # 自动发现热门叙事
+POST /api/narratives/chat                   # 叙事节点追问
 
 # 团队协作
 POST /api/notes
-GET  /api/notes
+GET  /api/notes?fact_id=...&entity_id=...
 POST /api/comments
-GET  /api/comments
+GET  /api/comments?fact_id=...&entity_id=...
 
-# 管理
-POST /api/trigger/collect
-POST /api/trigger/process
-POST /api/trigger/snapshot
+# 管理 (触发通过设置页调用)
+POST /api/trigger/collect                   # → /api/cron/collect/stream (SSE)
+GET  /api/cron/process/stream               # AI处理流水线 (SSE)
+GET  /api/cron/snapshot/stream              # 周报快照生成 (SSE)
 GET  /api/health
-GET  /api/pipeline/stats                    # 验证层统计
+GET  /api/pipeline                          # 最新 pipeline run
+GET  /api/pipeline/runs                     # pipeline 运行历史
 ```
 
 > **已移除的API**: `/api/chat`, `/api/diff`, `/api/share`, `/api/bookmarks`, `/api/questions`,

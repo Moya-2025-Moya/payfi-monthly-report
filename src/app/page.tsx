@@ -49,7 +49,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     <div>
       <PageHeader title="周报" />
       {summary.simple && (
-        <WeeklySummary simple={summary.simple} detailed={summary.detailed} />
+        <WeeklySummary simple={summary.simple} detailed={summary.detailed} weekNumber={week} />
       )}
       <FeedClient facts={facts} currentWeek={week} />
     </div>

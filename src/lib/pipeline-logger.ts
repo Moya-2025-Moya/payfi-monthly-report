@@ -3,7 +3,7 @@
 
 import { supabaseAdmin } from '@/db/client'
 
-export type PipelineType = 'collect' | 'process' | 'twitter' | 'snapshot'
+export type PipelineType = 'collect' | 'process' | 'twitter' | 'snapshot' | 'narrative'
 
 export interface PipelineLogEntry {
   time: string

@@ -18,6 +18,7 @@ const ENDPOINT_TO_TYPE: Record<string, string> = {
   '/api/cron/process': 'process',
   '/api/cron/twitter': 'twitter',
   '/api/cron/snapshot': 'snapshot',
+  '/api/cron/narrative': 'narrative',
 }
 
 function PipelineTrigger({
@@ -556,6 +557,15 @@ export default function SettingsPage() {
               initialLogs={getRestored('/api/cron/snapshot')?.logs}
               initialState={getRestored('/api/cron/snapshot')?.state}
               initialRunId={getRestored('/api/cron/snapshot')?.runId}
+            />
+            <PipelineTrigger
+              label="生成叙事时间线"
+              description="自动发现 Top 3 叙事主题，生成时间线（含外部搜索补充 + 预测节点）"
+              endpoint="/api/cron/narrative"
+              method="GET"
+              initialLogs={getRestored('/api/cron/narrative')?.logs}
+              initialState={getRestored('/api/cron/narrative')?.state}
+              initialRunId={getRestored('/api/cron/narrative')?.runId}
             />
           </div>
         )}

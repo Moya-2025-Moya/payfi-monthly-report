@@ -23,26 +23,41 @@ const EXTERNAL_COLORS = {
   border: 'rgba(99,102,241,0.2)',
 }
 
+const PREDICTION_COLORS = {
+  dot: 'var(--fg-faint)',
+  bg: 'transparent',
+  border: 'var(--border)',
+}
+
 function EventCard({ data, onClick }: { data: NarrativeNodeData; onClick: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const isExt = data.isExternal === true
-  const sig = isExt ? EXTERNAL_COLORS : (SIG_COLORS[data.significance] ?? SIG_COLORS.low)
+  const isPred = data.isPrediction === true
+  const sig = isPred ? PREDICTION_COLORS : isExt ? EXTERNAL_COLORS : (SIG_COLORS[data.significance] ?? SIG_COLORS.low)
 
   return (
     <div
       className="rounded-lg border px-4 py-3 cursor-pointer transition-all hover:shadow-sm"
-      style={{ borderColor: sig.border, background: sig.bg }}
-      onClick={() => { setExpanded(v => !v); if (!isExt) onClick() }}
+      style={{
+        borderColor: sig.border,
+        background: sig.bg,
+        ...(isPred ? { borderStyle: 'dashed', opacity: 0.7 } : {}),
+      }}
+      onClick={() => { setExpanded(v => !v); if (!isExt && !isPred) onClick() }}
     >
       {/* Date + badges */}
       <div className="flex items-center gap-2 mb-1.5">
         <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: sig.dot }} />
         <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>{data.date}</span>
-        {isExt && (
+        {isPred && (
+          <span className="text-[11px] px-1.5 py-0.5 rounded font-medium"
+            style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>后续关注</span>
+        )}
+        {isExt && !isPred && (
           <span className="text-[11px] px-1.5 py-0.5 rounded font-medium"
             style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1' }}>网络来源</span>
         )}
-        {!isExt && data.significance === 'high' && (
+        {!isExt && !isPred && data.significance === 'high' && (
           <span className="text-[11px] px-1.5 py-0.5 rounded font-medium"
             style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>重要</span>
         )}
@@ -123,7 +138,7 @@ export function NarrativeTimeline({ nodes, branches, status, onNodeClick }: Prop
   if (nodes.length === 0 && status !== 'streaming') {
     return (
       <div className="flex items-center justify-center py-20 text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-        {status === 'idle' ? '输入主题开始生成时间线' : '未找到相关事实'}
+        未找到相关事实
       </div>
     )
   }
@@ -154,8 +169,9 @@ export function NarrativeTimeline({ nodes, branches, status, onNodeClick }: Prop
                 <div className="absolute -left-6 top-3 w-[22px] flex items-center justify-center">
                   <div className="w-2.5 h-2.5 rounded-full border-2"
                     style={{
-                      background: data.isExternal ? EXTERNAL_COLORS.dot : data.isMerged ? 'var(--accent)' : SIG_COLORS[data.significance]?.dot ?? 'var(--fg-faint)',
-                      borderColor: 'var(--surface)',
+                      background: data.isPrediction ? 'transparent' : data.isExternal ? EXTERNAL_COLORS.dot : data.isMerged ? 'var(--accent)' : SIG_COLORS[data.significance]?.dot ?? 'var(--fg-faint)',
+                      borderColor: data.isPrediction ? 'var(--fg-faint)' : 'var(--surface)',
+                      ...(data.isPrediction ? { borderStyle: 'dashed' } : {}),
                     }} />
                 </div>
                 <EventCard data={data} onClick={() => onNodeClick(data)} />
@@ -226,14 +242,16 @@ export function NarrativeTimeline({ nodes, branches, status, onNodeClick }: Prop
         <div className="space-y-4">
           {allEvents.map(({ node, column }) => {
             const data = node.data
-            const dotColor = data.isExternal ? EXTERNAL_COLORS.dot : data.isMerged ? 'var(--accent)' : SIG_COLORS[data.significance]?.dot ?? 'var(--fg-faint)'
+            const dotColor = data.isPrediction ? 'transparent' : data.isExternal ? EXTERNAL_COLORS.dot : data.isMerged ? 'var(--accent)' : SIG_COLORS[data.significance]?.dot ?? 'var(--fg-faint)'
+            const dotBorder = data.isPrediction ? 'var(--fg-faint)' : 'var(--surface)'
+            const dotStyle = data.isPrediction ? 'dashed' : 'solid'
 
             if (column === 'center') {
               return (
                 <div key={node.id} className="relative px-[calc(50%-140px)]" style={{ maxWidth: '100%' }}>
                   {/* Center dot */}
                   <div className="absolute left-1/2 top-4 -translate-x-1/2 w-3 h-3 rounded-full border-2 z-10"
-                    style={{ background: dotColor, borderColor: 'var(--surface)' }} />
+                    style={{ background: dotColor, borderColor: dotBorder, borderStyle: dotStyle }} />
                   <div className="mx-auto" style={{ maxWidth: 480 }}>
                     <EventCard data={data} onClick={() => onNodeClick(data)} />
                   </div>
@@ -250,7 +268,7 @@ export function NarrativeTimeline({ nodes, branches, status, onNodeClick }: Prop
                     </div>
                     <div className="flex items-center justify-center pt-4">
                       <div className="w-2.5 h-2.5 rounded-full border-2"
-                        style={{ background: dotColor, borderColor: 'var(--surface)' }} />
+                        style={{ background: dotColor, borderColor: dotBorder, borderStyle: dotStyle }} />
                     </div>
                     <div />
                   </>
@@ -259,7 +277,7 @@ export function NarrativeTimeline({ nodes, branches, status, onNodeClick }: Prop
                     <div />
                     <div className="flex items-center justify-center pt-4">
                       <div className="w-2.5 h-2.5 rounded-full border-2"
-                        style={{ background: dotColor, borderColor: 'var(--surface)' }} />
+                        style={{ background: dotColor, borderColor: dotBorder, borderStyle: dotStyle }} />
                     </div>
                     <div className="pl-2">
                       <EventCard data={data} onClick={() => onNodeClick(data)} />

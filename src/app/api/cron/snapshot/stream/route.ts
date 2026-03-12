@@ -112,10 +112,14 @@ export async function GET() {
             const summaryResult = await callHaikuJSON<{
               items: Array<{
                 date: string
-                simple: string
-                background: string
-                what_happened: string
-                insight: string
+                simple_zh: string
+                simple_en: string
+                background_zh: string
+                background_en: string
+                what_happened_zh: string
+                what_happened_en: string
+                insight_zh: string
+                insight_en: string
                 source_url: string | null
                 tags: string[]
               }>
@@ -131,19 +135,23 @@ export async function GET() {
 4. 监管政策（GENIUS Act, MiCA, SEC, OCC 等）
 5. 重要融资/合作/收购
 
-对每条新闻输出：
+对每条新闻，必须同时输出中文和英文版本：
 - date: 事件日期，格式 YYYY.MM.DD
-- simple: 一句话简报，格式为 "YYYY.MM.DD, [公司/主体] [action + 1-2 key metrics] [impact]."。英文，简洁，包含关键数字。不要提及具体地域/国家。
-- background: 组织背景（1句话，英文）
-- what_happened: 具体发生了什么（1-2句，英文，包含金额/用户数/时间线等量化信息）
-- insight: 对稳定币行业的影响分析（1句话，英文）
+- simple_zh: 一句话中文简报，格式 "YYYY.MM.DD, [公司/主体] [动作 + 1-2个关键指标] [影响]。"
+- simple_en: 一句话英文简报，格式 "YYYY.MM.DD, [Company] [action + 1-2 key metrics] [impact]."
+- background_zh: 组织背景（1句中文）
+- background_en: 组织背景（1句英文）
+- what_happened_zh: 具体发生了什么（1-2句中文，包含量化信息）
+- what_happened_en: 具体发生了什么（1-2句英文，包含量化信息）
+- insight_zh: 对稳定币行业的影响分析（1句中文）
+- insight_en: 对稳定币行业的影响分析（1句英文）
 - source_url: 最相关的来源 URL（从事实的 [url: ...] 中提取，必须是完整 URL）
 - tags: 相关标签数组，如 ["B2C", "Stablecoin", "Regulation"]
 
 规则：
-1. 严格去重：同一事件（如 "Tether投资Ark Labs" 出现多次）只保留最完整的一条
-2. 不要使用任何 markdown 格式符号（不要 ** 加粗、不要 # 标题、不要 - 列表）
-3. simple 必须是纯英文一句话，不要换行
+1. 严格去重：同一事件出现多次只保留最完整的一条
+2. 不要使用任何 markdown 格式符号
+3. simple_zh/simple_en 必须是纯文本一句话，不要换行
 4. 如果信息不足无法确认，用 [Uncertainty: ...] 标注
 5. 如果缺少关键数据，用 [Info gap: ...] 标注
 6. items 数组必须恰好 10 个元素（除非事实极少）
@@ -153,10 +161,14 @@ export async function GET() {
   "items": [
     {
       "date": "2026.03.12",
-      "simple": "2026.03.12, Tether invested $520M in Ark Labs seed round to support Bitcoin stablecoin infrastructure development.",
-      "background": "Tether is the issuer of USDT, the largest stablecoin by market cap.",
-      "what_happened": "Tether led a $520M seed round investment in Ark Labs, a company building Bitcoin-native stablecoin and payment infrastructure.",
-      "insight": "Signals Tether's strategic expansion beyond USDT issuance into Bitcoin L2 infrastructure, potentially competing with Lightning Network for payments.",
+      "simple_zh": "2026.03.12, Tether 领投 Ark Labs 5.2亿美元种子轮，布局比特币稳定币基础设施。",
+      "simple_en": "2026.03.12, Tether invested $520M in Ark Labs seed round to support Bitcoin stablecoin infrastructure development.",
+      "background_zh": "Tether 是市值最大的稳定币 USDT 的发行方。",
+      "background_en": "Tether is the issuer of USDT, the largest stablecoin by market cap.",
+      "what_happened_zh": "Tether 领投 Ark Labs 5.2亿美元种子轮，该公司构建比特币原生稳定币与支付基础设施。",
+      "what_happened_en": "Tether led a $520M seed round investment in Ark Labs, building Bitcoin-native stablecoin and payment infrastructure.",
+      "insight_zh": "标志着 Tether 从 USDT 发行扩展至比特币 L2 基础设施，可能与闪电网络竞争支付场景。",
+      "insight_en": "Signals Tether's strategic expansion beyond USDT issuance into Bitcoin L2 infrastructure.",
       "source_url": "https://example.com/article",
       "tags": ["B2B", "Stablecoin", "Funding"]
     }
@@ -165,13 +177,13 @@ export async function GET() {
 
 本周事实 (共 ${topFacts.length} 条):
 ${factsText}`,
-              { system: '你是稳定币行业分析师。输出严格 JSON，不要任何 markdown 格式。items 数组必须恰好 10 个元素。' }
+              { system: '你是稳定币行业分析师。输出严格 JSON，不要任何 markdown 格式。items 数组必须恰好 10 个元素。每条必须同时包含中英文版本。' }
             )
 
             if (summaryResult.items?.length > 0) {
-              // Build simplified version
+              // Build simplified version (bilingual)
               weeklySummarySimple = 'Weekly Stablecoin News Update:\n' +
-                summaryResult.items.map((item, i) => `${i + 1}. ${item.simple}`).join('\n\n')
+                summaryResult.items.map((item, i) => `${i + 1}. ${item.simple_en}`).join('\n\n')
 
               // Build detailed version as JSON for structured rendering
               weeklySummaryDetailed = JSON.stringify(summaryResult.items)

@@ -1,6 +1,8 @@
 'use client'
 
-import type { NarrativeTab } from '@/app/narratives/NarrativesClient'
+interface NarrativeTab {
+  id: string; query: string; status: string
+}
 
 interface Props {
   tabs: NarrativeTab[]

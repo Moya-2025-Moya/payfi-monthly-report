@@ -84,12 +84,31 @@ function MetricChangeArrow({ change }: { change: string }) {
   )
 }
 
+/* ── Extract speaker from quote content ── */
+function extractSpeaker(content: string): { speaker: string | null; quote: string } {
+  // Match patterns like "X 表示：'...'" or "X 认为：'...'" or "X 说：..." etc.
+  const match = content.match(/^(.+?)\s*(表示|认为|指出|称|说|透露|强调|提到|预测|警告)[\s：:]+['"「]?(.+?)['"」]?$/)
+  if (match) return { speaker: match[1].trim(), quote: match[3].trim() }
+  // Fallback: try to find quoted text with attribution before it
+  const match2 = content.match(/^(.+?)\s*[:：]\s*['"「](.+?)['"」]$/)
+  if (match2) return { speaker: match2[1].trim(), quote: match2[2].trim() }
+  return { speaker: null, quote: content }
+}
+
 /* ── Quote layout wrapper ── */
-function QuoteContent({ children }: { children: React.ReactNode }) {
+function QuoteContent({ content }: { content: string }) {
+  const { speaker, quote } = extractSpeaker(content)
   return (
     <div className="flex gap-3">
       <div className="w-1 rounded-full shrink-0" style={{ background: '#8b5cf6', opacity: 0.4 }} />
-      <div className="italic">{children}</div>
+      <div>
+        {speaker && (
+          <p className="text-[11px] font-medium mb-1" style={{ color: '#8b5cf6' }}>
+            {speaker}
+          </p>
+        )}
+        <div className="italic">{quote}</div>
+      </div>
     </div>
   )
 }
@@ -193,11 +212,9 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
             <div className="flex-1 min-w-0">
               {/* Q1: Content with type-specific layout */}
               {fact.fact_type === 'quote' ? (
-                <QuoteContent>
-                  <p className="text-[15px] leading-relaxed cursor-pointer" style={{ color: 'var(--fg-body)' }} onClick={toggleExpand}>
-                    {displayContent}
-                  </p>
-                </QuoteContent>
+                <div className="cursor-pointer" onClick={toggleExpand}>
+                  <QuoteContent content={displayContent} />
+                </div>
               ) : (
                 <p className="text-[15px] leading-relaxed cursor-pointer" style={{ color: 'var(--fg-body)' }} onClick={toggleExpand}>
                   {displayContent}
