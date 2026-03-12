@@ -93,12 +93,16 @@ export async function validateSourceTraceback(fact: AtomicFact): Promise<V1Resul
     return { status: 'source_unavailable', evidence_quote: null, match_score: 0 }
   }
 
-  // 截断长文本
-  const truncated = truncateToRelevant(articleText, fact.content_en, MAX_ARTICLE_LENGTH)
+  // 截断长文本 (prefer content_zh since B1 now outputs Chinese)
+  const factContent = fact.content_zh || fact.content_en
+  if (!factContent) {
+    return { status: 'source_unavailable', evidence_quote: null, match_score: 0 }
+  }
+  const truncated = truncateToRelevant(articleText, factContent, MAX_ARTICLE_LENGTH)
 
   // AI 判断
   const prompt = PROMPT_TEMPLATE
-    .replace('{fact_content}', fact.content_en)
+    .replace('{fact_content}', factContent)
     .replace('{article_text}', truncated)
 
   try {

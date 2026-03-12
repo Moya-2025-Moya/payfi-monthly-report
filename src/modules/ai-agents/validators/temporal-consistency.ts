@@ -233,7 +233,7 @@ export async function validateTemporalConsistency(fact: AtomicFact): Promise<V5R
     const entityName = entity?.name ?? 'Unknown'
 
     return aiCheck(
-      fact.content_en,
+      fact.content_zh || fact.content_en,
       new Date(fact.fact_date).toISOString().split('T')[0],
       entityName,
       check.timelineEvents

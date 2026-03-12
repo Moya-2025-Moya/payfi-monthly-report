@@ -44,6 +44,13 @@ export async function validateNumericalSanity(fact: AtomicFact): Promise<V3Resul
     return { sanity: 'normal', reason: 'Within static range, no historical data', historical_reference: null }
   }
 
+  // Guard against division by zero
+  if (historical === 0) {
+    return value === 0
+      ? { sanity: 'normal', reason: 'Both current and historical are zero', historical_reference: 0 }
+      : { sanity: 'anomaly', reason: `${metricName}=${value} but historical is 0`, historical_reference: 0 }
+  }
+
   const deviationPct = Math.abs((value - historical) / historical) * 100
   const deviationMultiple = Math.max(value, historical) / Math.min(value, historical)
 

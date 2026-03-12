@@ -238,11 +238,11 @@ export interface CandidateFact {
   fact_type: FactType
   evidence_sentence: string
   tags: string[]
-  metric_name?: string
-  metric_value?: number
-  metric_unit?: string
-  metric_period?: string
-  metric_change?: string
+  metric_name: string | null
+  metric_value: number | null
+  metric_unit: string | null
+  metric_period: string | null
+  metric_change: string | null
   // B1 Prompt2 自查结果
   self_check: 'supported' | 'partial' | 'unsupported'
 }

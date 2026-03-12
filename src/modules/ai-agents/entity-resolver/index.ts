@@ -166,8 +166,13 @@ export async function resolveEntities(factId: string): Promise<void> {
   // 2. Fetch all known entities from DB
   const knownEntities = await fetchKnownEntities()
 
-  // 3. Build prompt and call AI
-  const resolved = await callEntityResolver(fact.content_en, knownEntities)
+  // 3. Build prompt and call AI (prefer content_zh since B1 now outputs Chinese)
+  const factContent = fact.content_zh || fact.content_en
+  if (!factContent) {
+    console.log(`[B2] No content for fact: ${factId}, skipping`)
+    return
+  }
+  const resolved = await callEntityResolver(factContent, knownEntities)
 
   if (resolved.length === 0) {
     console.log(`[B2] No entities found for fact: ${factId}`)

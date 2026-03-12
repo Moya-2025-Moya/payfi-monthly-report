@@ -4,6 +4,14 @@
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!
 const API_URL = 'https://api.anthropic.com/v1/messages'
 
+// Rate limit retry config
+const MAX_RETRIES = 5
+const BASE_DELAY_MS = 15_000 // 15s base delay for rate limits
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 interface AIMessage {
   role: 'user' | 'assistant'
   content: string
@@ -35,23 +43,42 @@ export async function callAI(
   }
   if (system) body.system = system
 
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(body),
-  })
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+    })
 
-  if (!res.ok) {
+    if (res.ok) {
+      const data = await res.json()
+      return data.content[0].text
+    }
+
     const err = await res.text()
+
+    // Retry on 429 (rate limit) and 529 (overloaded)
+    if ((res.status === 429 || res.status === 529) && attempt < MAX_RETRIES) {
+      // Use retry-after header if available, otherwise exponential backoff
+      const retryAfter = res.headers.get('retry-after')
+      const delayMs = retryAfter
+        ? parseInt(retryAfter, 10) * 1000
+        : BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 2000
+      console.warn(
+        `[ai-client] ${res.status} rate limited, retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delayMs / 1000)}s`
+      )
+      await sleep(delayMs)
+      continue
+    }
+
     throw new Error(`Anthropic API error ${res.status}: ${err}`)
   }
 
-  const data = await res.json()
-  return data.content[0].text
+  throw new Error('Exhausted retries — should not reach here')
 }
 
 // 便捷方法: 单轮调用 Haiku (大部分 Agent 用)

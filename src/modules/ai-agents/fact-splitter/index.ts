@@ -83,11 +83,11 @@ function mergeToCandidates(facts: ExtractedFact[], verdicts: VerifyVerdict[]): C
       fact_type: fact.fact_type,
       evidence_sentence: fact.evidence_sentence,
       tags: fact.tags,
-      metric_name: fact.metric_name ?? undefined,
-      metric_value: fact.metric_value ?? undefined,
-      metric_unit: fact.metric_unit ?? undefined,
-      metric_period: fact.metric_period ?? undefined,
-      metric_change: fact.metric_change ?? undefined,
+      metric_name: fact.metric_name ?? null,
+      metric_value: fact.metric_value ?? null,
+      metric_unit: fact.metric_unit ?? null,
+      metric_period: fact.metric_period ?? null,
+      metric_change: fact.metric_change ?? null,
       self_check: selfCheck,
     }
   })
@@ -255,6 +255,13 @@ export async function splitFacts(
 
 // ─── 批量处理: 获取未处理的原始数据并拆解 ───
 
+const BATCH_SIZE = 10 // 每批处理条数
+const BATCH_DELAY_MS = 30_000 // 批间等待 30 秒，避免触发速率限制
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 export async function processUnprocessedRaw(
   table: string,
   weekNumber: string,
@@ -272,10 +279,24 @@ export async function processUnprocessedRaw(
   const allFactIds: string[] = []
   let totalDropped = 0
 
-  for (const row of rows) {
-    const result = await splitFacts(row, table, weekNumber)
-    allFactIds.push(...result.factIds)
-    totalDropped += result.dropped
+  // 分批处理，每批 BATCH_SIZE 条，批间等待
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = rows.slice(i, i + BATCH_SIZE)
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1
+    const totalBatches = Math.ceil(rows.length / BATCH_SIZE)
+    console.log(`[fact-splitter] ${table} 批次 ${batchNum}/${totalBatches} (${batch.length} 条)`)
+
+    for (const row of batch) {
+      const result = await splitFacts(row, table, weekNumber)
+      allFactIds.push(...result.factIds)
+      totalDropped += result.dropped
+    }
+
+    // 非最后一批时等待，给 API 速率窗口恢复
+    if (i + BATCH_SIZE < rows.length) {
+      console.log(`[fact-splitter] 批间等待 ${BATCH_DELAY_MS / 1000}s...`)
+      await sleep(BATCH_DELAY_MS)
+    }
   }
 
   return { total: rows.length, factIds: allFactIds, dropped: totalDropped }

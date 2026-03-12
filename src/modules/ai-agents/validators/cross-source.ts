@@ -100,8 +100,13 @@ function crossValidateMetric(fact: AtomicFact, related: AtomicFact[]): V2Result 
   // 检查值的一致性
   let consistentCount = 0
   for (const v of allValues) {
-    const deviation = Math.abs((v - claimedValue) / claimedValue) * 100
-    if (deviation <= 5) consistentCount++
+    if (claimedValue === 0) {
+      // Both zero → consistent; otherwise not
+      if (v === 0) consistentCount++
+    } else {
+      const deviation = Math.abs((v - claimedValue) / claimedValue) * 100
+      if (deviation <= 5) consistentCount++
+    }
   }
 
   const totalSources = allValues.length
@@ -109,8 +114,11 @@ function crossValidateMetric(fact: AtomicFact, related: AtomicFact[]): V2Result 
   const hasDeviation = !isConsistent && consistentCount >= totalSources * 0.5
 
   // 判断是否为少数方
-  const median = allValues.sort((a, b) => a - b)[Math.floor(allValues.length / 2)]
-  const isMajority = Math.abs((claimedValue - median) / median) <= 0.05
+  const sorted = [...allValues].sort((a, b) => a - b)
+  const median = sorted[Math.floor(sorted.length / 2)]
+  const isMajority = median === 0
+    ? claimedValue === 0
+    : Math.abs((claimedValue - median) / median) <= 0.05
   const isMinority = !isMajority && totalSources >= 3
 
   let crossValidation: V2Result['cross_validation']
@@ -159,9 +167,9 @@ async function crossValidateEvent(fact: AtomicFact, related: AtomicFact[]): Prom
     }
   }
 
-  // 构建 AI 输入
+  // 构建 AI 输入 (prefer content_zh since B1 now outputs Chinese)
   const sourceDescriptions = [fact, ...sameEvent]
-    .map((f, i) => `--- Source ${i + 1} ---\nURL: ${f.source_url}\nFact: ${f.content_en}\nDate: ${new Date(f.fact_date).toISOString().split('T')[0]}`)
+    .map((f, i) => `--- Source ${i + 1} ---\nURL: ${f.source_url}\nFact: ${f.content_zh || f.content_en}\nDate: ${new Date(f.fact_date).toISOString().split('T')[0]}`)
     .join('\n\n')
 
   const prompt = PROMPT_TEMPLATE.replace('{source_descriptions}', sourceDescriptions)

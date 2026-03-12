@@ -150,7 +150,7 @@ async function detectTextualContradictions(fact: AtomicFact, entityIds: string[]
   // Supabase: array overlap operator is `cs` (contains) — use `ov` for overlap on arrays
   const { data: candidateFacts } = await supabaseAdmin
     .from('atomic_facts')
-    .select('id, content_en, source_url, fact_date, fact_type, tags, week_number')
+    .select('id, content_en, content_zh, source_url, fact_date, fact_type, tags, week_number')
     .neq('id', fact.id)
     .neq('source_id', fact.source_id)
     .in('fact_type', ['event', 'status_change'])
@@ -178,11 +178,15 @@ async function detectTextualContradictions(fact: AtomicFact, entityIds: string[]
     const factDate = new Date(fact.fact_date).toISOString().split('T')[0]
     const candidateDate = new Date(candidate.fact_date).toISOString().split('T')[0]
 
+    const factContentA = fact.content_zh || fact.content_en
+    const factContentB = candidate.content_zh || candidate.content_en
+    if (!factContentA || !factContentB) continue
+
     const prompt = PROMPT_TEMPLATE
-      .replace('{fact_a_content}', fact.content_en)
+      .replace('{fact_a_content}', factContentA)
       .replace('{fact_a_source}', fact.source_url)
       .replace('{fact_a_date}', factDate)
-      .replace('{fact_b_content}', candidate.content_en)
+      .replace('{fact_b_content}', factContentB)
       .replace('{fact_b_source}', candidate.source_url)
       .replace('{fact_b_date}', candidateDate)
 

@@ -166,7 +166,7 @@ async function lookupEntityIdByName(name: string): Promise<string | null> {
     .select('id')
     .ilike('name', name)
     .limit(1)
-    .single()
+    .maybeSingle()
 
   if (error || !data) return null
   return (data as { id: string }).id
@@ -263,8 +263,14 @@ export async function mergeTimeline(
     ? fact.fact_date.toISOString().split('T')[0]
     : String(fact.fact_date)
 
+  const factContent = fact.content_zh || fact.content_en
+  if (!factContent) {
+    console.log(`[B3] No content for fact ${factId}, skipping`)
+    return { action: 'none', timelineId: null }
+  }
+
   const prompt = template
-    .replace('{fact_content}', fact.content_en)
+    .replace('{fact_content}', factContent)
     .replace('{fact_date}', factDate)
     .replace('{entity_names}', entityNames.length > 0 ? entityNames.join(', ') : '（无）')
     .replace('{existing_timelines}', formatTimelinesForPrompt(timelines))
