@@ -6,8 +6,10 @@
 import { supabaseAdmin } from '@/db/client'
 import { NextRequest, NextResponse } from 'next/server'
 
-// Tables with an `id` column (delete via id != impossible UUID)
-const ID_TABLES_PROCESSED = [
+// Dependency order matters: delete children before parents
+const PROCESSED_TABLES = [
+  'timeline_facts',
+  'fact_entities',
   'fact_contradictions',
   'notes',
   'comments',
@@ -16,12 +18,6 @@ const ID_TABLES_PROCESSED = [
   'entities',
   'snapshots',
   'pipeline_runs',
-]
-
-// Junction tables without `id` — delete via fact_id or timeline_id
-const JUNCTION_TABLES = [
-  { table: 'timeline_facts', key: 'timeline_id' },
-  { table: 'fact_entities', key: 'fact_id' },
 ]
 
 const RAW_TABLES = [
@@ -35,11 +31,21 @@ const RAW_TABLES = [
   'raw_stock_data',
 ]
 
-async function truncateTable(table: string, key: string): Promise<string | null> {
-  // Use gte on the key to match all rows (UUIDs are always >= empty string,
-  // timestamps are always >= epoch). For broader compatibility, use gt with a minimal value.
-  const { error } = await supabaseAdmin.from(table).delete().gte(key, '')
-  return error ? error.message : null
+async function clearTable(table: string): Promise<string | null> {
+  // Supabase delete requires a filter. Use a tautology: delete where id is not null.
+  // For junction tables without `id`, try common key columns.
+  const keyCandidates = ['id', 'fact_id', 'timeline_id']
+
+  for (const key of keyCandidates) {
+    const { error } = await supabaseAdmin.from(table).delete().not(key, 'is', null)
+    if (!error) return null
+    // If column doesn't exist, try next candidate
+    if (error.message.includes('column') && error.message.includes('does not exist')) continue
+    // Other error — return it
+    return error.message
+  }
+
+  return `No suitable key column found for table ${table}`
 }
 
 export async function POST(req: NextRequest) {
@@ -49,33 +55,27 @@ export async function POST(req: NextRequest) {
 
     const results: { table: string; status: 'ok' | 'error'; error?: string }[] = []
 
-    // 1. Clear junction tables first (they reference other tables)
-    for (const { table, key } of JUNCTION_TABLES) {
-      const err = await truncateTable(table, key)
+    // 1. Clear processed/AI-generated tables
+    for (const table of PROCESSED_TABLES) {
+      const err = await clearTable(table)
       results.push(err ? { table, status: 'error', error: err } : { table, status: 'ok' })
     }
 
-    // 2. Clear processed tables
-    for (const table of ID_TABLES_PROCESSED) {
-      const err = await truncateTable(table, 'id')
-      results.push(err ? { table, status: 'error', error: err } : { table, status: 'ok' })
-    }
-
-    // 3. If mode is 'all', also clear raw tables
+    // 2. Handle raw tables
     if (mode === 'all') {
       for (const table of RAW_TABLES) {
-        const err = await truncateTable(table, 'id')
+        const err = await clearTable(table)
         results.push(err ? { table, status: 'error', error: err } : { table, status: 'ok' })
       }
     } else {
-      // mode === 'processed': reset raw tables' processed flag so they can be re-processed
+      // mode === 'processed': reset processed flag so raw data can be re-processed
       for (const table of RAW_TABLES) {
         const { error } = await supabaseAdmin
           .from(table)
           .update({ processed: false })
           .eq('processed', true)
         if (error) {
-          results.push({ table, status: 'error', error: `reset processed flag: ${error.message}` })
+          results.push({ table, status: 'error', error: `reset flag: ${error.message}` })
         } else {
           results.push({ table, status: 'ok' })
         }
