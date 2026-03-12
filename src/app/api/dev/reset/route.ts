@@ -32,16 +32,23 @@ const PROCESSED_TABLES = [
   'pipeline_runs',
 ]
 
-const RAW_TABLES = [
+// Tables with a `processed` boolean column that can be reset
+const RAW_TABLES_WITH_PROCESSED = [
   'raw_news',
   'raw_filings',
   'raw_product_updates',
   'raw_funding',
   'raw_regulatory',
   'raw_tweets',
+]
+
+// Tables without a `processed` column — no flag to reset, just optionally clear
+const RAW_TABLES_NO_PROCESSED = [
   'raw_onchain_metrics',
   'raw_stock_data',
 ]
+
+const RAW_TABLES = [...RAW_TABLES_WITH_PROCESSED, ...RAW_TABLES_NO_PROCESSED]
 
 async function clearTable(table: string): Promise<string | null> {
   // Supabase delete requires a WHERE clause.
@@ -80,8 +87,8 @@ export async function POST(req: NextRequest) {
         results.push(err ? { table, status: 'error', error: err } : { table, status: 'ok' })
       }
     } else {
-      // mode === 'processed': reset processed flag
-      for (const table of RAW_TABLES) {
+      // mode === 'processed': reset processed flag on tables that have it
+      for (const table of RAW_TABLES_WITH_PROCESSED) {
         const { error } = await supabaseAdmin
           .from(table)
           .update({ processed: false })
@@ -91,6 +98,10 @@ export async function POST(req: NextRequest) {
         } else {
           results.push({ table, status: 'ok' })
         }
+      }
+      // raw_onchain_metrics & raw_stock_data have no processed flag — skip in processed mode
+      for (const table of RAW_TABLES_NO_PROCESSED) {
+        results.push({ table, status: 'ok' })
       }
     }
 
