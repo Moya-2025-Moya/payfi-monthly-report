@@ -27,6 +27,36 @@ function getSourceUrls(fact: AtomicFact): string[] {
   return [...urls]
 }
 
+// Build objective verification indicators from V1-V4 results
+function getVerificationIndicators(fact: AtomicFact): { label: string; detail?: string }[] {
+  const indicators: { label: string; detail?: string }[] = []
+
+  // V1: source match score
+  const v1 = fact.v1_result as { match_score?: number; status?: string } | null
+  if (v1?.match_score != null) {
+    indicators.push({ label: `原文${v1.match_score}%`, detail: `来源原文匹配度 ${v1.match_score}%` })
+  } else if (v1?.status === 'source_unavailable') {
+    indicators.push({ label: '原文不可达', detail: '来源 URL 无法访问' })
+  }
+
+  // V2: independent sources
+  const v2 = fact.v2_result as { source_count?: number; independent_sources?: boolean; cross_validation?: string } | null
+  if (v2?.source_count != null && v2.source_count >= 2) {
+    const indep = v2.independent_sources ? '独立' : ''
+    indicators.push({ label: `${v2.source_count}${indep}源`, detail: `${v2.source_count} 个${indep ? '独立' : ''}信息源交叉验证` })
+  }
+
+  // V4: on-chain anchor
+  const v4 = fact.v4_result as { anchor_status?: string; deviation_pct?: number | null } | null
+  if (v4?.anchor_status === 'anchored') {
+    indicators.push({ label: '链上锚定', detail: '与链上实际数据匹配' })
+  } else if (v4?.anchor_status === 'deviation' && v4.deviation_pct != null) {
+    indicators.push({ label: `链上偏差${Math.abs(v4.deviation_pct).toFixed(0)}%`, detail: `与链上数据偏差 ${v4.deviation_pct}%` })
+  }
+
+  return indicators
+}
+
 export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const [showSources, setShowSources] = useState(false)
@@ -37,6 +67,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
   const date = new Date(fact.fact_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' })
   const displayContent = fact.content_zh || fact.content_en
   const sourceUrls = getSourceUrls(fact)
+  const verificationIndicators = getVerificationIndicators(fact)
 
   async function loadNotes() {
     if (notesLoaded) return
@@ -97,6 +128,13 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
             onClick={() => setShowSources(s => !s)}
           />
           <FactTypeBadge type={FACT_TYPE_ZH[fact.fact_type] ?? fact.fact_type} />
+          {verificationIndicators.map((ind, i) => (
+            <span key={i} className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+              style={{ color: 'var(--fg-dim)', border: '1px solid var(--border)' }}
+              title={ind.detail}>
+              {ind.label}
+            </span>
+          ))}
         </div>
         <time className="text-[11px] font-mono whitespace-nowrap" style={{ color: 'var(--fg-faint)' }}>{date}</time>
       </div>

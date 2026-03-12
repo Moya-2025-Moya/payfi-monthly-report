@@ -1,6 +1,7 @@
-// B5 Translator Agent — English atomic facts → Chinese
-// Input: atomic_facts IDs with content_en filled
-// Output: atomic_facts.content_zh updated
+// B5 Translator Agent — Bilingual completion
+// Now that B1 outputs Chinese directly:
+//   - If content_zh exists and content_en is null → translate ZH→EN
+//   - If content_en exists and content_zh is null → translate EN→ZH (legacy)
 
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -19,7 +20,6 @@ function loadPrompt(filename: string): string {
 // ─── 单条翻译 ───
 
 export async function translateFact(factId: string): Promise<void> {
-  // 1. Fetch atomic fact
   const { data, error } = await supabaseAdmin
     .from('atomic_facts')
     .select('*')
@@ -30,28 +30,51 @@ export async function translateFact(factId: string): Promise<void> {
 
   const fact = data as AtomicFact
 
-  // 2. Skip if content_zh already filled
-  if (fact.content_zh !== null && fact.content_zh !== '') {
-    console.log(`[B5] Skipping fact ${factId} — content_zh already present`)
+  // Both filled → skip
+  if (fact.content_zh && fact.content_en) {
+    console.log(`[B5] Skipping fact ${factId} — both languages present`)
     return
   }
 
-  // 3. Build prompt
-  const template = loadPrompt('translator.md')
-  const prompt = template.replace('{content_en}', fact.content_en)
+  // Neither filled → skip
+  if (!fact.content_zh && !fact.content_en) {
+    console.log(`[B5] Skipping fact ${factId} — no content`)
+    return
+  }
 
-  // 4. Call Haiku — response is the translated text directly
-  const response = await callHaiku(prompt)
+  if (fact.content_zh && !fact.content_en) {
+    // ZH→EN: new path (B1 now outputs Chinese)
+    const prompt = [
+      'Translate the following Chinese atomic fact into English.',
+      'Rules: preserve proper nouns (company names, product names, abbreviations like USDC, SEC, S-1).',
+      'Preserve all numbers exactly. Output only the translated text, nothing else.',
+      '',
+      fact.content_zh,
+    ].join('\n')
 
-  // 5. Update content_zh
-  const { error: updateError } = await supabaseAdmin
-    .from('atomic_facts')
-    .update({ content_zh: response.trim() })
-    .eq('id', factId)
+    const response = await callHaiku(prompt)
 
-  if (updateError) throw new Error(`[B5] Failed to update fact ${factId}: ${updateError.message}`)
+    const { error: updateError } = await supabaseAdmin
+      .from('atomic_facts')
+      .update({ content_en: response.trim() })
+      .eq('id', factId)
 
-  console.log(`[B5] Translated fact ${factId}`)
+    if (updateError) throw new Error(`[B5] Failed to update fact ${factId}: ${updateError.message}`)
+    console.log(`[B5] Translated ZH→EN for fact ${factId}`)
+  } else if (fact.content_en && !fact.content_zh) {
+    // EN→ZH: legacy path
+    const template = loadPrompt('translator.md')
+    const prompt = template.replace('{content_en}', fact.content_en)
+    const response = await callHaiku(prompt)
+
+    const { error: updateError } = await supabaseAdmin
+      .from('atomic_facts')
+      .update({ content_zh: response.trim() })
+      .eq('id', factId)
+
+    if (updateError) throw new Error(`[B5] Failed to update fact ${factId}: ${updateError.message}`)
+    console.log(`[B5] Translated EN→ZH for fact ${factId}`)
+  }
 }
 
 // ─── 批量翻译 ───

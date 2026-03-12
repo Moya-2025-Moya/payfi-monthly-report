@@ -22,6 +22,7 @@ import { translateFactsBatch } from '@/modules/ai-agents/translator'
 import { getBlindSpotReport } from '@/modules/knowledge/blind-spots'
 import { generateDiff } from '@/modules/knowledge/diff'
 import { getDensityAnomalies } from '@/modules/knowledge/density'
+import { sendPipelineAlert } from '@/modules/distributors/telegram'
 
 import type {
   AtomicFact,
@@ -472,6 +473,7 @@ export async function runDailyPipeline(): Promise<PipelineStats> {
   } catch (err) {
     console.error('[B6] Daily pipeline failed:', err instanceof Error ? err.message : String(err))
     await failPipelineRun(runId, err)
+    sendPipelineAlert('daily', err instanceof Error ? err.message : String(err)).catch(() => {})
     throw err
   }
 }
@@ -597,6 +599,7 @@ export async function runWeeklyKnowledge(): Promise<void> {
   } catch (err) {
     console.error('[B6] Weekly knowledge computation failed:', err instanceof Error ? err.message : String(err))
     await failPipelineRun(runId, err)
+    sendPipelineAlert('weekly', err instanceof Error ? err.message : String(err)).catch(() => {})
     throw err
   }
 }
