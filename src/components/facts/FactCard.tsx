@@ -40,32 +40,70 @@ function getSourceUrls(fact: AtomicFact): string[] {
   return [...urls]
 }
 
-function getVerificationIndicators(fact: AtomicFact): { label: string; detail?: string }[] {
-  const indicators: { label: string; detail?: string }[] = []
+/* ── Evidence badges (V7: replace numerical scores with intuitive badges) ── */
+type EvidenceBadge = { icon: string; label: string; detail: string; type: 'pass' | 'warn' | 'fail' }
+
+function getEvidenceBadges(fact: AtomicFact): EvidenceBadge[] {
+  const badges: EvidenceBadge[] = []
   const v1 = fact.v1_result as { match_score?: number; status?: string } | null
-  if (v1?.match_score != null && v1.match_score > 0) {
-    indicators.push({ label: `原文${v1.match_score}%`, detail: `来源原文匹配度 ${v1.match_score}%` })
-  } else if (!fact.source_url && (v1?.status === 'source_unavailable' || (v1?.match_score != null && v1.match_score === 0))) {
-    indicators.push({ label: '原文不可达', detail: '来源原文无法获取或解析' })
+  if (v1?.status === 'matched' || (v1?.match_score != null && v1.match_score >= 60)) {
+    badges.push({ icon: '✓', label: '来源可达', detail: '原文内容匹配验证通过', type: 'pass' })
+  } else if (v1?.status === 'partial') {
+    badges.push({ icon: '~', label: '来源部分匹配', detail: '原文内容部分匹配', type: 'warn' })
+  } else if (v1?.status === 'source_unavailable' || (v1?.match_score != null && v1.match_score === 0)) {
+    badges.push({ icon: '!', label: '原文不可达', detail: '来源原文无法获取或解析', type: 'fail' })
   }
+
   const v2 = fact.v2_result as { source_count?: number; independent_sources?: boolean } | null
   if (v2?.source_count != null && v2.source_count >= 2) {
     const indep = v2.independent_sources ? '独立' : ''
-    indicators.push({ label: `${v2.source_count}${indep}源`, detail: `${v2.source_count} 个${indep ? '独立' : ''}信息源交叉验证` })
+    badges.push({ icon: '✓', label: `${v2.source_count}${indep}源验证`, detail: `${v2.source_count} 个${indep ? '独立' : ''}来源交叉一致`, type: 'pass' })
   }
+
   const v4 = fact.v4_result as { anchor_status?: string; deviation_pct?: number | null } | null
   if (v4?.anchor_status === 'anchored') {
-    indicators.push({ label: '链上锚定', detail: '与链上实际数据匹配' })
+    badges.push({ icon: '✓', label: '链上锚定', detail: '与链上实际数据匹配', type: 'pass' })
   } else if (v4?.anchor_status === 'deviation' && v4.deviation_pct != null) {
-    indicators.push({ label: `链上偏差${Math.abs(v4.deviation_pct).toFixed(0)}%`, detail: `与链上数据偏差 ${v4.deviation_pct}%` })
+    badges.push({ icon: '~', label: `链上偏差${Math.abs(v4.deviation_pct).toFixed(0)}%`, detail: `与链上数据偏差 ${v4.deviation_pct.toFixed(1)}%`, type: 'warn' })
+  } else if (v4?.anchor_status === 'mismatch') {
+    badges.push({ icon: '!', label: '链上不符', detail: '与链上数据不匹配', type: 'fail' })
   }
-  return indicators
+
+  const v3 = fact.v3_result as { sanity?: string } | null
+  if (v3?.sanity === 'anomaly') {
+    badges.push({ icon: '?', label: '数值异常', detail: '数值超出历史合理范围', type: 'warn' })
+  } else if (v3?.sanity === 'likely_error') {
+    badges.push({ icon: '!', label: '数值可疑', detail: '数值很可能有误', type: 'fail' })
+  }
+
+  return badges
 }
 
-function getContradiction(fact: AtomicFact): string | null {
+const BADGE_STYLES: Record<EvidenceBadge['type'], { bg: string; color: string; border: string }> = {
+  pass: { bg: 'rgba(16,185,129,0.08)', color: '#10b981', border: 'rgba(16,185,129,0.2)' },
+  warn: { bg: 'rgba(245,158,11,0.08)', color: '#f59e0b', border: 'rgba(245,158,11,0.2)' },
+  fail: { bg: 'rgba(239,68,68,0.08)', color: '#ef4444', border: 'rgba(239,68,68,0.2)' },
+}
+
+/* ── Contradiction detection (V7: inline alerts) ── */
+function getContradictions(fact: AtomicFact): string[] {
+  const alerts: string[] = []
+  // V5: temporal conflicts
   const v5 = fact.v5_result as { temporal_status?: string; conflict_detail?: string } | null
-  if (v5?.temporal_status === 'conflict' && v5.conflict_detail) return v5.conflict_detail
-  return null
+  if (v5?.temporal_status === 'conflict' && v5.conflict_detail) alerts.push(v5.conflict_detail)
+  // V2: cross-source inconsistency
+  const v2 = fact.v2_result as { cross_validation?: string; is_minority?: boolean; majority_value?: string } | null
+  if (v2?.is_minority && v2.majority_value) alerts.push(`此数据与多数来源不一致，多数来源显示: ${v2.majority_value}`)
+  else if (v2?.cross_validation === 'inconsistent') alerts.push('多个来源报道不一致')
+  // V3: numerical issues
+  const v3 = fact.v3_result as { sanity?: string; reason?: string } | null
+  if (v3?.sanity === 'likely_error' && v3.reason) alerts.push(v3.reason)
+  // V4: chain mismatch
+  const v4 = fact.v4_result as { anchor_status?: string; claimed_value?: number; actual_value?: number } | null
+  if (v4?.anchor_status === 'mismatch' && v4.claimed_value != null && v4.actual_value != null) {
+    alerts.push(`声称 ${v4.claimed_value.toLocaleString()} vs 链上实际 ${v4.actual_value.toLocaleString()}`)
+  }
+  return alerts
 }
 
 /* ── Metric change arrow ── */
@@ -202,12 +240,13 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
   const date = new Date(fact.fact_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
   const displayContent = fact.content_zh || fact.content_en
   const sourceUrls = getSourceUrls(fact)
-  const verificationIndicators = getVerificationIndicators(fact)
-  const contradiction = getContradiction(fact)
+  const badges = getEvidenceBadges(fact)
+  const contradictions = getContradictions(fact)
   const isSubjective = isSubjectiveFact(fact)
 
-  // "原文不可达" shown in default state as trust signal
-  const unreachable = verificationIndicators.find(i => i.label === '原文不可达')
+  // Separate pass/warn/fail badges
+  const passBadges = badges.filter(b => b.type === 'pass')
+  const warnBadges = badges.filter(b => b.type === 'warn' || b.type === 'fail')
 
   function toggleExpand() {
     setExpanded(e => !e)
@@ -223,10 +262,15 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
         </div>
         <p className="text-[14px] leading-relaxed flex-1 min-w-0" style={{ color: 'var(--fg-body)' }}>{displayContent}</p>
         <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-          {unreachable && (
+          {warnBadges.length > 0 && (
             <span className="px-1 py-0.5 rounded text-[11px]"
-              style={{ background: 'var(--warning-soft)', color: 'var(--warning)' }}>
-              {unreachable.label}
+              style={{ background: BADGE_STYLES[warnBadges[0].type].bg, color: BADGE_STYLES[warnBadges[0].type].color }}>
+              {warnBadges[0].label}
+            </span>
+          )}
+          {contradictions.length > 0 && (
+            <span className="px-1 py-0.5 rounded text-[11px]" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
+              矛盾
             </span>
           )}
           <time className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{date}</time>
@@ -280,15 +324,36 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
           </div>
         )}
 
-        {/* Contradiction warning — always visible */}
-        {contradiction && (
-          <div className="mt-2 px-2.5 py-1.5 rounded-md text-[12px]"
-            style={{ background: 'var(--warning-soft)', color: 'var(--warning)' }}>
-            矛盾: {contradiction}
+        {/* V7: Evidence badges — shown in default state */}
+        {badges.length > 0 && !isSubjective && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {badges.map((badge, i) => {
+              const s = BADGE_STYLES[badge.type]
+              return (
+                <span key={i} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px]"
+                  style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}
+                  title={badge.detail}>
+                  {badge.icon} {badge.label}
+                </span>
+              )
+            })}
           </div>
         )}
 
-        {/* Default metadata: pill + source + date + confidence dot + "原文不可达" warning */}
+        {/* V7: Contradiction alerts — inline, always visible */}
+        {contradictions.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {contradictions.map((c, i) => (
+              <div key={i} className="flex items-start gap-1.5 px-2.5 py-1.5 rounded-md text-[12px]"
+                style={{ background: 'rgba(239,68,68,0.06)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.15)' }}>
+                <span className="shrink-0 mt-px">⚠</span>
+                <span>{c}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Default metadata: pill + source + date + confidence dot */}
         <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: 'var(--fg-muted)' }}>
           <TypePill type={fact.fact_type} objectivity={fact.objectivity} />
           {sourceUrls.length > 0 && (
@@ -300,12 +365,6 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
           <span>·</span>
           <time>{date}</time>
           <ConfidenceDot confidence={fact.confidence} />
-          {unreachable && (
-            <>
-              <span>·</span>
-              <span style={{ color: 'var(--warning)' }}>{unreachable.label}</span>
-            </>
-          )}
         </div>
 
         {/* Expanded: verification details + all metadata */}
@@ -329,18 +388,21 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
                 </div>
               )}
 
-              {/* Verification details */}
-              {verificationIndicators.length > 0 && (
+              {/* Verification evidence details */}
+              {badges.length > 0 && (
                 <div>
-                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>验证详情</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {verificationIndicators.map((ind, i) => (
-                      <span key={i} className="px-2 py-1 rounded text-[12px]"
-                        style={{ background: 'var(--info-soft)', color: 'var(--info)', border: '1px solid var(--info-muted)' }}
-                        title={ind.detail}>
-                        {ind.label}
-                      </span>
-                    ))}
+                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>验证证据</p>
+                  <div className="space-y-1.5">
+                    {badges.map((badge, i) => {
+                      const s = BADGE_STYLES[badge.type]
+                      return (
+                        <div key={i} className="flex items-center gap-2 text-[12px]">
+                          <span className="w-4 text-center" style={{ color: s.color }}>{badge.icon}</span>
+                          <span className="font-medium" style={{ color: s.color }}>{badge.label}</span>
+                          <span style={{ color: 'var(--fg-muted)' }}>— {badge.detail}</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}

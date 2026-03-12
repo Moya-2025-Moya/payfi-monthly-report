@@ -4,6 +4,15 @@ import { EntityProfile } from '@/components/entity/EntityProfile'
 import { WATCHLIST } from '@/config/watchlist'
 import type { Entity, AtomicFact, EntityRelationship } from '@/lib/types'
 
+const RELATIONSHIP_LABELS: Record<string, string> = {
+  investment: '投资',
+  partnership: '合作',
+  competition: '竞争',
+  dependency: '依赖',
+  acquisition: '收购',
+  issuance: '发行',
+}
+
 export default async function EntityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
@@ -75,40 +84,7 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
   return (
     <div>
       <PageHeader title={entity.name} />
-      <EntityProfile entity={entity} facts={facts} />
-
-      {/* Related entities section (from old /graph) */}
-      {relationships.length > 0 && (
-        <div className="mt-8">
-          <p className="text-[11px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-muted)' }}>
-            关联实体 ({relationships.length})
-          </p>
-          <div className="space-y-2">
-            {relationships.map(rel => (
-              <div key={rel.id} className="rounded-lg border p-3 text-[13px]"
-                style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-                <span className="font-mono px-1.5 py-0.5 rounded text-[11px]"
-                  style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
-                  {rel.relationship_type}
-                </span>
-                {rel.description && (
-                  <p className="mt-1.5" style={{ color: 'var(--fg-body)' }}>{rel.description}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Notes section */}
-      <div className="mt-8">
-        <p className="text-[11px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-muted)' }}>
-          笔记
-        </p>
-        <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-          前往 <a href="/notes" className="underline" style={{ color: 'var(--accent)' }}>团队笔记</a> 页面查看和添加笔记。
-        </p>
-      </div>
+      <EntityProfile entity={entity} facts={facts} relationships={relationships} />
     </div>
   )
 }

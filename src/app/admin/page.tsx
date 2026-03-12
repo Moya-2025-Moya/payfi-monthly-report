@@ -551,22 +551,37 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* Email Preview */}
+        {/* Editorial & Email */}
         <section>
           <h2 className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>邮件分发</h2>
-          <Card>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>邮件预览</p>
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>预览已生成的周报邮件 HTML</p>
+          <div className="space-y-3">
+            <Card>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>编辑台</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>审核 → 选稿 → 排版 → 预览 → 发布</p>
+                </div>
+                <a href="/admin/editorial"
+                  className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
+                  style={{ borderColor: 'var(--accent-muted)', color: 'var(--accent)' }}>
+                  进入 →
+                </a>
               </div>
-              <a href="/admin/email-preview"
-                className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
-                style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)' }}>
-                查看 →
-              </a>
-            </div>
-          </Card>
+            </Card>
+            <Card>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>邮件预览</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>预览已生成的周报邮件 HTML</p>
+                </div>
+                <a href="/admin/email-preview"
+                  className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
+                  style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)' }}>
+                  查看 →
+                </a>
+              </div>
+            </Card>
+          </div>
         </section>
 
         {/* Dev Reset */}

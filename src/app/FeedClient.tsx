@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { AggregateView } from '@/components/feed/AggregateView'
 import { WeeklySummary } from '@/components/feed/WeeklySummary'
 import type { AtomicFact } from '@/lib/types'
@@ -61,6 +62,126 @@ function DashboardStats({ stats, factCount }: { stats: SnapshotStats | null; fac
           </p>
         </div>
       ))}
+    </div>
+  )
+}
+
+/* ── Dashboard Charts ── */
+const FACT_TYPE_COLORS: Record<string, string> = {
+  event: '#3b82f6',
+  metric: '#10b981',
+  quote: '#8b5cf6',
+  relationship: '#f59e0b',
+  status_change: '#ef4444',
+}
+
+const FACT_TYPE_LABELS: Record<string, string> = {
+  event: '事件',
+  metric: '指标',
+  quote: '引用',
+  relationship: '关系',
+  status_change: '状态变更',
+}
+
+const OBJECTIVITY_COLORS: Record<string, string> = {
+  fact: '#10b981',
+  opinion: '#8b5cf6',
+  analysis: '#3b82f6',
+}
+
+const OBJECTIVITY_LABELS: Record<string, string> = {
+  fact: '事实',
+  opinion: '观点',
+  analysis: '分析',
+}
+
+function DashboardCharts({ facts }: { facts: AtomicFact[] }) {
+  const barData = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const f of facts) {
+      const t = f.fact_type ?? 'event'
+      counts.set(t, (counts.get(t) ?? 0) + 1)
+    }
+    return ['event', 'metric', 'quote', 'relationship', 'status_change']
+      .map(key => ({ name: FACT_TYPE_LABELS[key] ?? key, value: counts.get(key) ?? 0, fill: FACT_TYPE_COLORS[key] ?? '#6b7280' }))
+      .filter(d => d.value > 0)
+  }, [facts])
+
+  const pieData = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const f of facts) {
+      const o = f.objectivity ?? 'fact'
+      counts.set(o, (counts.get(o) ?? 0) + 1)
+    }
+    return ['fact', 'opinion', 'analysis']
+      .map(key => ({ name: OBJECTIVITY_LABELS[key] ?? key, value: counts.get(key) ?? 0, color: OBJECTIVITY_COLORS[key] ?? '#6b7280' }))
+      .filter(d => d.value > 0)
+  }, [facts])
+
+  if (facts.length === 0) return null
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+      {/* Fact type distribution bar chart */}
+      <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>事实类型分布</p>
+        <ResponsiveContainer width="100%" height={120}>
+          <BarChart data={barData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--fg-muted)' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: 'var(--fg-muted)' }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <Tooltip
+              contentStyle={{ fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6 }}
+              labelStyle={{ color: 'var(--fg-title)' }}
+              cursor={{ fill: 'var(--surface-alt)' }}
+            />
+            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+              {barData.map((entry, i) => (
+                <Cell key={i} fill={entry.fill} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Objectivity breakdown pie chart */}
+      <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>客观性分布</p>
+        <div className="flex items-center gap-4">
+          <ResponsiveContainer width="50%" height={120}>
+            <PieChart>
+              <Pie
+                data={pieData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius={28}
+                outerRadius={48}
+                paddingAngle={2}
+                strokeWidth={0}
+              >
+                {pieData.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{ fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6 }}
+                labelStyle={{ color: 'var(--fg-title)' }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="flex flex-col gap-1.5">
+            {pieData.map(d => (
+              <div key={d.name} className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} />
+                <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
+                  {d.name} <span className="font-mono font-medium" style={{ color: 'var(--fg-title)' }}>{d.value}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -251,6 +372,9 @@ export function FeedClient({ facts, currentWeek, stats, narratives, summarySimpl
     <div>
       {/* Dashboard stats (Q6) */}
       <DashboardStats stats={stats} factCount={facts.length} />
+
+      {/* Dashboard charts */}
+      <DashboardCharts facts={facts} />
 
       {/* Weekly summary (Q7) */}
       {summarySimple && (

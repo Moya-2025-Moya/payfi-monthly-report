@@ -92,6 +92,8 @@ function SearchBar() {
     return () => document.removeEventListener('keydown', handleKey)
   }, [closeDropdown])
 
+  const router = useRouter()
+
   async function handleSearch() {
     const q = query.trim()
     if (!q) return
@@ -107,6 +109,13 @@ function SearchBar() {
     } finally {
       setLoading(false)
     }
+  }
+
+  function goToSearchPage() {
+    const q = query.trim()
+    if (!q) return
+    closeDropdown()
+    router.push(`/search?q=${encodeURIComponent(q)}`)
   }
 
   return (
@@ -144,6 +153,15 @@ function SearchBar() {
               </div>
             </button>
           ))}
+          {!loading && results.length > 0 && (
+            <button onClick={goToSearchPage}
+              className="w-full text-center py-2.5 text-[12px] font-medium transition-colors"
+              style={{ color: 'var(--accent)', background: 'transparent' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-alt)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              查看全部结果 →
+            </button>
+          )}
         </div>
       )}
     </div>
