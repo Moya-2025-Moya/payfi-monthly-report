@@ -40,22 +40,22 @@ function DateGroup({ dateKey, facts }: { dateKey: string; facts: AtomicFact[] })
   return (
     <section>
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)' }} />
-        <h3 className="text-[12px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>
+        <div className="w-2 h-2 rounded-full" style={{ background: 'var(--info)' }} />
+        <h3 className="text-[13px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>
           {label}
         </h3>
         <span className="text-[11px] font-mono" style={{ color: 'var(--fg-dim)' }}>
           {facts.length} 条
         </span>
       </div>
-      <div className="space-y-2 pl-5 border-l" style={{ borderColor: 'var(--border)' }}>
+      <div className="space-y-0.5 pl-5 border-l" style={{ borderColor: 'var(--border)' }}>
         {visible.map(fact => (
           <FactCard key={fact.id} fact={fact} compact />
         ))}
         {!showAll && remaining > 0 && (
           <button
             onClick={() => setExpanded(true)}
-            className="text-[12px] font-mono px-3 py-1.5 rounded-md transition-colors"
+            className="text-[13px] font-mono px-3 py-1.5 rounded-md transition-colors"
             style={{ color: 'var(--accent)', background: 'var(--surface-alt)' }}
           >
             展开更多 (+{remaining})

@@ -16,14 +16,14 @@
 │ 数据采集  │  AI原子化 + 验证层      │ 知识引擎   │ 展示层    │ 分发  │ 基础设施   │
 ├──────────┼────────────────────────┼───────────┼──────────┼──────┼────────────┤
 │A1 链上    │ B1 事实拆解Agent       │C1 实体    │D1 Web    │E1 邮件│F1 DB      │
-│A2 新闻    │ ─── 验证层 ⭐ ───      │  档案     │D2 API   │E2 TG │F2 配置    │
-│  (多源)   │ V0 裁决器 (纯代码)     │C2 时间线   │D3 可视化 │E3 调度│F3 认证    │
-│A3 上市公司│ V1 来源回溯验证员      │C3 关系图谱 │D4 AI对话 │      │F4 监控    │
-│A4 产品    │ V2 多来源交叉验证员    │C4 赛道视图 │D5 分享   │      │           │
-│A5 融资    │ V3 数值合理性验证员    │C5 监管追踪 │          │      │           │
-│  (免费多源)│ V4 链上锚定验证员      │C6 盲区探测 │          │      │           │
-│A6 Twitter │ V5 时序一致性验证员    │C7 Diff    │          │      │           │
-│  (特定账号)│ ─────────────────     │C8 密度统计 │          │      │           │
+│A2 新闻    │ ─── 验证层 ⭐ ───      │  档案     │  (6页)   │E2 TG │F2 配置    │
+│  (多源)   │ V0 裁决器 (纯代码)     │C2 时间线   │D2 API   │E3 调度│F3 认证    │
+│A3 上市公司│ V1 来源回溯验证员      │C3 关系图谱 │D3 可视化 │      │F4 监控    │
+│A4 产品    │ V2 多来源交叉验证员    │           │          │      │           │
+│A5 融资    │ V3 数值合理性验证员    │           │          │      │           │
+│  (免费多源)│ V4 链上锚定验证员      │           │          │      │           │
+│A6 Twitter │ V5 时序一致性验证员    │           │          │      │           │
+│  (特定账号)│ ─────────────────     │           │          │      │           │
 │A7 监管    │ B2 实体识别Agent       │           │          │      │           │
 │           │ B3 时间线归并Agent     │           │          │      │           │
 │           │ B4 矛盾检测Agent      │           │          │      │           │
@@ -33,6 +33,8 @@
 
 > **V5 变更**: V6 时间线归属验证员尚未实现，暂不在流水线中。
 > **B5 变更**: 翻译Agent已从流水线移除。B1直接输出中文，系统仅保留中文输出。
+> **V6 精简**: 展示层从15+页面精简到6页面。D4 AI对话、D5 分享已移除。
+> **C层精简**: C4赛道视图、C5监管追踪、C6盲区探测、C7 Diff、C8密度统计 — 后端模块保留但不再有独立前端页面。监管内容融入周报摘要，矛盾检测信息保留在FactCard内。
 
 ---
 
@@ -620,12 +622,14 @@ interface FactVerification {
 ## Module C: 知识引擎层
 
 > **职责**: 在verified原子事实之上提供知识结构和分析计算
-> **边界**: 提供查询和计算能力，被D层和E层调用。C6/C7/C8纯代码不用AI。
+> **边界**: 提供查询和计算能力，被D层和E层调用
+> **注意**: C4-C8 后端模块代码保留，但不再有独立前端页面。监管内容融入周报摘要，矛盾信息保留在FactCard展开详情中。
 
 ### C1 实体档案管理
 | 字段 | 说明 |
 |---|---|
 | **功能** | CRUD实体档案，按实体查所有verified原子事实 |
+| **前端** | `/entities` 页面 + `/entities/[id]` 详情页 |
 | **接口** | `getEntityProfile(id)`, `getEntityFacts(id, filters)`, `listEntities(filters)` |
 | **目录** | `src/modules/knowledge/entities/` |
 
@@ -633,6 +637,7 @@ interface FactVerification {
 | 字段 | 说明 |
 |---|---|
 | **功能** | CRUD时间线，每节点关联verified原子事实 |
+| **前端** | `/narratives` 页面（叙事时间线，CSS垂直时间线渲染，不再使用ReactFlow） |
 | **接口** | `getTimeline(id)`, `listTimelines(filters)`, `getEntityTimelines(entityId)` |
 | **目录** | `src/modules/knowledge/timelines/` |
 
@@ -640,54 +645,28 @@ interface FactVerification {
 | 字段 | 说明 |
 |---|---|
 | **功能** | 维护实体间关系，查询图谱 |
+| **前端** | 无独立页面，关联信息在实体详情页展示 |
 | **关系类型** | 投资、合作、竞争、依赖、收购、发行 |
 | **接口** | `getEntityGraph(id, depth)`, `getFullGraph()` |
 | **目录** | `src/modules/knowledge/graph/` |
 
-### C4 赛道视图管理
-| 字段 | 说明 |
-|---|---|
-| **功能** | 按赛道组织原子事实 |
-| **接口** | `getSectorFacts(sector, week)`, `getSectorMatrix(week)` |
-| **目录** | `src/modules/knowledge/sectors/` |
+### C4-C8 (后端保留，无独立前端)
 
-### C5 监管追踪器
-| 字段 | 说明 |
-|---|---|
-| **功能** | 按国家/地区组织监管原子事实，维护法案状态 |
-| **接口** | `getRegulatoryTracker()`, `getRegionStatus(region)` |
-| **目录** | `src/modules/knowledge/regulatory/` |
-
-### C6 盲区探测器 ⭐
-| 字段 | 说明 |
-|---|---|
-| **实现** | 纯TypeScript代码 |
-| **逻辑** | 按实体类型分组 → 取覆盖最全的实体为模板 → 其他实体与模板对比 → 缺失维度=盲区 |
-| **接口** | `getBlindSpotReport(entityType)`, `getEntityCoverage(entityId)` |
-| **目录** | `src/modules/knowledge/blind-spots/` |
-
-### C7 Diff生成器 ⭐
-| 字段 | 说明 |
-|---|---|
-| **实现** | 纯TypeScript + SQL |
-| **逻辑** | 对比两周: 新增实体、状态变化、关系变化、指标变化、时间线推进、事实量变化、矛盾/盲区变化 |
-| **接口** | `generateDiff(weekA, weekB)` |
-| **目录** | `src/modules/knowledge/diff/` |
-
-### C8 密度统计器 ⭐
-| 字段 | 说明 |
-|---|---|
-| **实现** | 纯SQL聚合 |
-| **逻辑** | 按tag/entity/sector分组COUNT，与历史对比，超2倍标准差标记异常 |
-| **接口** | `getDensityStats(week)`, `getDensityAnomalies(week)` |
-| **目录** | `src/modules/knowledge/density/` |
+| 模块 | 功能 | 前端归属 |
+|---|---|---|
+| **C4 赛道视图** | 按赛道组织原子事实 | 数据用于周报摘要生成 |
+| **C5 监管追踪** | 按地区组织监管事实 | 监管内容融入周报 Top 10 |
+| **C6 盲区探测** | 检测实体覆盖盲区 | 无前端（内部质量工具） |
+| **C7 Diff生成** | 对比两周变化 | Diff内容融入周报摘要 |
+| **C8 密度统计** | 事实密度异常检测 | 无前端（内部质量工具） |
 
 ---
 
 ## Module D: 展示层
 
-> **职责**: Web界面和API，展示知识引擎，支持用户交互和分享
+> **职责**: Web界面和API，展示知识引擎，支持用户交互
 > **边界**: 从C层查询数据，用户操作写入协作表
+> **V6 精简**: 从15+页面精简到6页面。移除: AI对话、分享链接、独立搜索页、关系图谱页、Twitter页、Diff页、密度页、盲区页、矛盾页、监管页。搜索功能改为TopBar全局搜索框。
 
 ### D1 Web前端
 
@@ -696,118 +675,93 @@ interface FactVerification {
 | **框架** | Next.js 15 App Router + Tailwind + shadcn/ui |
 | **目录** | `src/app/` |
 
-#### 页面结构
+#### 页面结构 (6页面)
 ```
 src/app/
-├── page.tsx                       # 首页 (三视图切换: 聚合卷/时间线流/矩阵)
+├── page.tsx                       # 周报首页 (聚合视图/时间线视图 + 周报摘要)
 ├── entities/
-│   ├── page.tsx                   # 实体列表
-│   └── [id]/page.tsx              # 实体档案 (含verified原子事实+团队标注)
-├── timelines/
-│   ├── page.tsx                   # 时间线列表
-│   └── [id]/page.tsx              # 单条时间线 (每节点关联原子事实)
-├── graph/page.tsx                 # 关系图谱可视化
-├── regulatory/page.tsx            # 监管追踪器
-├── twitter/page.tsx               # Twitter Voices
-├── diff/page.tsx                  # 行业知识Diff
-├── density/page.tsx               # 信息密度统计
-├── blind-spots/page.tsx           # 知识盲区报告
-├── contradictions/page.tsx        # 事实矛盾列表
-├── search/page.tsx                # 原子事实自由查询
+│   ├── page.tsx                   # 实体列表 (watchlist兜底)
+│   └── [id]/page.tsx              # 实体档案
+├── notes/page.tsx                 # 团队笔记
+├── narratives/page.tsx            # 叙事时间线 (CSS垂直时间线)
 ├── snapshots/
-│   ├── page.tsx                   # 周报快照归档
-│   └── [id]/page.tsx              # 单期快照
-├── chat/page.tsx                  # AI对话
-├── settings/page.tsx              # 设置
-├── share/[token]/page.tsx         # 外部分享页
+│   ├── page.tsx                   # 历史周报归档
+│   └── [id]/page.tsx              # 重定向到 /?week=...
+├── settings/page.tsx              # 设置 (采集/AI处理/周报生成触发)
 └── api/                           # API Routes
 ```
 
+#### 导航结构 (TopBar, 3组6项)
+```
+浏览:     周报(/) | 实体(/entities) | 笔记(/notes)
+分析:     叙事时间线(/narratives)
+系统:     历史周报(/snapshots) | 设置(/settings)
++ TopBar右侧全局搜索框 (替代原/search独立页面)
+```
+
+#### 周报摘要 (WeeklySummary组件)
+- **简略版**: Top 10 稳定币行业要闻，编号列表
+- **详细版**: 可展开，每条含 Background / What happened / Insight + 原文链接 + tags
+- **存储**: `weekly_snapshots.snapshot_data` 中 `weekly_summary` (简文本) + `weekly_summary_detailed` (JSON)
+- **聚焦**: 稳定币B2C/B2B基础设施、美国上市公司动态、监管、融资
+- **格式**: 英文输出，无markdown，无地域偏向
+
 **原子事实卡片展示**:
-每个事实卡片必须显示: 置信度标记(🟢🔵🟡) + 来源链接 + 验证详情(可展开)
+- 置信度标记(🟢🔵🟡) + 来源链接 + 验证详情(可展开)
+- match_score=0 显示"原文不可达"而非"原文0%"
+- 按fact_type显示不同颜色条和图标
 
 ### D2 API层
 
 ```
 # 原子事实查询
 GET  /api/facts?tags=...&entities=...&type=...&confidence=high,medium&week=...
-GET  /api/facts/search?q=...&from=...&to=...
+GET  /api/facts/search?q=...                # TopBar全局搜索使用
 GET  /api/facts/:id
-GET  /api/facts/:id/verification          # 查看该事实的完整验证详情
+GET  /api/facts/:id/verification            # 查看该事实的完整验证详情
+GET  /api/facts/summarize                   # AI摘要生成
 
-# 三视图
-GET  /api/feed?view=aggregate|timeline|matrix&week=...
+# 两视图 (矩阵视图已移除)
+GET  /api/feed?view=aggregate|timeline&week=...
 
 # 知识结构
 GET  /api/entities
 GET  /api/entities/:id
 GET  /api/entities/:id/facts?week=...&type=...
-GET  /api/timelines
-GET  /api/timelines/:id
-GET  /api/graph?entity=:id&depth=2
-GET  /api/regulatory
-GET  /api/twitter-voices?week=...
-GET  /api/sectors/:sector/facts?week=...
 
-# 杀手功能
-GET  /api/diff?weekA=...&weekB=...
-GET  /api/density?week=...
-GET  /api/density/anomalies?week=...
-GET  /api/blind-spots?entity_type=...
-GET  /api/contradictions?status=unresolved
+# 叙事时间线
+GET  /api/narratives/search?q=...           # 叙事搜索
 
 # 团队协作
-POST /api/bookmarks
 POST /api/notes
+GET  /api/notes
 POST /api/comments
-POST /api/questions
-GET  /api/questions?status=open
-
-# 分享
-POST /api/share
-GET  /api/share/:token
-
-# AI对话
-POST /api/chat
+GET  /api/comments
 
 # 管理
 POST /api/trigger/collect
 POST /api/trigger/process
 POST /api/trigger/snapshot
 GET  /api/health
-GET  /api/pipeline/stats                   # 验证层统计 (通过率/拒绝率/各验证员通过率)
+GET  /api/pipeline/stats                    # 验证层统计
 ```
+
+> **已移除的API**: `/api/chat`, `/api/diff`, `/api/share`, `/api/bookmarks`, `/api/questions`,
+> `/api/blind-spots`, `/api/contradictions`, `/api/density`, `/api/graph`, `/api/regulatory`,
+> `/api/sectors`, `/api/timelines`, `/api/timeline-generate`, `/api/twitter-voices`
 
 ### D3 数据可视化
 
 | 组件 | 说明 |
 |---|---|
-| 图表 | Recharts — 市值折线、事实密度、置信度分布 |
-| 图谱 | react-force-graph — 实体关系 |
-| 时间线 | 自定义Timeline组件 |
-| 矩阵 | 自定义Matrix热力格 |
-| 盲区 | 覆盖矩阵 (✅/⚠️/❌) |
-| Diff | 变化展示 (+/-/~) |
+| 时间线 | CSS垂直时间线 (NarrativeTimeline, 替代原ReactFlow) |
+| 聚合视图 | 按实体分组的事实卡片 |
+| 时间线视图 | 按日期分组的事实流 |
+| 周报摘要 | WeeklySummary组件 (简略/详细切换) |
 | **验证详情** | 折叠面板: 展示V1-V6各验证员的具体结果 |
 | **目录** | `src/components/` |
 
-### D4 AI对话
-
-| 字段 | 说明 |
-|---|---|
-| **模型** | Claude Sonnet 4.6 |
-| **实现** | RAG: 用户提问 → 检索相关verified原子事实 → AI基于事实回答 |
-| **约束** | System prompt: 只基于提供的事实回答，不推测，不给建议，数据不足时明确说"当前数据不足" |
-| **目录** | `src/modules/chat/` |
-
-### D5 分享链接
-
-| 字段 | 说明 |
-|---|---|
-| **功能** | 将任意查询结果生成token化外部链接 |
-| **内容** | 原子事实列表 + 置信度标记 + 矛盾标记 + 盲区标记 + 来源链接 |
-| **有效期** | 默认30天 |
-| **目录** | `src/modules/sharing/` |
+> **已移除的可视化**: ReactFlow图谱 (@xyflow/react已移除)、Matrix热力格、CoverageMatrix盲区矩阵、react-force-graph关系图、DensityChart、DiffDisplay
 
 ---
 
@@ -877,15 +831,9 @@ blind_spot_reports        # 盲区报告快照 (每周生成)
 
 ── 协作层 ──
 users                     # 团队成员
-bookmarks                 # 收藏/标记
 notes                     # 笔记
 comments                  # 评论讨论
-team_questions            # 团队提问 (跨周追踪)
 user_preferences          # 偏好
-chat_history              # AI对话
-
-── 分享层 ──
-shared_views              # 分享链接
 
 ── 系统层 ──
 weekly_snapshots          # 周报快照
@@ -905,8 +853,8 @@ regions.ts                # 监管追踪地区
 fact-dimensions.ts        # 各实体类型的事实维度模板 (盲区检测用)
 numerical-ranges.ts       # 数值合理性范围 (V3用)
 prompts/                  # Prompt模板
-  fact-splitter-extract.md    # B1 提取prompt
-  fact-splitter-verify.md     # B1 反向自查prompt
+  fact-splitter-extract.md    # B1 提取prompt (中文输出+稳定币范围限制+自含性要求)
+  fact-splitter-verify.md     # B1 反向自查prompt (含不自含陷阱检测)
   source-traceback.md         # V1 来源回溯prompt
   cross-source.md             # V2 多来源交叉prompt (event类型)
   temporal-consistency.md     # V5 时序一致性prompt
@@ -914,8 +862,7 @@ prompts/                  # Prompt模板
   entity-resolver.md          # B2 实体识别prompt
   timeline-merger.md          # B3 时间线归并prompt
   contradiction-detector.md   # B4 矛盾检测prompt
-  translator.md               # B5 翻译prompt
-  chat-system.md              # D4 对话system prompt
+  narrative-timeline.md       # 叙事时间线生成prompt
 schedule.ts               # 采集和推送时间表
 ```
 
@@ -940,59 +887,52 @@ schedule.ts               # 采集和推送时间表
 ```
 payfi-monthly-report/
 ├── src/
-│   ├── app/                            # [D1] Next.js 前端
-│   │   ├── page.tsx
-│   │   ├── entities/
-│   │   ├── timelines/
-│   │   ├── graph/
-│   │   ├── regulatory/
-│   │   ├── twitter/
-│   │   ├── diff/
-│   │   ├── density/
-│   │   ├── blind-spots/
-│   │   ├── contradictions/
-│   │   ├── search/
-│   │   ├── snapshots/
-│   │   ├── chat/
-│   │   ├── settings/
-│   │   ├── share/[token]/
-│   │   ├── api/
+│   ├── app/                            # [D1] Next.js 前端 (6页面)
+│   │   ├── page.tsx                    # 周报首页
+│   │   ├── FeedClient.tsx              # 聚合/时间线视图切换
+│   │   ├── entities/                   # 实体
+│   │   ├── notes/                      # 团队笔记
+│   │   ├── narratives/                 # 叙事时间线
+│   │   ├── snapshots/                  # 历史周报归档
+│   │   ├── settings/                   # 设置
+│   │   ├── api/                        # API Routes
 │   │   └── layout.tsx
 │   │
 │   ├── components/
 │   │   ├── ui/
-│   │   ├── charts/
 │   │   ├── feed/
-│   │   │   ├── AggregateView.tsx
-│   │   │   ├── TimelineView.tsx
-│   │   │   └── MatrixView.tsx
+│   │   │   ├── AggregateView.tsx       # 按实体分组视图
+│   │   │   ├── TimelineView.tsx        # 按日期分组视图
+│   │   │   └── WeeklySummary.tsx       # ⭐ 周报摘要 (简略/详细切换)
 │   │   ├── facts/
-│   │   │   ├── FactCard.tsx            # 含置信度标记+来源链接
+│   │   │   ├── FactCard.tsx            # 含置信度标记+来源链接+类型图标
 │   │   │   ├── FactList.tsx
-│   │   │   ├── FactSearch.tsx
 │   │   │   ├── FactDetail.tsx
 │   │   │   └── VerificationDetail.tsx  # ⭐ V1-V6验证详情展开面板
 │   │   ├── entity/
-│   │   ├── timeline/
-│   │   ├── diff/
-│   │   ├── density/
-│   │   ├── blind-spots/
-│   │   ├── contradictions/
+│   │   ├── narrative/
+│   │   │   ├── NarrativeTimeline.tsx   # CSS垂直时间线 (替代原ReactFlow)
+│   │   │   ├── NarrativeChat.tsx
+│   │   │   ├── NarrativeTabBar.tsx
+│   │   │   └── HotTopicsList.tsx
 │   │   ├── collab/
+│   │   │   └── CommentBox.tsx
 │   │   └── layout/
+│   │       ├── TopBar.tsx              # 含全局搜索框
+│   │       └── Sidebar.tsx
 │   │
 │   ├── modules/
 │   │   ├── collectors/                 # [Module A]
 │   │   │   ├── on-chain/
-│   │   │   ├── news/                   # 多源: free-crypto-news + RSS (全免费)
+│   │   │   ├── news/                   # 多源 RSS (全免费，双层关键词过滤)
 │   │   │   ├── companies/
 │   │   │   ├── products/
-│   │   │   ├── funding/                # DeFiLlama raises + 新闻提取; [ROADMAP] +CryptoRank
-│   │   │   ├── twitter/                # twitterapi.io 特定账号流
+│   │   │   ├── funding/
+│   │   │   ├── twitter/
 │   │   │   └── regulatory/
 │   │   │
 │   │   ├── ai-agents/                 # [Module B]
-│   │   │   ├── fact-splitter/          # B1 (两次prompt)
+│   │   │   ├── fact-splitter/          # B1 (两次prompt, 中文输出)
 │   │   │   ├── validators/             # ⭐ 验证层
 │   │   │   │   ├── adjudicator.ts      # V0 裁决器 (纯代码)
 │   │   │   │   ├── source-traceback.ts # V1 来源回溯
@@ -1004,10 +944,9 @@ payfi-monthly-report/
 │   │   │   ├── entity-resolver/        # B2
 │   │   │   ├── timeline-merger/        # B3
 │   │   │   ├── contradiction-detector/ # B4
-│   │   │   ├── translator/             # B5
 │   │   │   └── orchestrator/           # B6
 │   │   │
-│   │   ├── knowledge/                 # [Module C]
+│   │   ├── knowledge/                 # [Module C] (后端保留)
 │   │   │   ├── entities/
 │   │   │   ├── timelines/
 │   │   │   ├── graph/
@@ -1016,9 +955,6 @@ payfi-monthly-report/
 │   │   │   ├── blind-spots/
 │   │   │   ├── diff/
 │   │   │   └── density/
-│   │   │
-│   │   ├── chat/                       # [D4]
-│   │   ├── sharing/                    # [D5]
 │   │   │
 │   │   ├── distributors/              # [Module E]
 │   │   │   ├── email/
@@ -1100,7 +1036,8 @@ payfi-monthly-report/
           │
           ▼
   ┌─ 周报生成 (可选) ─────────────────────────────────────────────────┐
-  │  C6 盲区检测, C7 Diff生成, C8 密度统计                              │
+  │  AI生成 Top 10 结构化摘要 (callHaikuJSON)                          │
+  │  存储: weekly_summary (简文本) + weekly_summary_detailed (JSON)     │
   │  组装周报快照 → E1 邮件, E2 Telegram 推送                          │
   └──────────────────────────────────────────────────────────────────┘
 ```
@@ -1119,7 +1056,7 @@ payfi-monthly-report/
 | **Agent 1** | A1-A7 | F1 | 7个采集器 (含twitterapi.io/DeFiLlama raises集成) |
 | **Agent 2** | B1 + V0-V6 | F1 | ⭐ 事实拆解 + 完整验证层 (最核心) |
 | **Agent 3** | B2-B5 + C1-C8 | F1 | 归集Agents + 知识引擎 |
-| **Agent 4** | D1-D5 | F1 (可mock) | 前端 + API + 可视化 + 验证详情面板 |
+| **Agent 4** | D1-D3 | F1 (可mock) | 前端(6页面) + API + 可视化 + 验证详情面板 |
 | **Agent 5** | E1-E3 + B6 | F1 | 分发 + 编排器 |
 
 **Agent 0 先行**，然后 **Agent 1-5 并行**。
@@ -1154,9 +1091,8 @@ TELEGRAM_CHAT_ID=
 # 认证
 NEXTAUTH_SECRET=
 
-# 分享
-SHARE_BASE_URL=
-SHARE_TOKEN_SECRET=
+# 搜索 (可选)
+# BRAVE_SEARCH_API_KEY=
 ```
 
 ---
@@ -1167,18 +1103,18 @@ SHARE_TOKEN_SECRET=
 |---|---|
 | Vercel Hobby | $0 |
 | Supabase Free | $0 |
-| Claude Haiku (B1+V1-V5+B2-B4) | ~$6-8 |
-| Claude Sonnet (D4对话) | ~$5-10 |
+| Claude Haiku (B1+V1-V5+B2-B4+周报摘要) | ~$6-8 |
 | twitterapi.io Starter (6账号) | $29 |
 | 新闻采集 (RSS) | $0 |
 | 融资数据 (新闻提取 + DeFiLlama fallback) | $0 (AI 成本含在 Haiku 内) |
 | Resend/其他 | $0 |
-| **合计** | **~$40-47** |
+| **合计** | **~$35-37** |
 
 > 相比 V4 版本，AI 成本从 ~$24/月降至 ~$6-8/月（-70%），主要因为：
 > 1. 双层关键词过滤减少无关数据进入系统
 > 2. 移除 B5 翻译阶段
 > 3. 弱关键词命中跳过全文抓取，减少 token
+> 4. 移除 D4 AI对话 (Sonnet)，节省 ~$5-10/月
 
 ---
 

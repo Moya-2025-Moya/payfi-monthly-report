@@ -45,7 +45,7 @@ export default async function EntitiesPage() {
 
   return (
     <div>
-      <PageHeader title="实体" description={`共 ${entities.length} 个追踪实体`} />
+      <PageHeader title="实体" />
       <EntitiesClient entities={entities} />
     </div>
   )

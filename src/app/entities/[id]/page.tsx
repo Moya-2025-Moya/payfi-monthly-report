@@ -80,14 +80,14 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
       {/* Related entities section (from old /graph) */}
       {relationships.length > 0 && (
         <div className="mt-8">
-          <p className="text-[10px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-faint)' }}>
+          <p className="text-[11px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-faint)' }}>
             关联实体 ({relationships.length})
           </p>
           <div className="space-y-2">
             {relationships.map(rel => (
-              <div key={rel.id} className="rounded-lg border p-3 text-[12px]"
+              <div key={rel.id} className="rounded-lg border p-3 text-[13px]"
                 style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-                <span className="font-mono px-1.5 py-0.5 rounded text-[10px]"
+                <span className="font-mono px-1.5 py-0.5 rounded text-[11px]"
                   style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
                   {rel.relationship_type}
                 </span>
@@ -102,10 +102,10 @@ export default async function EntityDetailPage({ params }: { params: Promise<{ i
 
       {/* Notes section */}
       <div className="mt-8">
-        <p className="text-[10px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-faint)' }}>
+        <p className="text-[11px] font-mono tracking-wider mb-4" style={{ color: 'var(--fg-faint)' }}>
           笔记
         </p>
-        <p className="text-[12px]" style={{ color: 'var(--fg-muted)' }}>
+        <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
           前往 <a href="/notes" className="underline" style={{ color: 'var(--accent)' }}>团队笔记</a> 页面查看和添加笔记。
         </p>
       </div>

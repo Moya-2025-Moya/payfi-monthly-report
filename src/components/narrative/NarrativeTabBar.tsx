@@ -25,7 +25,7 @@ export function NarrativeTabBar({ tabs, activeTabId, onSelect, onClose, mergedVi
         const active = tab.id === activeTabId
         return (
           <button key={tab.id} onClick={() => onSelect(tab.id)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] whitespace-nowrap transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] whitespace-nowrap transition-colors"
             style={{
               background: active ? 'var(--accent-soft)' : 'transparent',
               color: active ? 'var(--accent)' : 'var(--fg-muted)',
@@ -34,7 +34,7 @@ export function NarrativeTabBar({ tabs, activeTabId, onSelect, onClose, mergedVi
             <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: STATUS_DOT[tab.status] ?? STATUS_DOT.idle }} />
             <span className="max-w-[120px] truncate">{tab.query}</span>
             <span onClick={e => { e.stopPropagation(); onClose(tab.id) }}
-              className="ml-1 hover:opacity-100 opacity-50 text-[14px]">&times;</span>
+              className="ml-1 hover:opacity-100 opacity-50 text-[15px]">&times;</span>
           </button>
         )
       })}

@@ -68,10 +68,10 @@ export function NotesClient({ initialNotes, factsMap }: Props) {
             {/* 原始事实 */}
             {fact && (
               <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)' }}>
-                <p className="text-[12px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
+                <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
                   {factContent}
                 </p>
-                <div className="mt-1.5 flex items-center gap-2 text-[10px] font-mono" style={{ color: 'var(--fg-faint)' }}>
+                <div className="mt-1.5 flex items-center gap-2 text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
                   {factSource && <span>{factSource}</span>}
                   {factDate && <span>{factDate}</span>}
                   {fact.source_url && (
@@ -91,7 +91,7 @@ export function NotesClient({ initialNotes, factsMap }: Props) {
                 <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-title)' }}>
                   {note.content}
                 </p>
-                <time className="block mt-1 text-[10px] font-mono" style={{ color: 'var(--fg-faint)' }}>
+                <time className="block mt-1 text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>
                   {new Date(note.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </time>
               </div>

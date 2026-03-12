@@ -74,13 +74,13 @@ export function NarrativeChat({ open, onClose, context }: Props) {
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3" style={{ height: 'calc(100% - 90px)' }}>
         {messages.length === 0 && (
-          <div className="text-[12px] text-center py-4" style={{ color: 'var(--fg-muted)' }}>
+          <div className="text-[13px] text-center py-4" style={{ color: 'var(--fg-muted)' }}>
             基于选中节点的事实数据进行追问
           </div>
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className="max-w-[75%] px-3 py-2 rounded-lg text-[12px] leading-relaxed"
+            <div className="max-w-[75%] px-3 py-2 rounded-lg text-[13px] leading-relaxed"
               style={{
                 background: m.role === 'user' ? 'var(--accent)' : 'var(--bg-card)',
                 color: m.role === 'user' ? '#fff' : 'var(--fg-body)',
@@ -92,7 +92,7 @@ export function NarrativeChat({ open, onClose, context }: Props) {
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="px-3 py-2 rounded-lg text-[12px]" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--fg-muted)' }}>
+            <div className="px-3 py-2 rounded-lg text-[13px]" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--fg-muted)' }}>
               思考中...
             </div>
           </div>
@@ -103,10 +103,10 @@ export function NarrativeChat({ open, onClose, context }: Props) {
         <input type="text" value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send()}
           placeholder="输入追问..."
-          className="flex-1 px-3 py-1.5 rounded-lg border text-[12px]"
+          className="flex-1 px-3 py-1.5 rounded-lg border text-[13px]"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--fg-body)' }} />
         <button onClick={send} disabled={!input.trim() || loading}
-          className="px-4 py-1.5 rounded-lg text-[12px] font-medium"
+          className="px-4 py-1.5 rounded-lg text-[13px] font-medium"
           style={{ background: input.trim() && !loading ? 'var(--accent)' : 'var(--border)', color: input.trim() && !loading ? '#fff' : 'var(--fg-muted)' }}>
           发送
         </button>

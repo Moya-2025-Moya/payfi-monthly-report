@@ -28,7 +28,7 @@ function Row({ label, status, detail }: { label: string; status: string; detail?
 export function VerificationDetail({ v1, v2, v3, v4, v5 }: Props) {
   return (
     <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-      <p className="text-[10px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-faint)' }}>验证详情</p>
+      <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-faint)' }}>验证详情</p>
       {v1 && <Row label="V1" status={v1.status} detail={v1.evidence_quote ? `"${v1.evidence_quote.slice(0, 120)}..."` : undefined} />}
       {v2 && <Row label="V2" status={v2.cross_validation} detail={v2.independent_sources ? `${v2.source_count} 个独立来源` : v2.source_independence_note} />}
       {v3 && <Row label="V3" status={v3.sanity} detail={v3.reason} />}

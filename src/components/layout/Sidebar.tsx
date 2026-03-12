@@ -20,7 +20,7 @@ export function Sidebar() {
       }}
     >
       <nav className="flex-1 px-3 pt-4">
-        <p className="px-2 mb-2 text-[10px] font-medium tracking-widest uppercase" style={{ color: 'var(--fg-faint)' }}>
+        <p className="px-2 mb-2 text-[11px] font-medium tracking-widest uppercase" style={{ color: 'var(--fg-faint)' }}>
           {group.label}
         </p>
         {group.items.map(item => {

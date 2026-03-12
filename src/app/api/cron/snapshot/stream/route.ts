@@ -2,7 +2,7 @@
 // Logs are persisted to pipeline_runs for page refresh recovery
 import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
 import { getDensityAnomalies } from '@/modules/knowledge/density'
-import { callHaiku } from '@/lib/ai-client'
+import { callHaikuJSON } from '@/lib/ai-client'
 import { createPipelineLogger } from '@/lib/pipeline-logger'
 
 export const maxDuration = 120
@@ -90,28 +90,86 @@ export async function GET() {
           logger.log('  密度异常检测跳过', 'info')
         }
 
-        // Step 6: Generate AI weekly summary
+        // Step 6: Generate AI weekly summary (simplified + detailed)
         logger.progress('6/7', 'AI 生成本周摘要...')
-        let weeklySummary: string | null = null
+        let weeklySummarySimple: string | null = null
+        let weeklySummaryDetailed: string | null = null
         try {
           const { data: topFacts } = await supabaseAdmin
             .from('atomic_facts')
-            .select('content_zh, fact_type, tags')
+            .select('content_zh, content_en, fact_type, tags, fact_date, source_url')
             .eq('week_number', weekNumber)
             .in('verification_status', ['verified', 'partially_verified'])
             .order('fact_date', { ascending: false })
-            .limit(30)
+            .limit(50)
 
           if (topFacts && topFacts.length > 0) {
             const factsText = topFacts
-              .map((f: { content_zh: string; fact_type: string }, i: number) => `${i + 1}. [${f.fact_type}] ${f.content_zh}`)
+              .map((f: { content_zh: string; content_en: string; fact_type: string; tags: string[]; fact_date: string; source_url: string | null }, i: number) =>
+                `${i + 1}. [${f.fact_type}] ${f.content_zh || f.content_en} (${String(f.fact_date).split('T')[0]}) [tags: ${f.tags.join(', ')}]${f.source_url ? ` [url: ${f.source_url}]` : ''}`)
               .join('\n')
 
-            weeklySummary = await callHaiku(
-              `你是稳定币行业分析师。根据以下本周事实，用中文写一段简洁的周摘要（3-5句话），突出最重要的动态和趋势。不要列举，要有分析视角。\n\n本周事实:\n${factsText}`,
-              { maxTokens: 500, temperature: 0.3 }
+            const summaryResult = await callHaikuJSON<{
+              items: Array<{
+                date: string
+                simple: string
+                background: string
+                what_happened: string
+                insight: string
+                source_url: string | null
+                tags: string[]
+              }>
+            }>(
+              `你是稳定币行业分析师。从以下本周事实中，选出最重要的 10 条新闻（去重后），按影响力从高到低排序。
+
+聚焦方向：稳定币 B2C 产品、B2B 基础设施/支付、美国上市公司动态、监管政策、重要融资/合作。
+
+对每条新闻输出：
+- date: 事件日期，格式 YYYY.MM.DD
+- simple: 一句话简报，格式为 "YYYY.MM.DD, [公司/主体] did [行动 + 1-2个量化指标] to [目标/影响]."。用英文，简洁，包含关键数字。不要提及具体地域/国家。
+- background: 组织背景（1句话，英文）
+- what_happened: 具体发生了什么（1-2句，英文，包含金额/用户数/时间线等量化信息）
+- insight: 对稳定币行业的影响分析（1句话，英文）
+- source_url: 最相关的来源 URL（从事实中提取，如果有的话）
+- tags: 相关标签数组，如 ["B2C", "Stablecoin", "Regulation"]
+
+规则：
+1. 严格去重：同一事件只保留最完整的一条
+2. 不要使用任何 markdown 格式符号（不要 ** 加粗、不要 # 标题）
+3. 简报(simple)必须是纯英文一句话，不要换行
+4. 如果信息不足无法确认，用 [Uncertainty: ...] 标注
+5. 如果缺少关键数据，用 [Info gap: ...] 标注
+
+输出严格 JSON：
+{
+  "items": [
+    {
+      "date": "2026.03.12",
+      "simple": "2026.03.12, Tether invested $520M in Ark Labs seed round to support Bitcoin stablecoin infrastructure development.",
+      "background": "Tether is the issuer of USDT, the largest stablecoin by market cap.",
+      "what_happened": "Tether led a $520M seed round investment in Ark Labs, a company building Bitcoin-native stablecoin and payment infrastructure.",
+      "insight": "Signals Tether's strategic expansion beyond USDT issuance into Bitcoin L2 infrastructure, potentially competing with Lightning Network for payments.",
+      "source_url": "https://example.com/article",
+      "tags": ["B2B", "Stablecoin", "Funding"]
+    }
+  ]
+}
+
+本周事实:
+${factsText}`,
+              { system: '你是稳定币行业分析师。输出严格 JSON，不要任何 markdown 格式。' }
             )
-            logger.log('  AI 周摘要已生成', 'success')
+
+            if (summaryResult.items?.length > 0) {
+              // Build simplified version
+              weeklySummarySimple = 'Weekly Stablecoin News Update:\n' +
+                summaryResult.items.map((item, i) => `${i + 1}. ${item.simple}`).join('\n\n')
+
+              // Build detailed version as JSON for structured rendering
+              weeklySummaryDetailed = JSON.stringify(summaryResult.items)
+            }
+
+            logger.log('  AI 周摘要已生成（简报+详细）', 'success')
           } else {
             logger.log('  本周无事实，跳过摘要生成', 'info')
           }
@@ -134,7 +192,8 @@ export async function GET() {
           resolved_contradictions: 0,
           blind_spot_changes: [],
           top_density_anomalies: topAnomalies,
-          weekly_summary: weeklySummary,
+          weekly_summary: weeklySummarySimple,
+          weekly_summary_detailed: weeklySummaryDetailed,
         }
 
         const { error } = await supabaseAdmin

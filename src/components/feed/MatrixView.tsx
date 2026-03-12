@@ -38,19 +38,19 @@ export function MatrixView({ facts }: { facts: AtomicFact[] }) {
       <table className="w-full">
         <thead>
           <tr>
-            <th className="text-left p-3 text-[10px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>板块</th>
+            <th className="text-left p-3 text-[11px] font-mono tracking-wider" style={{ color: 'var(--fg-faint)' }}>板块</th>
             {FACT_TYPES.map(t => (
-              <th key={t} className="p-3 text-[10px] font-mono tracking-wider text-center" style={{ color: 'var(--fg-faint)' }}>{FACT_TYPE_ZH[t]}</th>
+              <th key={t} className="p-3 text-[11px] font-mono tracking-wider text-center" style={{ color: 'var(--fg-faint)' }}>{FACT_TYPE_ZH[t]}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {SECTORS.map(s => (
             <tr key={s} className="border-t" style={{ borderColor: 'var(--border)' }}>
-              <td className="p-3 text-[12px] font-mono" style={{ color: 'var(--fg-muted)' }}>{SECTOR_LABELS[s]}</td>
+              <td className="p-3 text-[13px] font-mono" style={{ color: 'var(--fg-muted)' }}>{SECTOR_LABELS[s]}</td>
               {FACT_TYPES.map(t => (
                 <td key={t} className="p-3 text-center">
-                  <span className="inline-flex items-center justify-center w-10 h-10 rounded text-[12px] font-mono"
+                  <span className="inline-flex items-center justify-center w-10 h-10 rounded text-[13px] font-mono"
                     style={cellStyle(matrix[s][t])}>
                     {matrix[s][t]}
                   </span>

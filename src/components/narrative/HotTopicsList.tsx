@@ -56,11 +56,11 @@ export function HotTopicsList({ onSelect }: Props) {
             <div className="text-[11px] leading-relaxed mb-2" style={{ color: 'var(--fg-muted)' }}>{t.description}</div>
             <div className="flex flex-wrap gap-1">
               {t.key_entities.slice(0, 3).map(e => (
-                <span key={e} className="text-[9px] px-1.5 py-0.5 rounded"
+                <span key={e} className="text-[11px] px-1.5 py-0.5 rounded"
                   style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{e}</span>
               ))}
               {t.fact_count > 0 && (
-                <span className="text-[9px] px-1.5 py-0.5" style={{ color: 'var(--fg-muted)' }}>{t.fact_count} 条事实</span>
+                <span className="text-[11px] px-1.5 py-0.5" style={{ color: 'var(--fg-muted)' }}>{t.fact_count} 条事实</span>
               )}
             </div>
           </button>

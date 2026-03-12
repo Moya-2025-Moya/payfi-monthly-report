@@ -42,7 +42,7 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
       <div className="flex items-center justify-between mb-6">
         <button
           onClick={() => navigate(shiftWeek(currentWeek, -1))}
-          className="px-3 py-1.5 rounded-md text-[12px] font-mono tracking-wider transition-colors"
+          className="px-3 py-1.5 rounded-md text-[13px] font-mono tracking-wider transition-colors"
           style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}
           aria-label="上一周"
         >
@@ -53,7 +53,7 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
         </span>
         <button
           onClick={() => navigate(shiftWeek(currentWeek, 1))}
-          className="px-3 py-1.5 rounded-md text-[12px] font-mono tracking-wider transition-colors"
+          className="px-3 py-1.5 rounded-md text-[13px] font-mono tracking-wider transition-colors"
           style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}
           aria-label="下一周"
         >
@@ -62,7 +62,7 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
       </div>
 
       {/* Fact count */}
-      <p className="text-[12px] font-mono mb-4" style={{ color: 'var(--fg-faint)' }}>
+      <p className="text-[13px] font-mono mb-4" style={{ color: 'var(--fg-faint)' }}>
         本周共 {facts.length} 条已验证事实
       </p>
 
@@ -70,7 +70,7 @@ export function FeedClient({ facts, currentWeek }: { facts: AtomicFact[]; curren
       <div className="flex gap-0 mb-8 border-b" style={{ borderColor: 'var(--border)' }}>
         {views.map(v => (
           <button key={v.key} onClick={() => setView(v.key)}
-            className="px-4 py-2 text-[12px] font-medium tracking-wider transition-colors -mb-px border-b-2"
+            className="px-4 py-2 text-[13px] font-medium tracking-wider transition-colors -mb-px border-b-2"
             style={{
               borderColor: view === v.key ? 'var(--accent)' : 'transparent',
               color: view === v.key ? 'var(--accent)' : 'var(--fg-faint)',

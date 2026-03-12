@@ -1,14 +1,14 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import { FactList } from '@/components/facts/FactList'
 import { WATCHLIST } from '@/config/watchlist'
 import type { AtomicFact } from '@/lib/types'
 
-// Build a lookup: lowercase name/alias → entity display name
 const ENTITY_LOOKUP = new Map<string, string>()
 for (const e of WATCHLIST) {
   ENTITY_LOOKUP.set(e.name.toLowerCase(), e.name)
-  for (const alias of e.aliases) {
-    ENTITY_LOOKUP.set(alias.toLowerCase(), e.name)
-  }
+  for (const alias of e.aliases) ENTITY_LOOKUP.set(alias.toLowerCase(), e.name)
 }
 
 function matchEntity(tags: string[]): string | null {
@@ -17,6 +17,39 @@ function matchEntity(tags: string[]): string | null {
     if (match) return match
   }
   return null
+}
+
+/* Q5: AI-generated entity summary */
+function EntitySummary({ entity, facts }: { entity: string; facts: AtomicFact[] }) {
+  const [summary, setSummary] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (entity === '其他' || facts.length < 2) return
+    setLoading(true)
+    const contents = facts.map(f => f.content_zh || f.content_en)
+    fetch('/api/facts/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity, facts: contents }),
+    })
+      .then(r => r.json())
+      .then(d => setSummary(d.summary || null))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [entity, facts])
+
+  if (entity === '其他' || facts.length < 2) return null
+
+  return (
+    <div className="text-[13px] mt-1 mb-3" style={{ color: 'var(--fg-secondary)' }}>
+      {loading ? (
+        <span className="text-[11px]" style={{ color: 'var(--fg-dim)' }}>生成摘要...</span>
+      ) : summary ? (
+        summary
+      ) : null}
+    </div>
+  )
 }
 
 export function AggregateView({ facts }: { facts: AtomicFact[] }) {
@@ -28,7 +61,6 @@ export function AggregateView({ facts }: { facts: AtomicFact[] }) {
     grouped.set(entity, arr)
   }
 
-  // Sort: named entities first (by count desc), "其他" last
   const sorted = [...grouped.entries()].sort((a, b) => {
     if (a[0] === '其他') return 1
     if (b[0] === '其他') return -1
@@ -39,10 +71,13 @@ export function AggregateView({ facts }: { facts: AtomicFact[] }) {
     <div className="space-y-10">
       {sorted.map(([entity, entityFacts]) => (
         <section key={entity}>
-          <div className="flex items-center gap-3 mb-4">
-            <h3 className="text-[11px] font-mono tracking-wider uppercase" style={{ color: 'var(--fg-dim)' }}>{entity}</h3>
-            <span className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{entityFacts.length}</span>
+          <div className="flex items-center gap-3">
+            <h3 className="text-[15px] font-semibold" style={{ color: 'var(--fg-title)' }}>{entity}</h3>
+            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-alt)', color: 'var(--fg-dim)' }}>
+              {entityFacts.length}
+            </span>
           </div>
+          <EntitySummary entity={entity} facts={entityFacts} />
           <FactList facts={entityFacts} compact />
         </section>
       ))}

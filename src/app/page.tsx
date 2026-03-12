@@ -2,18 +2,31 @@ import { supabaseAdmin } from '@/db/client'
 import { getCurrentWeekNumber } from '@/db/client'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { FeedClient } from './FeedClient'
+import { WeeklySummary } from '@/components/feed/WeeklySummary'
 import type { AtomicFact } from '@/lib/types'
 
-async function getWeeklySummary(week: string): Promise<string | null> {
+interface SummaryData {
+  simple: string | null
+  detailed: string | null
+}
+
+async function getWeeklySummary(week: string): Promise<SummaryData> {
   try {
     const { data } = await supabaseAdmin
       .from('weekly_snapshots')
       .select('snapshot_data')
       .eq('week_number', week)
       .single()
-    return (data?.snapshot_data as { weekly_summary?: string })?.weekly_summary ?? null
+    const sd = data?.snapshot_data as {
+      weekly_summary?: string
+      weekly_summary_detailed?: string
+    } | null
+    return {
+      simple: sd?.weekly_summary ?? null,
+      detailed: sd?.weekly_summary_detailed ?? null,
+    }
   } catch {
-    return null
+    return { simple: null, detailed: null }
   }
 }
 
@@ -34,19 +47,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const facts = (data ?? []) as AtomicFact[]
   return (
     <div>
-      <PageHeader title="信息流" description={`${week.replace('-W', ' 第')}周 · ${facts.length} 条已验证事实`} />
-      {summary && (
-        <div
-          className="mb-6 p-4 rounded-lg border"
-          style={{ borderColor: 'var(--accent-muted)', background: 'var(--accent-soft)' }}
-        >
-          <p className="text-[11px] font-medium tracking-wider uppercase mb-2" style={{ color: 'var(--accent)' }}>
-            本周摘要
-          </p>
-          <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
-            {summary}
-          </p>
-        </div>
+      <PageHeader title="周报" />
+      {summary.simple && (
+        <WeeklySummary simple={summary.simple} detailed={summary.detailed} />
       )}
       <FeedClient facts={facts} currentWeek={week} />
     </div>

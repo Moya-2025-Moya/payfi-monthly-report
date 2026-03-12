@@ -42,7 +42,7 @@ export function FactDetail({ fact }: { fact: AtomicFact }) {
 
       {showSources && sourceUrls.length > 0 && (
         <div className="p-3 rounded-md space-y-2" style={{ background: 'var(--surface-alt)' }}>
-          <p className="text-[10px] font-mono mb-1.5" style={{ color: 'var(--fg-faint)' }}>信息源</p>
+          <p className="text-[11px] font-mono mb-1.5" style={{ color: 'var(--fg-faint)' }}>信息源</p>
           {sourceUrls.map((url, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="text-[11px] font-mono truncate flex-1" style={{ color: 'var(--fg-muted)' }}>
@@ -72,7 +72,7 @@ export function FactDetail({ fact }: { fact: AtomicFact }) {
       </div>
       {fact.fact_type === 'metric' && fact.metric_value != null && (
         <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          <p className="text-[10px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-faint)' }}>指标详情</p>
+          <p className="text-[11px] font-mono tracking-wider mb-3" style={{ color: 'var(--fg-faint)' }}>指标详情</p>
           <div className="grid grid-cols-2 gap-3 text-[13px] font-mono">
             <div><span style={{ color: 'var(--fg-faint)' }}>名称 </span><span style={{ color: 'var(--fg-body)' }}>{fact.metric_name}</span></div>
             <div><span style={{ color: 'var(--fg-faint)' }}>数值 </span><span style={{ color: 'var(--fg-title)' }}>{fact.metric_value.toLocaleString()} {fact.metric_unit}</span></div>

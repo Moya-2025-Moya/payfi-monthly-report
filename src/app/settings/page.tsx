@@ -206,13 +206,13 @@ function PipelineTrigger({
     <Card>
       <div className="flex items-start justify-between gap-4 mb-3">
         <div>
-          <p className="text-sm font-semibold" style={{ color: 'var(--fg-title)' }}>{label}</p>
+          <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>{label}</p>
           <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-faint)' }}>{description}</p>
         </div>
         <button
           onClick={handleClick}
           disabled={state === 'loading'}
-          className="shrink-0 rounded-md px-4 py-2 text-xs font-medium border transition-colors"
+          className="shrink-0 rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
           style={
             state === 'loading'
               ? { borderColor: 'var(--info)', color: 'var(--info)', opacity: 0.7 }
@@ -305,7 +305,7 @@ function DevResetButton({
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="flex-1">
-        <p className="text-xs font-medium" style={{ color: 'var(--fg)' }}>{label}</p>
+        <p className="text-[11px] font-medium" style={{ color: 'var(--fg)' }}>{label}</p>
         <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-faint)' }}>{description}</p>
         {result && (
           <p className="text-[11px] mt-1" style={{ color: state === 'success' ? 'var(--success)' : 'var(--danger)' }}>
@@ -317,7 +317,7 @@ function DevResetButton({
         {confirming && (
           <button
             onClick={handleCancel}
-            className="rounded-md px-3 py-1.5 text-xs border"
+            className="rounded-md px-3 py-1.5 text-[11px] border"
             style={{ borderColor: 'var(--border)', color: 'var(--fg-muted)' }}
           >
             取消
@@ -326,7 +326,7 @@ function DevResetButton({
         <button
           onClick={handleReset}
           disabled={state === 'loading'}
-          className="rounded-md px-3 py-1.5 text-xs font-medium border transition-colors"
+          className="rounded-md px-3 py-1.5 text-[11px] font-medium border transition-colors"
           style={
             confirming
               ? { borderColor: 'var(--danger)', color: 'var(--danger)', background: 'rgba(239,68,68,0.08)' }
@@ -417,13 +417,13 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <PageHeader title="设置" description="系统配置与流水线控制" />
+      <PageHeader title="设置" />
 
       {/* Tab switcher */}
       <div className="flex gap-0 mb-6 border-b" style={{ borderColor: 'var(--border)' }}>
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className="px-4 py-2 text-[12px] font-medium tracking-wider transition-colors -mb-px border-b-2"
+            className="px-4 py-2 text-[13px] font-medium tracking-wider transition-colors -mb-px border-b-2"
             style={{
               borderColor: tab === t.key ? 'var(--accent)' : 'transparent',
               color: tab === t.key ? 'var(--accent)' : 'var(--fg-faint)',
@@ -437,13 +437,13 @@ export default function SettingsPage() {
         {tab === 'config' && (
           <>
             <Card>
-              <p className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>系统健康</p>
+              <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>系统健康</p>
               {healthError ? (
                 <p className="text-xs" style={{ color: 'var(--danger)' }}>加载失败: {healthError}</p>
               ) : health === null ? (
                 <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>检查中...</p>
               ) : (
-                <div className="space-y-1 text-xs">
+                <div className="space-y-1 text-[11px]">
                   <div className="flex items-center gap-2">
                     <span className="inline-block w-2 h-2 rounded-full"
                       style={{ background: health.status === 'ok' ? 'var(--success)' : 'var(--danger)' }} />
@@ -460,7 +460,7 @@ export default function SettingsPage() {
             </Card>
 
             <Card>
-              <p className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>流水线状态</p>
+              <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>流水线状态</p>
               {pipelineError ? (
                 <p className="text-xs" style={{ color: 'var(--danger)' }}>加载失败: {pipelineError}</p>
               ) : pipeline === null ? (
@@ -468,7 +468,7 @@ export default function SettingsPage() {
               ) : pipeline.message ? (
                 <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>{pipeline.message}</p>
               ) : (
-                <div className="space-y-1 text-xs">
+                <div className="space-y-1 text-[11px]">
                   {pipeline.status && (
                     <div className="flex items-center gap-2">
                       <span className="inline-block w-2 h-2 rounded-full"
@@ -494,8 +494,8 @@ export default function SettingsPage() {
             {/* Dev Mode */}
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <h2 className="text-sm font-semibold" style={{ color: 'var(--danger)' }}>开发模式</h2>
-                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                <h2 className="text-[13px] font-semibold" style={{ color: 'var(--danger)' }}>开发模式</h2>
+                <span className="text-[11px] px-1.5 py-0.5 rounded font-medium"
                   style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--danger)' }}>
                   DEV
                 </span>

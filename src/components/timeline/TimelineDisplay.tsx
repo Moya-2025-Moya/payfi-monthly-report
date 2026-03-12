@@ -29,7 +29,7 @@ export function TimelineDisplay({ timeline, nodes }: { timeline: Timeline; nodes
       <div>
         <h2 className="text-lg font-semibold" style={{ color: 'var(--fg-title)' }}>{timeline.name}</h2>
         {timeline.description && <p className="text-[13px] mt-1" style={{ color: 'var(--fg-dim)' }}>{timeline.description}</p>}
-        <span className="inline-block mt-2 text-[10px] font-mono tracking-wider uppercase px-2 py-0.5 rounded-lg"
+        <span className="inline-block mt-2 text-[11px] font-mono tracking-wider uppercase px-2 py-0.5 rounded-lg"
           style={{ color: timeline.status === 'active' ? 'var(--success)' : 'var(--fg-faint)', border: `1px solid ${timeline.status === 'active' ? 'var(--success)' : 'var(--border)'}` }}>
           {timeline.status}
         </span>
@@ -45,7 +45,7 @@ export function TimelineDisplay({ timeline, nodes }: { timeline: Timeline; nodes
                 <time className="text-[11px] font-mono" style={{ color: 'var(--fg-faint)' }}>{date}</time>
                 <SourceCountBadge count={getSourceCount(fact)} />
                 {attribution_status === 'uncertain' && (
-                  <span className="text-[10px] font-mono" style={{ color: 'var(--accent)' }}>待确认</span>
+                  <span className="text-[11px] font-mono" style={{ color: 'var(--accent)' }}>待确认</span>
                 )}
               </div>
               <p className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{displayContent}</p>

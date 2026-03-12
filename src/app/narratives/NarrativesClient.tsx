@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import { NarrativeFlow } from '@/components/narrative/NarrativeFlow'
+import { NarrativeTimeline } from '@/components/narrative/NarrativeTimeline'
 import { HotTopicsList } from '@/components/narrative/HotTopicsList'
 import { NarrativeChat } from '@/components/narrative/NarrativeChat'
 import { NarrativeTabBar } from '@/components/narrative/NarrativeTabBar'
 import { BranchDimensionSelector } from '@/components/narrative/BranchDimensionSelector'
-import type { Node, Edge } from '@xyflow/react'
 
 export interface NarrativeBranch {
   id: string; label: string; side: 'left' | 'right'; color: string
@@ -19,11 +18,23 @@ export interface NarrativeNodeData {
   sourceUrl?: string
   participants?: { name: string; role: string }[]
   isMerged?: boolean
+  isExternal?: boolean
+  externalUrl?: string
+}
+
+export interface TimelineNode {
+  id: string; type: string
+  position: { x: number; y: number }
+  data: NarrativeNodeData
+}
+
+export interface TimelineEdge {
+  id: string; source: string; target: string; label?: string
 }
 
 export interface NarrativeTab {
   id: string; query: string
-  nodes: Node[]; edges: Edge[]; branches: NarrativeBranch[]
+  nodes: TimelineNode[]; edges: TimelineEdge[]; branches: NarrativeBranch[]
   branchDimension: 'auto' | 'entity' | 'stance'
   status: 'idle' | 'streaming' | 'done' | 'error'
   summary: string | null; totalFacts: number; error?: string
@@ -46,9 +57,9 @@ export function NarrativesClient() {
       switch (data.type) {
         case 'node':
         case 'merged_node':
-          return { ...tab, nodes: [...tab.nodes, data.node as unknown as Node] }
+          return { ...tab, nodes: [...tab.nodes, data.node as TimelineNode] }
         case 'edge':
-          return { ...tab, edges: [...tab.edges, data.edge as unknown as Edge] }
+          return { ...tab, edges: [...tab.edges, data.edge as TimelineEdge] }
         case 'meta':
           return { ...tab, summary: (data.summary as string) ?? null, branches: (data.branches as NarrativeBranch[]) ?? [], totalFacts: (data.totalFacts as number) ?? 0 }
         case 'done':
@@ -124,7 +135,7 @@ export function NarrativesClient() {
   const displayData = (() => {
     if (!mergedView || tabs.length < 2) return { nodes: activeTab?.nodes ?? [], edges: activeTab?.edges ?? [] }
     const seenIds = new Set<string>()
-    const nodes: Node[] = []; const edges: Edge[] = []
+    const nodes: TimelineNode[] = []; const edges: TimelineEdge[] = []
     for (const tab of tabs) {
       for (const n of tab.nodes) { if (!seenIds.has(n.id)) { seenIds.add(n.id); nodes.push(n) } }
       edges.push(...tab.edges)
@@ -133,22 +144,25 @@ export function NarrativesClient() {
   })()
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 140px)' }}>
+    <div>
+      {/* Search bar */}
       <div className="flex gap-2 mb-4">
         <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && runSearch(searchInput)}
           placeholder="输入叙事主题，如「MiCA 监管进展」「Circle IPO」「非洲支付」..."
-          className="flex-1 px-4 py-2.5 rounded-lg border text-sm"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--fg-body)' }} />
+          className="flex-1 px-4 py-2.5 rounded-lg border text-[13px]"
+          style={{ background: 'var(--surface-alt)', borderColor: 'var(--border)', color: 'var(--fg)' }} />
         <button onClick={() => runSearch(searchInput)} disabled={!searchInput.trim()}
-          className="px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+          className="px-5 py-2.5 rounded-lg text-[13px] font-medium transition-colors"
           style={{ background: searchInput.trim() ? 'var(--accent)' : 'var(--border)', color: searchInput.trim() ? '#fff' : 'var(--fg-muted)' }}>
           生成时间线
         </button>
       </div>
 
+      {/* Hot topics when no tabs */}
       {tabs.length === 0 && <HotTopicsList onSelect={q => runSearch(q)} />}
 
+      {/* Tab bar + branch dimension selector */}
       {tabs.length > 0 && (
         <div className="flex items-center gap-3 mb-3">
           <NarrativeTabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTabId} onClose={closeTab}
@@ -157,34 +171,44 @@ export function NarrativesClient() {
         </div>
       )}
 
+      {/* Summary */}
       {activeTab?.summary && (
-        <div className="mb-3 px-4 py-3 rounded-lg border text-[13px] leading-relaxed"
-          style={{ borderColor: 'var(--accent-muted)', background: 'var(--accent-soft)', color: 'var(--fg-body)' }}>
-          <span className="font-medium" style={{ color: 'var(--accent)' }}>摘要: </span>{activeTab.summary}
+        <div className="mb-4 px-4 py-3 rounded-lg border text-[13px] leading-relaxed"
+          style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)', color: 'var(--fg-secondary)' }}>
+          <span className="font-medium" style={{ color: 'var(--fg-title)' }}>摘要: </span>{activeTab.summary}
           {activeTab.totalFacts > 0 && <span className="ml-2 text-[11px]" style={{ color: 'var(--fg-muted)' }}>({activeTab.totalFacts} 条事实)</span>}
         </div>
       )}
 
-      {activeTab?.status === 'streaming' && (
+      {/* Streaming indicator */}
+      {activeTab?.status === 'streaming' && activeTab.nodes.length === 0 && (
         <div className="mb-3 flex items-center gap-2 text-[13px]" style={{ color: 'var(--fg-muted)' }}>
           <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
-          正在生成时间线...
+          正在检索并生成时间线...
         </div>
       )}
 
+      {/* Error */}
       {activeTab?.status === 'error' && (
-        <div className="mb-3 px-4 py-3 rounded-lg border text-[13px]" style={{ borderColor: '#ef444480', background: '#ef444410', color: '#ef4444' }}>
+        <div className="mb-3 px-4 py-3 rounded-lg border text-[13px]" style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.05)', color: '#ef4444' }}>
           生成失败: {activeTab.error ?? '未知错误'}
         </div>
       )}
 
+      {/* Timeline */}
       {tabs.length > 0 && (
-        <div className="flex-1 rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}>
-          <NarrativeFlow nodes={displayData.nodes} edges={displayData.edges} branches={activeTab?.branches ?? []}
-            status={activeTab?.status ?? 'idle'} onNodeClick={handleNodeClick} />
+        <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <NarrativeTimeline
+            nodes={displayData.nodes}
+            edges={displayData.edges}
+            branches={activeTab?.branches ?? []}
+            status={activeTab?.status ?? 'idle'}
+            onNodeClick={handleNodeClick}
+          />
         </div>
       )}
 
+      {/* Chat panel */}
       <NarrativeChat open={chatOpen} onClose={() => setChatOpen(false)} context={chatContext} />
     </div>
   )

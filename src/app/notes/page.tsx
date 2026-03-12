@@ -22,7 +22,7 @@ export default async function NotesPage() {
 
   return (
     <div>
-      <PageHeader title="团队笔记" description={`共 ${notes.length} 条笔记`} />
+      <PageHeader title="团队笔记" />
       <NotesClient initialNotes={notes} factsMap={factsMap} />
     </div>
   )
