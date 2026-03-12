@@ -3,16 +3,12 @@
 
 import { SOURCES } from '@/config/sources'
 import { getCoinsForOnchain } from '@/config/watchlist'
-import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
+import { supabaseAdmin } from '@/db/client'
 
 // ─── DeFiLlama response shapes ───────────────────────────────────────────────
 
-interface DefiLlamaChainAmount {
-  [chain: string]: number
-}
-
 interface DefiLlamaPeggedAsset {
-  id: string
+  id: number
   symbol: string
   name: string
   circulating: { peggedUSD?: number }
@@ -35,20 +31,22 @@ async function fetchJson<T>(url: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+/** Slugify a name for matching: "USD Coin" → "usd-coin", "Ethena USDe" → "ethena-usde" */
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+}
+
 // ─── Main collector ───────────────────────────────────────────────────────────
 
 import type { CollectorResult } from '@/modules/collectors'
 
 export async function collectOnChainData(): Promise<CollectorResult> {
   const fetchedAt = new Date().toISOString()
-  const weekNumber = getCurrentWeekNumber()
-  const date = fetchedAt.slice(0, 10) // YYYY-MM-DD
-  const sourceUrl = 'https://defillama.com/stablecoins'
   const apiBase = SOURCES.defillama.stablecoinBaseUrl
   let totalUpserted = 0
   const breakdown: { source: string; count: number }[] = []
 
-  console.log(`[A1] collectOnChainData start — week ${weekNumber}`)
+  console.log('[A1] collectOnChainData start')
 
   // 1. Fetch all stablecoin data from DeFiLlama
   let peggedAssets: DefiLlamaPeggedAsset[]
@@ -63,10 +61,14 @@ export async function collectOnChainData(): Promise<CollectorResult> {
     return { total: 0, breakdown: [] }
   }
 
-  // Build a lookup map: defillama coin id → asset
-  const assetById = new Map<string, DefiLlamaPeggedAsset>(
-    peggedAssets.map(a => [a.id, a])
-  )
+  // Build lookup maps by slug and symbol for matching watchlist coin_ids
+  // DeFiLlama uses numeric IDs, but our watchlist uses slug-style IDs (e.g. "usd-coin", "tether")
+  const assetBySlug = new Map<string, DefiLlamaPeggedAsset>()
+  const assetBySymbol = new Map<string, DefiLlamaPeggedAsset>()
+  for (const a of peggedAssets) {
+    assetBySlug.set(slugify(a.name), a)
+    assetBySymbol.set(a.symbol.toLowerCase(), a)
+  }
 
   // 2. Iterate over watched coins that have a DeFiLlama coin_id
   const watchedCoins = getCoinsForOnchain().filter(e => e.coin_ids?.defillama)
@@ -74,12 +76,24 @@ export async function collectOnChainData(): Promise<CollectorResult> {
   console.log(`[A1] Processing ${watchedCoins.length} watched coins`)
 
   for (const entity of watchedCoins) {
-    const coinId = entity.coin_ids!.defillama!
+    const coinSlug = entity.coin_ids!.defillama!
 
     try {
-      const asset = assetById.get(coinId)
+      // Try matching by slug first, then by symbol from aliases
+      let asset = assetBySlug.get(coinSlug)
       if (!asset) {
-        console.warn(`[A1] coin not found in DeFiLlama response: ${coinId}`)
+        // Try matching by symbol (e.g. "dai" matches symbol "DAI")
+        asset = assetBySymbol.get(coinSlug.toLowerCase())
+      }
+      if (!asset) {
+        // Try aliases as symbols
+        for (const alias of entity.aliases) {
+          asset = assetBySymbol.get(alias.toLowerCase())
+          if (asset) break
+        }
+      }
+      if (!asset) {
+        console.warn(`[A1] coin not found in DeFiLlama response: ${coinSlug} (${entity.name})`)
         continue
       }
 
@@ -91,34 +105,27 @@ export async function collectOnChainData(): Promise<CollectorResult> {
       if (marketCap !== null) {
         rows.push({
           source: 'defillama',
-          source_url: sourceUrl,
-          coin_id: coinId,
+          coin_id: coinSlug,
           coin_symbol: symbol,
           metric_name: 'market_cap',
           metric_value: marketCap,
           metric_unit: 'USD',
           chain: null,
           fetched_at: fetchedAt,
-          date,
-          week_number: weekNumber,
         })
       }
 
       // ── total_supply (same as market_cap for pegged USD assets) ──
-      // DeFiLlama reports circulating peggedUSD as the canonical supply figure.
       if (marketCap !== null) {
         rows.push({
           source: 'defillama',
-          source_url: sourceUrl,
-          coin_id: coinId,
+          coin_id: coinSlug,
           coin_symbol: symbol,
           metric_name: 'total_supply',
           metric_value: marketCap,
           metric_unit: 'USD',
           chain: null,
           fetched_at: fetchedAt,
-          date,
-          week_number: weekNumber,
         })
       }
 
@@ -130,43 +137,35 @@ export async function collectOnChainData(): Promise<CollectorResult> {
 
         rows.push({
           source: 'defillama',
-          source_url: sourceUrl,
-          coin_id: coinId,
+          coin_id: coinSlug,
           coin_symbol: symbol,
           metric_name: 'chain_circulating',
           metric_value: chainAmount,
           metric_unit: 'USD',
           chain,
           fetched_at: fetchedAt,
-          date,
-          week_number: weekNumber,
         })
       }
 
       if (rows.length === 0) {
-        console.warn(`[A1] No metrics extracted for ${coinId}`)
+        console.warn(`[A1] No metrics extracted for ${coinSlug}`)
         continue
       }
 
-      // 3. Upsert into raw_onchain_metrics
-      // Conflict key: (source, coin_id, metric_name, chain, date)
+      // 3. Insert into raw_onchain_metrics (no upsert — fetched_at makes each run unique)
       const { error } = await supabaseAdmin
         .from('raw_onchain_metrics')
-        .upsert(rows, {
-          onConflict: 'source,coin_id,metric_name,chain,date',
-          ignoreDuplicates: false,
-        })
+        .insert(rows)
 
       if (error) {
-        console.error(`[A1] Upsert failed for ${coinId}:`, error.message)
+        console.error(`[A1] Insert failed for ${coinSlug}:`, error.message)
       } else {
         totalUpserted += rows.length
-        breakdown.push({ source: `${symbol} (${coinId})`, count: rows.length })
-        console.log(`[A1] Upserted ${rows.length} rows for ${symbol} (${coinId})`)
+        breakdown.push({ source: `${symbol} (${coinSlug})`, count: rows.length })
+        console.log(`[A1] Inserted ${rows.length} rows for ${symbol} (${coinSlug})`)
       }
     } catch (err) {
-      // Log and continue — one coin failure must not abort the rest
-      console.error(`[A1] Error processing coin ${coinId}:`, err)
+      console.error(`[A1] Error processing coin ${coinSlug}:`, err)
     }
   }
 

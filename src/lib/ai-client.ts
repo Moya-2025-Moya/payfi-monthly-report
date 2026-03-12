@@ -5,8 +5,9 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!
 const API_URL = 'https://api.anthropic.com/v1/messages'
 
 // Rate limit retry config
-const MAX_RETRIES = 5
-const BASE_DELAY_MS = 15_000 // 15s base delay for rate limits
+const MAX_RETRIES = 3
+const BASE_DELAY_MS = 3_000 // 3s base delay for rate limits
+const FETCH_TIMEOUT_MS = 60_000 // 60s per request timeout
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -44,15 +45,33 @@ export async function callAI(
   if (system) body.system = system
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-    })
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+    let res: Response
+    try {
+      res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+    } catch (err) {
+      clearTimeout(timeout)
+      if (attempt < MAX_RETRIES) {
+        const delayMs = BASE_DELAY_MS * Math.pow(2, attempt)
+        console.warn(`[ai-client] Request failed (${err instanceof Error ? err.message : 'timeout'}), retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delayMs / 1000)}s`)
+        await sleep(delayMs)
+        continue
+      }
+      throw new Error(`Anthropic API request failed after ${MAX_RETRIES} retries: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      clearTimeout(timeout)
+    }
 
     if (res.ok) {
       const data = await res.json()

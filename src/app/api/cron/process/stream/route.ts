@@ -15,7 +15,7 @@ import { adjudicate } from '@/modules/ai-agents/validators/adjudicator'
 
 import type { AtomicFact } from '@/lib/types'
 
-export const maxDuration = 300
+export const maxDuration = 600
 
 const RAW_TABLES = ['raw_news', 'raw_filings', 'raw_product_updates', 'raw_funding', 'raw_regulatory'] as const
 const RAW_TABLE_NAMES: Record<string, string> = {

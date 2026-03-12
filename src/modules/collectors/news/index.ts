@@ -1,10 +1,11 @@
 // A2 News Collector — 14 个 RSS 源（含中文）
-// 从多个来源抓取加密/稳定币相关新闻，存入 raw_news 表
+// 从多个来源抓取加密/稳定币相关新闻，抓取全文后存入 raw_news 表
 
 import { SOURCES } from '@/config/sources'
-import { WATCHLIST } from '@/config/watchlist'
 import { supabaseAdmin } from '@/db/client'
+import { extractContentBatch } from '@/lib/extract-content'
 import RSSParser from 'rss-parser'
+import type { CollectorResult } from '@/modules/collectors'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,29 +34,56 @@ const rssParser = new RSSParser({
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
-// ─── Stablecoin keyword pre-filter (soft filter) ─────────────────────────────
+// ─── Stablecoin keyword pre-filter ───────────────────────────────────────────
+// 两层过滤：强关键词直接通过，弱关键词（通用公司名）需配合上下文词
 
-const STABLECOIN_KEYWORDS = [
-  // Core terms
+// 强关键词 — 出现即通过
+const STRONG_KEYWORDS = [
+  // 核心概念
   'stablecoin', 'stable coin', '稳定币',
-  // Major stablecoins
+  // 主要稳定币名称
   'usdc', 'usdt', 'pyusd', 'dai', 'usde', 'frax', 'ausd', 'busd', 'tusd', 'gusd', 'fdusd',
-  // Issuers & infra
-  'circle', 'tether', 'ethena', 'makerdao', 'maker', 'agora',
-  'stripe', 'bridge.xyz', 'zero hash', 'fireblocks',
-  // Payments & cross-border
-  '跨境支付', 'cross-border payment', 'remittance',
-  // Regulation
+  // 稳定币发行商（名字足够专属）
+  'circle', 'tether', 'ethena', 'makerdao',
+  // 稳定币基础设施
+  'bridge.xyz', 'zero hash',
+  // 支付相关
+  '跨境支付', 'cross-border payment', 'stablecoin payment',
+  // 监管
   'genius act', 'mica', 'stablecoin regulation', 'stablecoin bill',
+  // CBDC
+  'cbdc', 'digital dollar', 'digital euro', '数字货币',
 ]
 
-// Add watchlist entity names and aliases as additional keywords
-const WATCHLIST_KEYWORDS = WATCHLIST.flatMap(e => [e.name.toLowerCase(), ...e.aliases.map(a => a.toLowerCase())])
-const ALL_FILTER_KEYWORDS = [...STABLECOIN_KEYWORDS, ...WATCHLIST_KEYWORDS]
+// 弱关键词 — 需配合上下文词才通过（防止 "Visa Q4 earnings" 这种无关文章进入）
+const WEAK_KEYWORDS = [
+  'visa', 'mastercard', 'jpmorgan', 'blackrock', 'coinbase', 'robinhood',
+  'block', 'square', 'stripe', 'fireblocks', 'paypal',
+  'aave', 'curve', 'uniswap', 'maker', 'agora',
+  'sec', 'occ', 'federal reserve', 'cftc',
+]
+
+// 上下文词 — 弱关键词必须跟这些词共现才算相关
+const CONTEXT_WORDS = [
+  'stablecoin', 'stable', 'usdc', 'usdt', 'pyusd', 'payment', 'crypto',
+  'digital asset', 'blockchain', 'tokenize', 'tokenization', 'on-chain', 'onchain',
+  'defi', 'web3', 'remittance', 'settlement', 'cross-border',
+  '稳定币', '加密', '区块链', '支付', '数字资产',
+]
 
 function matchesStablecoinKeywords(title: string, summary: string | null): boolean {
   const text = `${title} ${summary ?? ''}`.toLowerCase()
-  return ALL_FILTER_KEYWORDS.some(kw => text.includes(kw))
+
+  // 强关键词直接通过
+  if (STRONG_KEYWORDS.some(kw => text.includes(kw))) return true
+
+  // 弱关键词 + 上下文词共现才通过
+  const hasWeak = WEAK_KEYWORDS.some(kw => text.includes(kw))
+  if (hasWeak) {
+    return CONTEXT_WORDS.some(ctx => text.includes(ctx))
+  }
+
+  return false
 }
 
 // 中文源名单
@@ -95,7 +123,7 @@ async function collectFromRssFeed(
         source_url: item.link,
         title: item.title.trim(),
         summary: item.contentSnippet?.slice(0, 500) ?? null,
-        full_text: null,
+        full_text: null, // will be filled by full-text extraction below
         published_at: publishedAt.toISOString(),
         tags: null,
         language: isZh ? 'zh' : 'en',
@@ -111,6 +139,28 @@ async function collectFromRssFeed(
   }
 
   return collected
+}
+
+// ─── Full-text extraction ────────────────────────────────────────────────────
+
+const FULL_TEXT_CONCURRENCY = 8
+
+async function enrichWithFullText(items: RawNews[]): Promise<void> {
+  const urls = items.map(i => i.source_url)
+  console.log(`[A2] Fetching full text for ${urls.length} articles (concurrency=${FULL_TEXT_CONCURRENCY})...`)
+
+  const textMap = await extractContentBatch(urls, FULL_TEXT_CONCURRENCY)
+
+  let enriched = 0
+  for (const item of items) {
+    const text = textMap.get(item.source_url)
+    if (text) {
+      item.full_text = text
+      enriched++
+    }
+  }
+
+  console.log(`[A2] Full text extracted: ${enriched}/${items.length} articles`)
 }
 
 // ─── Deduplication against DB ────────────────────────────────────────────────
@@ -145,8 +195,6 @@ async function filterExistingUrls(items: RawNews[]): Promise<RawNews[]> {
 }
 
 // ─── Main collector ───────────────────────────────────────────────────────────
-
-import type { CollectorResult } from '@/modules/collectors'
 
 export async function collectNews(): Promise<CollectorResult> {
   console.log(`[A2] collectNews start — ${SOURCES.rssFeeds.length} RSS feeds`)
@@ -194,10 +242,13 @@ export async function collectNews(): Promise<CollectorResult> {
     return { total: 0, breakdown: feedCounts }
   }
 
+  // Fetch full text for filtered articles
+  await enrichWithFullText(newItems)
+
   console.log(`[A2] Upserting ${newItems.length} new items (${newItems.filter(i => i.language === 'zh').length} 中文)...`)
 
   // Insert in batches to avoid payload limits
-  const INSERT_BATCH = 100
+  const INSERT_BATCH = 50
   let inserted = 0
 
   for (let i = 0; i < newItems.length; i += INSERT_BATCH) {

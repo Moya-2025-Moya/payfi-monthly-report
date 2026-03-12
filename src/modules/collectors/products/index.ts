@@ -1,7 +1,9 @@
 import { SOURCES } from '@/config/sources'
 import { WATCHLIST } from '@/config/watchlist'
 import { supabaseAdmin } from '@/db/client'
+import { extractContentBatch } from '@/lib/extract-content'
 import RSSParser from 'rss-parser'
+import type { CollectorResult } from '@/modules/collectors'
 
 interface RawProductUpdate {
   product_name: string
@@ -9,6 +11,7 @@ interface RawProductUpdate {
   source_url: string
   title: string
   description: string | null
+  full_text: string | null
   version: string | null
   published_at: string
   processed: boolean
@@ -51,6 +54,7 @@ async function collectBlogUpdates(entity: (typeof WATCHLIST)[number]): Promise<R
         source_url: item.link,
         title: item.title,
         description: item.contentSnippet ?? item.summary ?? null,
+        full_text: null,
         version: null,
         published_at: publishedAt.toISOString(),
         processed: false,
@@ -128,6 +132,7 @@ async function collectGitHubReleases(entity: (typeof WATCHLIST)[number]): Promis
             source_url: release.html_url,
             title: release.name ?? release.tag_name,
             description: release.body ?? null,
+            full_text: release.body ?? null, // GitHub release body IS the full text
             version: release.tag_name,
             published_at: publishedAt.toISOString(),
             processed: false,
@@ -144,7 +149,30 @@ async function collectGitHubReleases(entity: (typeof WATCHLIST)[number]): Promis
   return updates
 }
 
-import type { CollectorResult } from '@/modules/collectors'
+// ─── Full-text enrichment (for blog posts — GitHub releases already have body) ─
+
+async function enrichWithFullText(items: RawProductUpdate[]): Promise<void> {
+  const blogItems = items.filter(i => i.source_type === 'blog' && !i.full_text)
+  if (blogItems.length === 0) return
+
+  const urls = blogItems.map(i => i.source_url)
+  console.log(`[products] Fetching full text for ${urls.length} blog posts...`)
+
+  const textMap = await extractContentBatch(urls, 5)
+
+  let enriched = 0
+  for (const item of blogItems) {
+    const text = textMap.get(item.source_url)
+    if (text) {
+      item.full_text = text
+      enriched++
+    }
+  }
+
+  console.log(`[products] Full text extracted: ${enriched}/${blogItems.length} blog posts`)
+}
+
+// ─── Main collector ──────────────────────────────────────────────────────────
 
 export async function collectProductUpdates(): Promise<CollectorResult> {
   console.log('[products] Starting product updates collection...')
@@ -178,6 +206,9 @@ export async function collectProductUpdates(): Promise<CollectorResult> {
     seen.add(u.source_url)
     return true
   })
+
+  // Fetch full text for blog posts
+  await enrichWithFullText(deduped)
 
   console.log(`[products] Upserting ${deduped.length} product updates...`)
 

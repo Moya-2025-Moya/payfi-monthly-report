@@ -169,7 +169,7 @@ const SOURCE_TABLE_CONFIG: Record<string, {
   raw_product_updates: {
     sourceType: 'product',
     credibility: 'official',
-    textBuilder: (r) => buildText(r.title as string, r.description as string | null),
+    textBuilder: (r) => buildText(r.title as string, r.description as string | null, r.full_text as string | null),
   },
   raw_funding: {
     sourceType: 'funding',
@@ -187,7 +187,7 @@ const SOURCE_TABLE_CONFIG: Record<string, {
   raw_regulatory: {
     sourceType: 'regulatory',
     credibility: 'official',
-    textBuilder: (r) => buildText(r.title as string, r.description as string | null),
+    textBuilder: (r) => buildText(r.title as string, r.description as string | null, r.full_text as string | null),
   },
 }
 
@@ -255,8 +255,8 @@ export async function splitFacts(
 
 // ─── 批量处理: 获取未处理的原始数据并拆解 ───
 
-const BATCH_SIZE = 10 // 每批处理条数
-const BATCH_DELAY_MS = 30_000 // 批间等待 30 秒，避免触发速率限制
+const BATCH_SIZE = 5 // 每批并发条数（每条 2 次 AI 调用，共 10 并发）
+const BATCH_DELAY_MS = 2_000 // 批间等待 2 秒
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -265,7 +265,7 @@ function sleep(ms: number) {
 export async function processUnprocessedRaw(
   table: string,
   weekNumber: string,
-  limit = 50
+  limit = 200
 ): Promise<{ total: number; factIds: string[]; dropped: number }> {
   const { data: rows, error } = await supabaseAdmin
     .from(table)
@@ -279,22 +279,29 @@ export async function processUnprocessedRaw(
   const allFactIds: string[] = []
   let totalDropped = 0
 
-  // 分批处理，每批 BATCH_SIZE 条，批间等待
+  // 分批并发处理，每批 BATCH_SIZE 条
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE)
     const batchNum = Math.floor(i / BATCH_SIZE) + 1
     const totalBatches = Math.ceil(rows.length / BATCH_SIZE)
     console.log(`[fact-splitter] ${table} 批次 ${batchNum}/${totalBatches} (${batch.length} 条)`)
 
-    for (const row of batch) {
-      const result = await splitFacts(row, table, weekNumber)
-      allFactIds.push(...result.factIds)
-      totalDropped += result.dropped
+    // 批内并发
+    const results = await Promise.allSettled(
+      batch.map(row => splitFacts(row, table, weekNumber))
+    )
+
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        allFactIds.push(...r.value.factIds)
+        totalDropped += r.value.dropped
+      } else {
+        console.error(`[fact-splitter] ${table} item failed:`, r.reason)
+      }
     }
 
-    // 非最后一批时等待，给 API 速率窗口恢复
+    // 非最后一批时短暂等待
     if (i + BATCH_SIZE < rows.length) {
-      console.log(`[fact-splitter] 批间等待 ${BATCH_DELAY_MS / 1000}s...`)
       await sleep(BATCH_DELAY_MS)
     }
   }

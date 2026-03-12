@@ -83,6 +83,7 @@ CREATE TABLE raw_product_updates (
   source_url TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
+  full_text TEXT,
   version TEXT,
   published_at TIMESTAMPTZ NOT NULL,
   processed BOOLEAN NOT NULL DEFAULT FALSE,
@@ -138,6 +139,7 @@ CREATE TABLE raw_regulatory (
   source_url TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
+  full_text TEXT,
   doc_type TEXT NOT NULL, -- 'bill' | 'enforcement' | 'guidance' | 'license' | 'announcement'
   published_at TIMESTAMPTZ NOT NULL,
   processed BOOLEAN NOT NULL DEFAULT FALSE,

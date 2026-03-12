@@ -7,6 +7,7 @@
 import { SOURCES } from '@/config/sources'
 import { getCompaniesWithCIK } from '@/config/watchlist'
 import { supabaseAdmin } from '@/db/client'
+import { extractContentBatch } from '@/lib/extract-content'
 import YahooFinance from 'yahoo-finance2'
 
 const yahooFinance = new YahooFinance()
@@ -59,12 +60,24 @@ interface SecSubmissionsResponse {
 
 // ─── Part 1: SEC Filings ────────────────────────────────────
 
+interface FilingRow {
+  company_cik: string
+  company_name: string
+  filing_type: string
+  filing_url: string
+  filing_date: string
+  description: string | null
+  full_text: string | null
+  processed: boolean
+}
+
 async function collectSecFilings(): Promise<number> {
   const companies = getCompaniesWithCIK()
   const sevenDaysAgo = dateStr(7)
   const today = dateStr(0)
 
   let totalInserted = 0
+  const allRows: FilingRow[] = []
 
   console.log(
     `[companies/sec] Fetching filings for ${companies.length} companies ` +
@@ -72,7 +85,6 @@ async function collectSecFilings(): Promise<number> {
   )
 
   for (const company of companies) {
-    // getCompaniesWithCIK() guarantees sec_cik is defined
     const cik = company.sec_cik!
     const paddedCik = padCIK(cik)
     const url = `https://data.sec.gov/submissions/CIK${paddedCik}.json`
@@ -90,26 +102,13 @@ async function collectSecFilings(): Promise<number> {
       const data = (await res.json()) as SecSubmissionsResponse
       const recent = data.filings.recent
 
-      // Pair each index with its filing metadata
       const filingCount = recent.accessionNumber.length
       const targetForms = new Set(['10-K', '10-Q', '8-K', 'S-1'])
 
-      // Collect rows to upsert, deduplicating by filing_url
       const seen = new Set<string>()
-      const rows: {
-        company_cik: string
-        company_name: string
-        filing_type: string
-        filing_url: string
-        filing_date: string
-        description: string | null
-        full_text: null
-        processed: boolean
-      }[] = []
 
       for (let i = 0; i < filingCount; i++) {
         const filingDate = recent.filingDate[i]
-        // Only keep filings within the last 7 days
         if (filingDate < sevenDaysAgo || filingDate > today) continue
 
         const form = recent.form[i]
@@ -123,7 +122,7 @@ async function collectSecFilings(): Promise<number> {
 
         const description = recent.primaryDocDescription[i] ?? null
 
-        rows.push({
+        allRows.push({
           company_cik: cik,
           company_name: company.name,
           filing_type: form,
@@ -135,26 +134,43 @@ async function collectSecFilings(): Promise<number> {
         })
       }
 
-      if (rows.length === 0) {
+      if (allRows.length === 0) {
         console.log(`[companies/sec] No recent filings for ${company.name}`)
-      } else {
-        const { error } = await supabaseAdmin
-          .from('raw_filings')
-          .upsert(rows, { onConflict: 'filing_url', ignoreDuplicates: true })
-
-        if (error) {
-          console.error(`[companies/sec] DB error for ${company.name}:`, error.message)
-        } else {
-          totalInserted += rows.length
-          console.log(`[companies/sec] Inserted ${rows.length} filing(s) for ${company.name}`)
-        }
       }
     } catch (err) {
       console.error(`[companies/sec] Error fetching filings for ${company.name}:`, err)
     }
 
-    // Respect SEC rate limit: max 10 requests/second → wait ~120 ms between calls
     await sleep(120)
+  }
+
+  if (allRows.length === 0) return 0
+
+  // Fetch full text for all filings
+  console.log(`[companies/sec] Fetching full text for ${allRows.length} filings...`)
+  const urls = allRows.map(r => r.filing_url)
+  const textMap = await extractContentBatch(urls, 3) // lower concurrency for SEC
+
+  let enriched = 0
+  for (const row of allRows) {
+    const text = textMap.get(row.filing_url)
+    if (text) {
+      row.full_text = text
+      enriched++
+    }
+  }
+  console.log(`[companies/sec] Full text extracted: ${enriched}/${allRows.length}`)
+
+  // Upsert all rows
+  const { error } = await supabaseAdmin
+    .from('raw_filings')
+    .upsert(allRows, { onConflict: 'filing_url', ignoreDuplicates: true })
+
+  if (error) {
+    console.error('[companies/sec] DB upsert error:', error.message)
+  } else {
+    totalInserted = allRows.length
+    console.log(`[companies/sec] Inserted ${totalInserted} filing(s)`)
   }
 
   return totalInserted

@@ -1,6 +1,8 @@
 import { REGIONS } from '@/config/regions'
 import { supabaseAdmin } from '@/db/client'
+import { extractContentBatch } from '@/lib/extract-content'
 import RSSParser from 'rss-parser'
+import type { CollectorResult } from '@/modules/collectors'
 
 interface RawRegulatory {
   region: string
@@ -8,6 +10,7 @@ interface RawRegulatory {
   source_url: string
   title: string
   description: string | null
+  full_text: string | null
   doc_type: string | null
   published_at: string
   processed: boolean
@@ -89,6 +92,7 @@ async function collectSecRss(): Promise<RawRegulatory[]> {
         source_url: item.link,
         title: item.title,
         description,
+        full_text: null,
         doc_type: inferDocType(item.title, description),
         published_at: publishedAt.toISOString(),
         processed: false,
@@ -162,6 +166,7 @@ async function collectSecEfts(): Promise<RawRegulatory[]> {
         source_url: sourceUrl,
         title,
         description: null,
+        full_text: null,
         doc_type: source.form_type ?? 'filing',
         published_at: fileDate.toISOString(),
         processed: false,
@@ -201,6 +206,7 @@ async function collectRegionRssSources(): Promise<RawRegulatory[]> {
             source_url: item.link,
             title: item.title,
             description,
+            full_text: null,
             doc_type: inferDocType(item.title, description),
             published_at: publishedAt.toISOString(),
             processed: false,
@@ -215,7 +221,27 @@ async function collectRegionRssSources(): Promise<RawRegulatory[]> {
   return results
 }
 
-import type { CollectorResult } from '@/modules/collectors'
+// ─── Full-text enrichment ────────────────────────────────────────────────────
+
+async function enrichWithFullText(items: RawRegulatory[]): Promise<void> {
+  const urls = items.map(i => i.source_url)
+  console.log(`[regulatory] Fetching full text for ${urls.length} items...`)
+
+  const textMap = await extractContentBatch(urls, 5)
+
+  let enriched = 0
+  for (const item of items) {
+    const text = textMap.get(item.source_url)
+    if (text) {
+      item.full_text = text
+      enriched++
+    }
+  }
+
+  console.log(`[regulatory] Full text extracted: ${enriched}/${items.length}`)
+}
+
+// ─── Main collector ──────────────────────────────────────────────────────────
 
 export async function collectRegulatory(): Promise<CollectorResult> {
   console.log('[regulatory] Starting regulatory collection...')
@@ -246,6 +272,9 @@ export async function collectRegulatory(): Promise<CollectorResult> {
     seen.add(item.source_url)
     return true
   })
+
+  // Fetch full text for all items
+  await enrichWithFullText(deduped)
 
   console.log(`[regulatory] Upserting ${deduped.length} regulatory items...`)
 

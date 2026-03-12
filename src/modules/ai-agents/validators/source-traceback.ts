@@ -1,8 +1,10 @@
-// V1 来源回溯验证员 — Fetch source_url + Claude Haiku 判断事实与原文是否匹配
+// V1 来源回溯验证员 — 用 DB 中的全文 + Claude Haiku 判断事实与原文是否匹配
+// 优先使用采集阶段已存储的 full_text，避免重复抓取源 URL
 
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { callHaikuJSON } from '@/lib/ai-client'
+import { supabaseAdmin } from '@/db/client'
 import type { AtomicFact, V1Result } from '@/lib/types'
 
 const PROMPT_TEMPLATE = readFileSync(
@@ -12,7 +14,35 @@ const PROMPT_TEMPLATE = readFileSync(
 
 const MAX_ARTICLE_LENGTH = 10000
 
-// ─── Fetch 原文内容 ───
+// ─── 从 DB 获取已采集的原文 ───
+
+async function getStoredArticleText(fact: AtomicFact): Promise<string | null> {
+  if (!fact.source_table || !fact.source_id) return null
+
+  const { data } = await supabaseAdmin
+    .from(fact.source_table)
+    .select('*')
+    .eq('id', fact.source_id)
+    .single()
+
+  if (!data) return null
+
+  // 优先用 full_text，其次 summary/description/content
+  const row = data as Record<string, unknown>
+  const fullText = row.full_text as string | null
+  const summary = (row.summary ?? row.description ?? row.content) as string | null
+  const title = (row.title ?? row.product_name ?? '') as string
+
+  if (fullText && fullText.length > 50) {
+    return `${title}\n\n${fullText}`
+  }
+  if (summary && summary.length > 30) {
+    return `${title}\n\n${summary}`
+  }
+  return null
+}
+
+// ─── Fallback: Fetch 原文 ───
 
 async function fetchArticleText(url: string): Promise<string | null> {
   try {
@@ -31,9 +61,6 @@ async function fetchArticleText(url: string): Promise<string | null> {
     if (!res.ok) return null
 
     const html = await res.text()
-
-    // 简易正文提取: 去掉HTML标签，保留文本
-    // 生产环境应使用 @mozilla/readability
     const text = html
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -87,8 +114,12 @@ export async function validateSourceTraceback(fact: AtomicFact): Promise<V1Resul
     return { status: 'source_unavailable', evidence_quote: null, match_score: 0 }
   }
 
-  // Fetch 原文
-  const articleText = await fetchArticleText(fact.source_url)
+  // 优先从 DB 获取已采集的全文，避免重复抓取
+  let articleText = await getStoredArticleText(fact)
+  if (!articleText) {
+    // Fallback: 从源 URL 抓取
+    articleText = await fetchArticleText(fact.source_url)
+  }
   if (!articleText) {
     return { status: 'source_unavailable', evidence_quote: null, match_score: 0 }
   }
