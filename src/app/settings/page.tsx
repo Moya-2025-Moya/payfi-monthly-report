@@ -567,6 +567,12 @@ export default function SettingsPage() {
               initialState={getRestored('/api/cron/narrative')?.state}
               initialRunId={getRestored('/api/cron/narrative')?.runId}
             />
+            <PipelineTrigger
+              label="发布周报邮件"
+              description="将本周周报内容生成 HTML 邮件模板，写入 reports 表供 Moya 端批量发送"
+              endpoint="/api/newsletter/publish"
+              method="POST"
+            />
           </div>
         )}
       </div>

@@ -11,8 +11,8 @@ const FACT_TYPE_LABELS: Record<string, string> = {
 /* ── Objectivity labels ── */
 const OBJECTIVITY_LABELS: Record<string, string> = {
   fact: '事实',
-  opinion: '个人观点',
-  analysis: '机构分析',
+  opinion: '观点',
+  analysis: '分析',
 }
 
 /* ── Confidence dot colors ── */
@@ -105,8 +105,33 @@ function QuoteContent({ content }: { content: string }) {
   )
 }
 
-/* ── Pill label for fact_type (Q33) ── */
-function TypePill({ type }: { type: string }) {
+/* ── Pill label — objectivity-aware (Q33) ── */
+function TypePill({ type, objectivity }: { type: string; objectivity?: string }) {
+  // When objectivity is opinion/analysis, show that instead of fact_type
+  const isSubjective = objectivity === 'opinion' || objectivity === 'analysis'
+  // Legacy: quote type without objectivity → treat as opinion
+  const isLegacyQuote = type === 'quote' && (!objectivity || objectivity === 'fact')
+
+  if (isSubjective) {
+    const label = OBJECTIVITY_LABELS[objectivity] ?? objectivity
+    const color = objectivity === 'opinion' ? '#8b5cf6' : '#3b82f6'
+    return (
+      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none"
+        style={{ background: `${color}15`, color, border: `1px solid ${color}30` }}>
+        {label}
+      </span>
+    )
+  }
+
+  if (isLegacyQuote) {
+    return (
+      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none"
+        style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.2)' }}>
+        观点
+      </span>
+    )
+  }
+
   const label = FACT_TYPE_LABELS[type] ?? '其他'
   return (
     <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none"
@@ -127,26 +152,42 @@ function ConfidenceDot({ confidence }: { confidence: string | null }) {
   )
 }
 
+/* ── Determine if a fact is subjective (opinion/analysis/legacy quote) ── */
+function isSubjectiveFact(fact: AtomicFact): boolean {
+  if (fact.objectivity === 'opinion' || fact.objectivity === 'analysis') return true
+  // Legacy: quote type without objectivity set
+  if (fact.fact_type === 'quote' && (!fact.objectivity || fact.objectivity === 'fact')) return true
+  return false
+}
+
+/* ── Get effective objectivity (handles legacy data) ── */
+function getEffectiveObjectivity(fact: AtomicFact): 'fact' | 'opinion' | 'analysis' {
+  if (fact.objectivity === 'opinion' || fact.objectivity === 'analysis') return fact.objectivity
+  if (fact.fact_type === 'quote') return 'opinion' // legacy quote → opinion
+  return 'fact'
+}
+
 /* ── Attribution bar for opinion/analysis (Q5) ── */
 function AttributionBar({ fact }: { fact: AtomicFact }) {
-  const objectivity = fact.objectivity as string | undefined
-  if (!objectivity || objectivity === 'fact') return null
+  const effectiveObj = getEffectiveObjectivity(fact)
+  if (effectiveObj === 'fact') return null
 
   const speaker = fact.speaker || extractSpeaker(fact.content_zh || fact.content_en).speaker
-  const label = OBJECTIVITY_LABELS[objectivity] ?? objectivity
+  const label = OBJECTIVITY_LABELS[effectiveObj] ?? effectiveObj
+  const isOpinion = effectiveObj === 'opinion'
 
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-[12px]"
-      style={{ background: objectivity === 'opinion' ? 'rgba(139, 92, 246, 0.08)' : 'rgba(59, 130, 246, 0.08)' }}>
+      style={{ background: isOpinion ? 'rgba(139, 92, 246, 0.08)' : 'rgba(59, 130, 246, 0.08)' }}>
       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
         style={{
-          background: objectivity === 'opinion' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-          color: objectivity === 'opinion' ? '#8b5cf6' : '#3b82f6',
+          background: isOpinion ? 'rgba(139, 92, 246, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+          color: isOpinion ? '#8b5cf6' : '#3b82f6',
         }}>
         {label}
       </span>
       {speaker && (
-        <span style={{ color: objectivity === 'opinion' ? '#8b5cf6' : '#3b82f6' }}>
+        <span className="font-medium" style={{ color: isOpinion ? '#8b5cf6' : '#3b82f6' }}>
           {speaker}
         </span>
       )}
@@ -163,7 +204,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
   const sourceUrls = getSourceUrls(fact)
   const verificationIndicators = getVerificationIndicators(fact)
   const contradiction = getContradiction(fact)
-  const isSubjective = fact.objectivity === 'opinion' || fact.objectivity === 'analysis'
+  const isSubjective = isSubjectiveFact(fact)
 
   // "原文不可达" shown in default state as trust signal
   const unreachable = verificationIndicators.find(i => i.label === '原文不可达')
@@ -178,7 +219,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
       <div className="flex items-start gap-2 py-2 px-1 rounded-md cursor-pointer transition-colors hover:bg-[var(--surface-alt)]"
         onClick={toggleExpand}>
         <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-          <TypePill type={fact.fact_type} />
+          <TypePill type={fact.fact_type} objectivity={fact.objectivity} />
         </div>
         <p className="text-[14px] leading-relaxed flex-1 min-w-0" style={{ color: 'var(--fg-body)' }}>{displayContent}</p>
         <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
@@ -210,7 +251,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
         {/* Content area */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            {fact.fact_type === 'quote' ? (
+            {isSubjective ? (
               <div className="cursor-pointer" onClick={toggleExpand}>
                 <QuoteContent content={displayContent} />
               </div>
@@ -249,7 +290,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
 
         {/* Default metadata: pill + source + date + confidence dot + "原文不可达" warning */}
         <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: 'var(--fg-muted)' }}>
-          <TypePill type={fact.fact_type} />
+          <TypePill type={fact.fact_type} objectivity={fact.objectivity} />
           {sourceUrls.length > 0 && (
             <a href={sourceUrls[0]} target="_blank" rel="noopener noreferrer"
               className="hover:underline" onClick={e => e.stopPropagation()}>

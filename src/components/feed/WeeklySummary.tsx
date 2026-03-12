@@ -57,6 +57,7 @@ function buildExportText(items: DetailedItem[], lang: Lang, weekInfo: string): s
 
 export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string; detailed: string | null; weekNumber?: string }) {
   const [showDetailed, setShowDetailed] = useState(false)
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
   const [lang, setLang] = useState<Lang>('zh')
   const [copied, setCopied] = useState(false)
 
@@ -94,6 +95,10 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
     })
   }, [hasDetailed, detailedItems, lang, weekNumber, cleanText])
 
+  function toggleItem(idx: number) {
+    setExpandedIdx(prev => prev === idx ? null : idx)
+  }
+
   return (
     <div className="mb-6 rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
       {/* Header */}
@@ -126,7 +131,7 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
           {/* Detail toggle */}
           {hasDetailed && (
             <button
-              onClick={() => setShowDetailed(v => !v)}
+              onClick={() => { setShowDetailed(v => !v); setExpandedIdx(null) }}
               className="text-[11px] px-2 py-0.5 rounded transition-colors"
               style={{
                 color: showDetailed ? 'var(--info)' : 'var(--fg-muted)',
@@ -144,6 +149,7 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
       {/* Content */}
       <div className="px-4 py-3">
         {!showDetailed ? (
+          /* Simple list view */
           isLegacyParagraph ? (
             <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
               {cleanText}
@@ -175,40 +181,72 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
             </ol>
           )
         ) : (
-          <div className="space-y-4">
-            {detailedItems.map((item, i) => (
-              <div key={i} className="rounded-md border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)' }}>
-                <div className="flex items-start gap-2 mb-2">
-                  <span className="shrink-0 text-[11px] font-mono pt-0.5" style={{ color: 'var(--fg-muted)' }}>
-                    {i + 1}.
-                  </span>
-                  <p className="text-[13px] font-medium leading-snug" style={{ color: 'var(--fg-title)' }}>
-                    {getField(item, 'simple', lang)}
-                  </p>
-                </div>
+          /* Q8: Detailed view — 前情提要 style with progressive disclosure */
+          <div className="space-y-1">
+            {detailedItems.map((item, i) => {
+              const isExpanded = expandedIdx === i
+              const simple = getField(item, 'simple', lang)
+              const bg = getField(item, 'background', lang)
+              const wh = getField(item, 'what_happened', lang)
+              const ins = getField(item, 'insight', lang)
+              const hasMore = !!(bg || wh || ins)
 
-                <div className="ml-5 space-y-1.5 text-[13px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
-                  <p><span className="font-medium" style={{ color: 'var(--fg-muted)' }}>{lang === 'zh' ? '背景: ' : 'Background: '}</span>{getField(item, 'background', lang)}</p>
-                  <p><span className="font-medium" style={{ color: 'var(--fg-muted)' }}>{lang === 'zh' ? '详情: ' : 'What happened: '}</span>{getField(item, 'what_happened', lang)}</p>
-                  <p><span className="font-medium" style={{ color: 'var(--fg-muted)' }}>{lang === 'zh' ? '洞察: ' : 'Insight: '}</span>{getField(item, 'insight', lang)}</p>
-                </div>
-
-                <div className="ml-5 mt-2 flex items-center gap-2 flex-wrap">
-                  {item.source_url && (
-                    <a href={item.source_url} target="_blank" rel="noopener noreferrer"
-                      className="text-[11px] font-mono underline" style={{ color: 'var(--info)' }}>
-                      {extractDomain(item.source_url)}
-                    </a>
-                  )}
-                  {item.tags?.map(tag => (
-                    <span key={tag} className="text-[11px] px-1 py-0.5 rounded font-mono"
-                      style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
-                      {tag}
+              return (
+                <div key={i}
+                  className={`rounded-md transition-colors ${hasMore ? 'cursor-pointer' : ''}`}
+                  style={{
+                    background: isExpanded ? 'var(--surface-alt)' : 'transparent',
+                  }}
+                  onClick={() => hasMore && toggleItem(i)}
+                >
+                  {/* Main line — always visible */}
+                  <div className="flex items-start gap-2 px-3 py-2">
+                    <span className="shrink-0 text-[11px] font-mono pt-0.5" style={{ color: 'var(--fg-muted)' }}>
+                      {i + 1}.
                     </span>
-                  ))}
+                    <p className="text-[13px] leading-relaxed flex-1" style={{ color: 'var(--fg-body)' }}>
+                      {simple}
+                    </p>
+                    {hasMore && (
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="var(--fg-muted)" strokeWidth="1.5"
+                        className="shrink-0 mt-1 transition-transform"
+                        style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
+                        <path d="M4 2l4 4-4 4" />
+                      </svg>
+                    )}
+                  </div>
+
+                  {/* Expanded: progressive disclosure of bg/detail/insight */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3 ml-6 space-y-1.5 text-[13px] leading-relaxed"
+                      style={{ color: 'var(--fg-secondary)' }}>
+                      {bg && <p>- {bg}</p>}
+                      {wh && <p>- {wh}</p>}
+                      {ins && (
+                        <p className="italic" style={{ color: 'var(--fg-muted)' }}>- {ins}</p>
+                      )}
+                      {(item.source_url || item.tags?.length > 0) && (
+                        <div className="flex items-center gap-2 pt-1">
+                          {item.source_url && (
+                            <a href={item.source_url} target="_blank" rel="noopener noreferrer"
+                              className="text-[11px] font-mono underline" style={{ color: 'var(--info)' }}
+                              onClick={e => e.stopPropagation()}>
+                              {extractDomain(item.source_url)}
+                            </a>
+                          )}
+                          {item.tags?.map(tag => (
+                            <span key={tag} className="text-[11px] px-1 py-0.5 rounded font-mono"
+                              style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

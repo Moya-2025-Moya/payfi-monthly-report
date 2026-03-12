@@ -1,39 +1,79 @@
 import { supabaseAdmin } from '@/db/client'
 import { getCurrentWeekNumber } from '@/db/client'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { FeedClient } from './FeedClient'
-import { WeeklySummary } from '@/components/feed/WeeklySummary'
 import type { AtomicFact } from '@/lib/types'
 
-interface SummaryData {
-  simple: string | null
-  detailed: string | null
+interface SnapshotStats {
+  total_facts: number
+  new_facts: number
+  high_confidence: number
+  medium_confidence: number
+  low_confidence: number
+  rejected: number
+  new_entities: number
+  active_entities: number
+  weekly_summary?: string | null
+  weekly_summary_detailed?: string | null
 }
 
-async function getWeeklySummary(week: string): Promise<SummaryData> {
+interface StoredNarrative {
+  topic: string
+  summary: string
+  branches: { id: string; label: string; side: 'left' | 'right'; color: string }[]
+  nodes: {
+    id: string; date: string; title: string; description: string
+    significance: 'high' | 'medium' | 'low'
+    factIds: string[]; entityNames: string[]
+    sourceUrl?: string; isExternal?: boolean; externalUrl?: string
+    isPrediction?: boolean; branchId: string
+  }[]
+  edges: { id: string; source: string; target: string; label?: string }[]
+}
+
+interface HomepageData {
+  stats: SnapshotStats | null
+  narratives: StoredNarrative[]
+  summarySimple: string | null
+  summaryDetailed: string | null
+}
+
+async function getHomepageData(week: string): Promise<HomepageData> {
   try {
     const { data } = await supabaseAdmin
       .from('weekly_snapshots')
       .select('snapshot_data')
       .eq('week_number', week)
       .single()
-    const sd = data?.snapshot_data as {
-      weekly_summary?: string
-      weekly_summary_detailed?: string
-    } | null
+
+    const sd = data?.snapshot_data as Record<string, unknown> | null
+    if (!sd) return { stats: null, narratives: [], summarySimple: null, summaryDetailed: null }
+
+    const stats: SnapshotStats = {
+      total_facts: (sd.total_facts as number) ?? 0,
+      new_facts: (sd.new_facts as number) ?? 0,
+      high_confidence: (sd.high_confidence as number) ?? 0,
+      medium_confidence: (sd.medium_confidence as number) ?? 0,
+      low_confidence: (sd.low_confidence as number) ?? 0,
+      rejected: (sd.rejected as number) ?? 0,
+      new_entities: (sd.new_entities as number) ?? 0,
+      active_entities: (sd.active_entities as number) ?? 0,
+    }
+
     return {
-      simple: sd?.weekly_summary ?? null,
-      detailed: sd?.weekly_summary_detailed ?? null,
+      stats,
+      narratives: (sd.narratives as StoredNarrative[]) ?? [],
+      summarySimple: (sd.weekly_summary as string) ?? null,
+      summaryDetailed: (sd.weekly_summary_detailed as string) ?? null,
     }
   } catch {
-    return { simple: null, detailed: null }
+    return { stats: null, narratives: [], summarySimple: null, summaryDetailed: null }
   }
 }
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
   const { week: weekParam } = await searchParams
   const week = weekParam ?? getCurrentWeekNumber()
-  const [{ data }, summary] = await Promise.all([
+  const [{ data }, homepage] = await Promise.all([
     supabaseAdmin
       .from('atomic_facts')
       .select('*')
@@ -41,17 +81,19 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       .eq('week_number', week)
       .order('fact_date', { ascending: false })
       .limit(200),
-    getWeeklySummary(week),
+    getHomepageData(week),
   ])
 
   const facts = (data ?? []) as AtomicFact[]
+
   return (
-    <div>
-      <PageHeader title="周报" />
-      {summary.simple && (
-        <WeeklySummary simple={summary.simple} detailed={summary.detailed} weekNumber={week} />
-      )}
-      <FeedClient facts={facts} currentWeek={week} />
-    </div>
+    <FeedClient
+      facts={facts}
+      currentWeek={week}
+      stats={homepage.stats}
+      narratives={homepage.narratives}
+      summarySimple={homepage.summarySimple}
+      summaryDetailed={homepage.summaryDetailed}
+    />
   )
 }

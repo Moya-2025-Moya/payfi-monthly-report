@@ -532,7 +532,7 @@ export default function AdminPage() {
             />
             <PipelineTrigger
               label="生成周报快照"
-              description="生成本周快照并通过邮件和 Telegram 分发"
+              description="生成本周快照 + AI 摘要 + 邮件报告写入 reports 表"
               endpoint="/api/cron/snapshot"
               method="GET"
               initialLogs={getRestored('/api/cron/snapshot')?.logs}
@@ -549,6 +549,24 @@ export default function AdminPage() {
               initialRunId={getRestored('/api/cron/narrative')?.runId}
             />
           </div>
+        </section>
+
+        {/* Email Preview */}
+        <section>
+          <h2 className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>邮件分发</h2>
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>邮件预览</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>预览已生成的周报邮件 HTML</p>
+              </div>
+              <a href="/admin/email-preview"
+                className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
+                style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)' }}>
+                查看 →
+              </a>
+            </div>
+          </Card>
         </section>
 
         {/* Dev Reset */}

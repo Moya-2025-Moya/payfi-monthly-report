@@ -4,6 +4,7 @@ import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
 import { getDensityAnomalies } from '@/modules/knowledge/density'
 import { callHaikuJSON } from '@/lib/ai-client'
 import { createPipelineLogger } from '@/lib/pipeline-logger'
+import { generateEmailHTML, weekToDateRange, weekToMondayDate } from '@/lib/email-template'
 
 export const maxDuration = 120
 
@@ -24,7 +25,7 @@ export async function GET() {
 
       try {
         // Step 1: Count facts
-        logger.progress('1/7', '统计本周事实数据...')
+        logger.progress('1/8', '统计本周事实数据...')
         const { count: totalFacts } = await supabaseAdmin
           .from('atomic_facts')
           .select('id', { count: 'exact', head: true })
@@ -32,7 +33,7 @@ export async function GET() {
         logger.log(`  总事实数: ${totalFacts ?? 0}`, 'info')
 
         // Step 2: Confidence breakdown
-        logger.progress('2/7', '统计置信度分布...')
+        logger.progress('2/8', '统计置信度分布...')
         const { count: highCount } = await supabaseAdmin
           .from('atomic_facts').select('id', { count: 'exact', head: true })
           .eq('week_number', weekNumber).eq('confidence', 'high')
@@ -48,7 +49,7 @@ export async function GET() {
         logger.log(`  高可信: ${highCount ?? 0}，中可信: ${mediumCount ?? 0}，低可信: ${lowCount ?? 0}，拒绝: ${rejectedCount ?? 0}`, 'info')
 
         // Step 3: Entity stats
-        logger.progress('3/7', '统计实体数据...')
+        logger.progress('3/8', '统计实体数据...')
         const weekMatch = weekNumber.match(/^(\d{4})-W(\d{2})$/)
         let newEntities = 0
         let activeEntities = 0
@@ -76,11 +77,11 @@ export async function GET() {
         logger.log(`  新增实体: ${newEntities}，活跃实体: ${activeEntities}`, 'info')
 
         // Step 4: Contradictions
-        logger.progress('4/7', '统计矛盾数据...')
+        logger.progress('4/8', '统计矛盾数据...')
         logger.log('  矛盾统计完成', 'info')
 
         // Step 5: Density anomalies
-        logger.progress('5/7', '检测信息密度异常...')
+        logger.progress('5/8', '检测信息密度异常...')
         let topAnomalies: string[] = []
         try {
           const anomalies = await getDensityAnomalies(weekNumber)
@@ -91,7 +92,7 @@ export async function GET() {
         }
 
         // Step 6: Generate AI weekly summary (simplified + detailed)
-        logger.progress('6/7', 'AI 生成本周摘要...')
+        logger.progress('6/8', 'AI 生成本周摘要...')
         let weeklySummarySimple: string | null = null
         let weeklySummaryDetailed: string | null = null
         try {
@@ -200,7 +201,7 @@ ${factsText}`,
         }
 
         // Step 7: Save snapshot (merge with existing data to preserve narratives etc.)
-        logger.progress('7/7', '保存快照到数据库...')
+        logger.progress('7/8', '保存快照到数据库...')
 
         // Read existing snapshot_data first to preserve fields written by other pipelines
         const { data: existingSnapshot } = await supabaseAdmin
@@ -236,6 +237,61 @@ ${factsText}`,
         if (error) throw new Error(`保存失败: ${error.message}`)
 
         logger.log(`快照已保存: ${weekNumber}`, 'success')
+
+        // Step 8: Generate email report and write to reports table
+        logger.progress('8/8', '生成邮件报告...')
+        try {
+          // Parse news items from weekly_summary_detailed
+          let newsItems: { date: string; simple_zh: string; background_zh: string; what_happened_zh: string; insight_zh: string; tags: string[] }[] = []
+          if (weeklySummaryDetailed) {
+            try {
+              newsItems = JSON.parse(weeklySummaryDetailed)
+            } catch { /* ignore parse error */ }
+          }
+
+          // Get narratives from snapshot
+          const narrativesRaw = ((existingData.narratives ?? []) as unknown) as {
+            topic: string; summary: string
+            nodes: { date: string; title: string; description: string; isPrediction?: boolean }[]
+          }[]
+          const narrativesForEmail = narrativesRaw.slice(0, 3).map(n => ({
+            topic: n.topic,
+            summary: n.summary,
+            nodes: n.nodes.map(nd => ({ date: nd.date, title: nd.title, description: nd.description, isPrediction: nd.isPrediction })),
+          }))
+
+          if (newsItems.length > 0) {
+            const emailHTML = generateEmailHTML({
+              weekDate: weekToDateRange(weekNumber),
+              weekNumber,
+              newsItems: newsItems.slice(0, 10),
+              narratives: narrativesForEmail,
+              totalFacts: (totalFacts ?? 0) as number,
+              highConfidence: (highCount ?? 0) as number,
+              mediumConfidence: (mediumCount ?? 0) as number,
+            })
+
+            const reportDate = weekToMondayDate(weekNumber)
+            const { error: reportError } = await supabaseAdmin
+              .from('reports')
+              .upsert({
+                date: reportDate,
+                subject: `StablePulse Weekly | ${weekToDateRange(weekNumber)}`,
+                content: emailHTML,
+              }, { onConflict: 'date' })
+
+            if (reportError) {
+              logger.log(`  邮件报告写入失败: ${reportError.message}`, 'error')
+            } else {
+              logger.log(`  邮件报告已写入 reports 表: ${reportDate}`, 'success')
+            }
+          } else {
+            logger.log('  无摘要数据，跳过邮件报告生成', 'info')
+          }
+        } catch (err) {
+          logger.log(`  邮件报告生成失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+        }
+
         await logger.done({ message: '周报快照生成完成' })
       } catch (err) {
         await logger.fail(`快照生成失败: ${err instanceof Error ? err.message : String(err)}`)
