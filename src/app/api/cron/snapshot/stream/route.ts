@@ -1,7 +1,9 @@
 // SSE streaming endpoint for snapshot generation with detailed progress
+// Logs are persisted to pipeline_runs for page refresh recovery
 import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
 import { getDensityAnomalies } from '@/modules/knowledge/density'
 import { callHaiku } from '@/lib/ai-client'
+import { createPipelineLogger } from '@/lib/pipeline-logger'
 
 export const maxDuration = 120
 
@@ -14,20 +16,23 @@ export async function GET() {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
 
+      const logger = await createPipelineLogger('snapshot', send)
+      send({ type: 'init', runId: logger.runId })
+
       const weekNumber = getCurrentWeekNumber()
-      send({ type: 'log', message: `开始生成周报快照: ${weekNumber}`, level: 'info' })
+      logger.log(`开始生成周报快照: ${weekNumber}`, 'info')
 
       try {
         // Step 1: Count facts
-        send({ type: 'progress', step: '1/7', message: '统计本周事实数据...' })
+        logger.progress('1/7', '统计本周事实数据...')
         const { count: totalFacts } = await supabaseAdmin
           .from('atomic_facts')
           .select('id', { count: 'exact', head: true })
           .eq('week_number', weekNumber)
-        send({ type: 'log', message: `  总事实数: ${totalFacts ?? 0}`, level: 'info' })
+        logger.log(`  总事实数: ${totalFacts ?? 0}`, 'info')
 
         // Step 2: Confidence breakdown
-        send({ type: 'progress', step: '2/7', message: '统计置信度分布...' })
+        logger.progress('2/7', '统计置信度分布...')
         const { count: highCount } = await supabaseAdmin
           .from('atomic_facts').select('id', { count: 'exact', head: true })
           .eq('week_number', weekNumber).eq('confidence', 'high')
@@ -40,10 +45,10 @@ export async function GET() {
         const { count: rejectedCount } = await supabaseAdmin
           .from('atomic_facts').select('id', { count: 'exact', head: true })
           .eq('week_number', weekNumber).eq('verification_status', 'rejected')
-        send({ type: 'log', message: `  高可信: ${highCount ?? 0}，中可信: ${mediumCount ?? 0}，低可信: ${lowCount ?? 0}，拒绝: ${rejectedCount ?? 0}`, level: 'info' })
+        logger.log(`  高可信: ${highCount ?? 0}，中可信: ${mediumCount ?? 0}，低可信: ${lowCount ?? 0}，拒绝: ${rejectedCount ?? 0}`, 'info')
 
         // Step 3: Entity stats
-        send({ type: 'progress', step: '3/7', message: '统计实体数据...' })
+        logger.progress('3/7', '统计实体数据...')
         const weekMatch = weekNumber.match(/^(\d{4})-W(\d{2})$/)
         let newEntities = 0
         let activeEntities = 0
@@ -68,28 +73,27 @@ export async function GET() {
             .eq('atomic_facts.week_number', weekNumber)
           activeEntities = new Set((activeRows ?? []).map(r => r.entity_id as string)).size
         }
-        send({ type: 'log', message: `  新增实体: ${newEntities}，活跃实体: ${activeEntities}`, level: 'info' })
+        logger.log(`  新增实体: ${newEntities}，活跃实体: ${activeEntities}`, 'info')
 
         // Step 4: Contradictions
-        send({ type: 'progress', step: '4/7', message: '统计矛盾数据...' })
-        send({ type: 'log', message: '  矛盾统计完成', level: 'info' })
+        logger.progress('4/7', '统计矛盾数据...')
+        logger.log('  矛盾统计完成', 'info')
 
         // Step 5: Density anomalies
-        send({ type: 'progress', step: '5/7', message: '检测信息密度异常...' })
+        logger.progress('5/7', '检测信息密度异常...')
         let topAnomalies: string[] = []
         try {
           const anomalies = await getDensityAnomalies(weekNumber)
           topAnomalies = anomalies.slice(0, 5).map(a => a.topic)
-          send({ type: 'log', message: `  密度异常: ${anomalies.length} 个 (显示前5)`, level: 'info' })
+          logger.log(`  密度异常: ${anomalies.length} 个 (显示前5)`, 'info')
         } catch {
-          send({ type: 'log', message: '  密度异常检测跳过', level: 'info' })
+          logger.log('  密度异常检测跳过', 'info')
         }
 
         // Step 6: Generate AI weekly summary
-        send({ type: 'progress', step: '6/7', message: 'AI 生成本周摘要...' })
+        logger.progress('6/7', 'AI 生成本周摘要...')
         let weeklySummary: string | null = null
         try {
-          // Fetch top facts for summary
           const { data: topFacts } = await supabaseAdmin
             .from('atomic_facts')
             .select('content_zh, fact_type, tags')
@@ -107,16 +111,16 @@ export async function GET() {
               `你是稳定币行业分析师。根据以下本周事实，用中文写一段简洁的周摘要（3-5句话），突出最重要的动态和趋势。不要列举，要有分析视角。\n\n本周事实:\n${factsText}`,
               { maxTokens: 500, temperature: 0.3 }
             )
-            send({ type: 'log', message: '  AI 周摘要已生成', level: 'success' })
+            logger.log('  AI 周摘要已生成', 'success')
           } else {
-            send({ type: 'log', message: '  本周无事实，跳过摘要生成', level: 'info' })
+            logger.log('  本周无事实，跳过摘要生成', 'info')
           }
         } catch (err) {
-          send({ type: 'log', message: `  AI 摘要生成失败: ${err instanceof Error ? err.message : String(err)}`, level: 'error' })
+          logger.log(`  AI 摘要生成失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
         }
 
         // Step 7: Save snapshot
-        send({ type: 'progress', step: '7/7', message: '保存快照到数据库...' })
+        logger.progress('7/7', '保存快照到数据库...')
         const snapshotData = {
           total_facts: totalFacts ?? 0,
           new_facts: totalFacts ?? 0,
@@ -139,10 +143,10 @@ export async function GET() {
 
         if (error) throw new Error(`保存失败: ${error.message}`)
 
-        send({ type: 'log', message: `快照已保存: ${weekNumber}`, level: 'success' })
-        send({ type: 'done', message: '周报快照生成完成' })
+        logger.log(`快照已保存: ${weekNumber}`, 'success')
+        await logger.done({ message: '周报快照生成完成' })
       } catch (err) {
-        send({ type: 'error', message: `快照生成失败: ${err instanceof Error ? err.message : String(err)}` })
+        await logger.fail(`快照生成失败: ${err instanceof Error ? err.message : String(err)}`)
       }
 
       controller.close()

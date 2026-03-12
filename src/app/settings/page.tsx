@@ -12,20 +12,36 @@ interface LogEntry {
   type: 'info' | 'success' | 'error' | 'progress'
 }
 
+// Map endpoint to pipeline type for DB persistence
+const ENDPOINT_TO_TYPE: Record<string, string> = {
+  '/api/trigger/collect': 'collect',
+  '/api/cron/process': 'process',
+  '/api/cron/twitter': 'twitter',
+  '/api/cron/snapshot': 'snapshot',
+}
+
 function PipelineTrigger({
   label,
   description,
   endpoint,
   method = 'POST',
+  initialLogs,
+  initialState,
+  initialRunId,
 }: {
   label: string
   description: string
   endpoint: string
   method?: string
+  initialLogs?: LogEntry[]
+  initialState?: ButtonState
+  initialRunId?: string
 }) {
-  const [state, setState] = useState<ButtonState>('idle')
-  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [state, setState] = useState<ButtonState>(initialState ?? 'idle')
+  const [logs, setLogs] = useState<LogEntry[]>(initialLogs ?? [])
+  const [runId, setRunId] = useState<string | null>(initialRunId ?? null)
   const logRef = useRef<HTMLDivElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
     const time = new Date().toLocaleTimeString('zh-CN')
@@ -39,9 +55,48 @@ function PipelineTrigger({
     }
   }, [logs])
 
+  // Poll for updates if we have a running run (restored from DB)
+  useEffect(() => {
+    if (state !== 'loading' || !runId) return
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/pipeline/runs?id=${runId}`)
+        if (!res.ok) return
+
+        const run = await res.json()
+        if (!run || !run.logs) return
+
+        // Update logs from DB
+        const dbLogs: LogEntry[] = run.logs.map((l: { time: string; message: string; level: string }) => ({
+          time: new Date(l.time).toLocaleTimeString('zh-CN'),
+          message: l.message,
+          type: l.level as LogEntry['type'],
+        }))
+        setLogs(dbLogs)
+
+        // Check if run completed
+        if (run.status === 'completed') {
+          setState('success')
+          if (pollRef.current) clearInterval(pollRef.current)
+        } else if (run.status === 'failed') {
+          setState('error')
+          if (pollRef.current) clearInterval(pollRef.current)
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 3000)
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [state, runId])
+
   async function handleClick() {
     setState('loading')
     setLogs([])
+    setRunId(null)
     addLog(`开始执行: ${label}`, 'info')
 
     // Check if the endpoint supports SSE streaming
@@ -54,7 +109,6 @@ function PipelineTrigger({
 
       const timeout = setTimeout(() => {
         if (!gotMessage) {
-          // SSE not available, fall back to regular fetch
           evtSource.close()
           fallbackFetch()
         }
@@ -65,7 +119,11 @@ function PipelineTrigger({
         clearTimeout(timeout)
         try {
           const data = JSON.parse(event.data)
-          if (data.type === 'log') {
+
+          // Capture runId for polling on reconnect
+          if (data.type === 'init' && data.runId) {
+            setRunId(data.runId)
+          } else if (data.type === 'log') {
             addLog(data.message, data.level ?? 'info')
           } else if (data.type === 'progress') {
             addLog(`[${data.step}] ${data.message}`, 'progress')
@@ -90,7 +148,11 @@ function PipelineTrigger({
           fallbackFetch()
         } else {
           evtSource.close()
-          if (state === 'loading') {
+          // Connection lost — if we have a runId, poll DB for updates
+          if (runId) {
+            addLog('SSE 连接断开，切换到轮询模式...', 'info')
+            // State stays 'loading', poll effect will pick up
+          } else if (state === 'loading') {
             addLog('连接断开', 'error')
             setState('error')
           }
@@ -106,7 +168,6 @@ function PipelineTrigger({
         const res = await fetch(endpoint, { method })
         const json = await res.json().catch(() => ({}))
         if (res.ok) {
-          // Parse results for detailed display
           if (json.results) {
             for (const [name, status] of Object.entries(json.results)) {
               addLog(`  ${name}: ${status === 'ok' ? '成功' : '失败'}`, status === 'ok' ? 'success' : 'error')
@@ -287,6 +348,13 @@ type PipelineData = {
   facts_collected?: number; stats?: Record<string, unknown>; message?: string
 }
 
+// Restored pipeline state from DB
+interface RestoredState {
+  logs: LogEntry[]
+  state: ButtonState
+  runId?: string
+}
+
 type SettingsTab = 'config' | 'pipeline'
 
 export default function SettingsPage() {
@@ -295,6 +363,7 @@ export default function SettingsPage() {
   const [healthError, setHealthError] = useState<string | null>(null)
   const [pipeline, setPipeline] = useState<PipelineData | null>(null)
   const [pipelineError, setPipelineError] = useState<string | null>(null)
+  const [restored, setRestored] = useState<Record<string, RestoredState>>({})
 
   useEffect(() => {
     fetch('/api/health')
@@ -306,12 +375,45 @@ export default function SettingsPage() {
       .then(r => r.json())
       .then(setPipeline)
       .catch(e => setPipelineError(e.message))
+
+    // Fetch latest pipeline runs to restore logs on page load
+    fetch('/api/pipeline/runs')
+      .then(r => r.json())
+      .then((runs: Record<string, { id: string; status: string; logs: { time: string; message: string; level: string }[] } | null>) => {
+        const restoredState: Record<string, RestoredState> = {}
+
+        for (const [type, run] of Object.entries(runs)) {
+          if (!run || !run.logs || run.logs.length === 0) continue
+
+          const logs: LogEntry[] = run.logs.map(l => ({
+            time: new Date(l.time).toLocaleTimeString('zh-CN'),
+            message: l.message,
+            type: l.level as LogEntry['type'],
+          }))
+
+          const state: ButtonState =
+            run.status === 'running' ? 'loading' :
+            run.status === 'completed' ? 'success' :
+            run.status === 'failed' ? 'error' : 'idle'
+
+          restoredState[type] = { logs, state, runId: run.id }
+        }
+
+        setRestored(restoredState)
+      })
+      .catch(() => {})
   }, [])
 
   const tabs: { key: SettingsTab; label: string }[] = [
     { key: 'config', label: '系统配置' },
     { key: 'pipeline', label: '流水线操作' },
   ]
+
+  // Helper to get restored state for a pipeline type
+  function getRestored(endpoint: string): RestoredState | undefined {
+    const type = ENDPOINT_TO_TYPE[endpoint]
+    return type ? restored[type] : undefined
+  }
 
   return (
     <div>
@@ -424,24 +526,36 @@ export default function SettingsPage() {
               description="从 DeFiLlama、新闻源、SEC、GitHub 等采集最新数据，存入原始数据表"
               endpoint="/api/trigger/collect"
               method="POST"
+              initialLogs={getRestored('/api/trigger/collect')?.logs}
+              initialState={getRestored('/api/trigger/collect')?.state}
+              initialRunId={getRestored('/api/trigger/collect')?.runId}
             />
             <PipelineTrigger
               label="推特采集"
               description="从 twitterapi.io 拉取监控账号的推文（周任务，通常每周日自动运行）"
               endpoint="/api/cron/twitter"
               method="GET"
+              initialLogs={getRestored('/api/cron/twitter')?.logs}
+              initialState={getRestored('/api/cron/twitter')?.state}
+              initialRunId={getRestored('/api/cron/twitter')?.runId}
             />
             <PipelineTrigger
               label="AI 处理"
               description="运行事实拆分 (B1)、六层验证 (V1-V5+V0)、实体识别 (B2)、时间线归并 (B3)、矛盾检测 (B4)"
               endpoint="/api/cron/process"
               method="GET"
+              initialLogs={getRestored('/api/cron/process')?.logs}
+              initialState={getRestored('/api/cron/process')?.state}
+              initialRunId={getRestored('/api/cron/process')?.runId}
             />
             <PipelineTrigger
               label="生成周报快照"
               description="生成本周快照并通过邮件和 Telegram 分发"
               endpoint="/api/cron/snapshot"
               method="GET"
+              initialLogs={getRestored('/api/cron/snapshot')?.logs}
+              initialState={getRestored('/api/cron/snapshot')?.state}
+              initialRunId={getRestored('/api/cron/snapshot')?.runId}
             />
           </div>
         )}
