@@ -21,11 +21,11 @@ export {
 
 // Daily collection: A1-A5, A7 in parallel
 export async function runDailyCollection(): Promise<{
-  results: Record<string, 'ok' | 'error'>
+  results: Record<string, { status: 'ok' | 'error'; count: number }>
   duration_ms: number
 }> {
   const start = Date.now()
-  const results: Record<string, 'ok' | 'error'> = {}
+  const results: Record<string, { status: 'ok' | 'error'; count: number }> = {}
 
   const tasks = [
     { name: 'on-chain', fn: collectOnChainData },
@@ -39,8 +39,10 @@ export async function runDailyCollection(): Promise<{
   const settled = await Promise.allSettled(tasks.map(t => t.fn()))
 
   settled.forEach((result, i) => {
-    results[tasks[i].name] = result.status === 'fulfilled' ? 'ok' : 'error'
-    if (result.status === 'rejected') {
+    if (result.status === 'fulfilled') {
+      results[tasks[i].name] = { status: 'ok', count: result.value }
+    } else {
+      results[tasks[i].name] = { status: 'error', count: 0 }
       console.error(`[Collector] ${tasks[i].name} failed:`, result.reason)
     }
   })
@@ -51,14 +53,15 @@ export async function runDailyCollection(): Promise<{
 // Weekly Twitter collection: A6
 export async function runWeeklyTwitterCollection(): Promise<{
   result: 'ok' | 'error'
+  count: number
   duration_ms: number
 }> {
   const start = Date.now()
   try {
-    await collectTweets()
-    return { result: 'ok', duration_ms: Date.now() - start }
+    const count = await collectTweets()
+    return { result: 'ok', count, duration_ms: Date.now() - start }
   } catch (err) {
     console.error('[Collector] twitter failed:', err)
-    return { result: 'error', duration_ms: Date.now() - start }
+    return { result: 'error', count: 0, duration_ms: Date.now() - start }
   }
 }

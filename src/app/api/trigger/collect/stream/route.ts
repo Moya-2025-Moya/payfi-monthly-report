@@ -29,8 +29,9 @@ export async function GET() {
         { name: '监管动态 (SEC + Congress)', key: 'regulatory', fn: collectRegulatory },
       ]
 
-      const results: Record<string, string> = {}
+      const results: Record<string, { status: string; count: number }> = {}
       const startTime = Date.now()
+      let totalItems = 0
 
       send({ type: 'log', message: `开始数据采集，共 ${tasks.length} 个采集器`, level: 'info' })
 
@@ -40,28 +41,47 @@ export async function GET() {
 
         const taskStart = Date.now()
         try {
-          await task.fn()
+          const count = await task.fn()
           const elapsed = ((Date.now() - taskStart) / 1000).toFixed(1)
-          results[task.key] = 'ok'
-          send({ type: 'log', message: `${task.name} — 完成 (${elapsed}s)`, level: 'success' })
+          results[task.key] = { status: 'ok', count }
+          totalItems += count
+          send({
+            type: 'log',
+            message: `${task.name} — 完成，采集 ${count} 条数据 (${elapsed}s)`,
+            level: 'success',
+          })
         } catch (err) {
           const elapsed = ((Date.now() - taskStart) / 1000).toFixed(1)
-          results[task.key] = 'error'
-          send({ type: 'log', message: `${task.name} — 失败 (${elapsed}s): ${err instanceof Error ? err.message : String(err)}`, level: 'error' })
+          results[task.key] = { status: 'error', count: 0 }
+          send({
+            type: 'log',
+            message: `${task.name} — 失败 (${elapsed}s): ${err instanceof Error ? err.message : String(err)}`,
+            level: 'error',
+          })
         }
       }
 
       const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-      const okCount = Object.values(results).filter(v => v === 'ok').length
-      const errCount = Object.values(results).filter(v => v === 'error').length
+      const okCount = Object.values(results).filter(v => v.status === 'ok').length
+      const errCount = Object.values(results).filter(v => v.status === 'error').length
+
+      // Summary with per-collector counts
+      send({ type: 'log', message: '─── 采集汇总 ───', level: 'info' })
+      for (const task of tasks) {
+        const r = results[task.key]
+        if (r) {
+          const icon = r.status === 'ok' ? '✓' : '✗'
+          send({ type: 'log', message: `  ${icon} ${task.name}: ${r.count} 条`, level: r.status === 'ok' ? 'success' : 'error' })
+        }
+      }
 
       send({
         type: 'log',
-        message: `采集完成 — 成功 ${okCount}/${tasks.length}，失败 ${errCount}，总耗时 ${totalElapsed}s`,
+        message: `采集完成 — 成功 ${okCount}/${tasks.length}，失败 ${errCount}，共采集 ${totalItems} 条数据，总耗时 ${totalElapsed}s`,
         level: errCount > 0 ? 'error' : 'success',
       })
 
-      send({ type: 'done', results, duration_ms: Date.now() - startTime })
+      send({ type: 'done', results, totalItems, duration_ms: Date.now() - startTime })
       controller.close()
     },
   })

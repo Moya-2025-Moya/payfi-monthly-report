@@ -191,6 +191,95 @@ function PipelineTrigger({
   )
 }
 
+// ─── Dev Mode Reset Button ───
+
+function DevResetButton({
+  label,
+  description,
+  mode,
+}: {
+  label: string
+  description: string
+  mode: 'processed' | 'all'
+}) {
+  const [state, setState] = useState<ButtonState>('idle')
+  const [result, setResult] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
+
+  async function handleReset() {
+    if (!confirming) {
+      setConfirming(true)
+      return
+    }
+
+    setConfirming(false)
+    setState('loading')
+    setResult(null)
+
+    try {
+      const res = await fetch('/api/dev/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setResult(json.message)
+        setState('success')
+      } else {
+        setResult(`错误: ${json.error ?? `HTTP ${res.status}`}`)
+        setState('error')
+      }
+    } catch (e: unknown) {
+      setResult(`请求失败: ${e instanceof Error ? e.message : '未知错误'}`)
+      setState('error')
+    }
+  }
+
+  function handleCancel() {
+    setConfirming(false)
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="flex-1">
+        <p className="text-xs font-medium" style={{ color: 'var(--fg)' }}>{label}</p>
+        <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-faint)' }}>{description}</p>
+        {result && (
+          <p className="text-[11px] mt-1" style={{ color: state === 'success' ? 'var(--success)' : 'var(--danger)' }}>
+            {result}
+          </p>
+        )}
+      </div>
+      <div className="flex gap-2 shrink-0">
+        {confirming && (
+          <button
+            onClick={handleCancel}
+            className="rounded-md px-3 py-1.5 text-xs border"
+            style={{ borderColor: 'var(--border)', color: 'var(--fg-muted)' }}
+          >
+            取消
+          </button>
+        )}
+        <button
+          onClick={handleReset}
+          disabled={state === 'loading'}
+          className="rounded-md px-3 py-1.5 text-xs font-medium border transition-colors"
+          style={
+            confirming
+              ? { borderColor: 'var(--danger)', color: 'var(--danger)', background: 'rgba(239,68,68,0.08)' }
+              : state === 'loading'
+              ? { borderColor: 'var(--border)', color: 'var(--fg-faint)', opacity: 0.7 }
+              : { borderColor: 'var(--danger)', color: 'var(--danger)' }
+          }
+        >
+          {state === 'loading' ? '执行中...' : confirming ? '确认重置' : '重置'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 type HealthData = { status: string; db: string; timestamp: string }
 type PipelineData = {
   id?: string; status?: string; started_at?: string; completed_at?: string
@@ -304,6 +393,33 @@ export default function SettingsPage() {
             </div>
           )}
         </Card>
+
+        {/* Dev Mode */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--danger)' }}>开发模式</h2>
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+              style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--danger)' }}>
+              DEV
+            </span>
+          </div>
+          <Card>
+            <div className="space-y-4">
+              <DevResetButton
+                label="重置处理数据"
+                description="清空所有 AI 处理结果（事实、实体、时间线、矛盾、翻译），保留原始采集数据并标记为未处理，可重新运行 AI 处理"
+                mode="processed"
+              />
+              <div className="border-t" style={{ borderColor: 'var(--border)' }} />
+              <DevResetButton
+                label="全部清空"
+                description="清空所有数据（包括原始采集数据），恢复到空白状态，需要重新采集"
+                mode="all"
+              />
+            </div>
+          </Card>
+        </div>
+
       </div>
     </div>
   )

@@ -37,12 +37,13 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 // ─── Main collector ───────────────────────────────────────────────────────────
 
-export async function collectOnChainData(): Promise<void> {
+export async function collectOnChainData(): Promise<number> {
   const fetchedAt = new Date().toISOString()
   const weekNumber = getCurrentWeekNumber()
   const date = fetchedAt.slice(0, 10) // YYYY-MM-DD
   const sourceUrl = 'https://defillama.com/stablecoins'
   const apiBase = SOURCES.defillama.baseUrl
+  let totalUpserted = 0
 
   console.log(`[A1] collectOnChainData start — week ${weekNumber}`)
 
@@ -56,7 +57,7 @@ export async function collectOnChainData(): Promise<void> {
     console.log(`[A1] Fetched ${peggedAssets.length} stablecoins from DeFiLlama`)
   } catch (err) {
     console.error('[A1] Fatal: could not fetch stablecoin list', err)
-    return
+    return 0
   }
 
   // Build a lookup map: defillama coin id → asset
@@ -156,6 +157,7 @@ export async function collectOnChainData(): Promise<void> {
       if (error) {
         console.error(`[A1] Upsert failed for ${coinId}:`, error.message)
       } else {
+        totalUpserted += rows.length
         console.log(`[A1] Upserted ${rows.length} rows for ${symbol} (${coinId})`)
       }
     } catch (err) {
@@ -165,4 +167,5 @@ export async function collectOnChainData(): Promise<void> {
   }
 
   console.log('[A1] collectOnChainData complete')
+  return totalUpserted
 }

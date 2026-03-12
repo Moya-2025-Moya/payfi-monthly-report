@@ -144,7 +144,7 @@ async function collectGitHubReleases(entity: (typeof WATCHLIST)[number]): Promis
   return updates
 }
 
-export async function collectProductUpdates(): Promise<void> {
+export async function collectProductUpdates(): Promise<number> {
   console.log('[products] Starting product updates collection...')
 
   const allUpdates: RawProductUpdate[] = []
@@ -159,7 +159,7 @@ export async function collectProductUpdates(): Promise<void> {
 
   if (allUpdates.length === 0) {
     console.log('[products] No product updates found.')
-    return
+    return 0
   }
 
   // Deduplicate by source_url
@@ -178,7 +178,9 @@ export async function collectProductUpdates(): Promise<void> {
 
   if (error) {
     console.error('[products] Upsert failed:', error)
+    return 0
   } else {
     console.log(`[products] Successfully upserted ${deduped.length} product updates.`)
+    return deduped.length
   }
 }

@@ -146,7 +146,7 @@ async function filterExistingUrls(items: RawNews[]): Promise<RawNews[]> {
 
 // ─── Main collector ───────────────────────────────────────────────────────────
 
-export async function collectNews(): Promise<void> {
+export async function collectNews(): Promise<number> {
   console.log(`[A2] collectNews start — ${SOURCES.rssFeeds.length} RSS feeds`)
 
   // Fetch all feeds in parallel
@@ -184,7 +184,7 @@ export async function collectNews(): Promise<void> {
 
   if (newItems.length === 0) {
     console.log('[A2] No new news items to insert.')
-    return
+    return 0
   }
 
   console.log(`[A2] Upserting ${newItems.length} new items (${newItems.filter(i => i.language === 'zh').length} 中文)...`)
@@ -208,4 +208,5 @@ export async function collectNews(): Promise<void> {
 
   console.log(`[A2] Successfully upserted ${inserted} news items.`)
   console.log('[A2] collectNews complete')
+  return inserted
 }

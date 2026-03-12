@@ -59,10 +59,12 @@ interface SecSubmissionsResponse {
 
 // ─── Part 1: SEC Filings ────────────────────────────────────
 
-async function collectSecFilings(): Promise<void> {
+async function collectSecFilings(): Promise<number> {
   const companies = getCompaniesWithCIK()
   const sevenDaysAgo = dateStr(7)
   const today = dateStr(0)
+
+  let totalInserted = 0
 
   console.log(
     `[companies/sec] Fetching filings for ${companies.length} companies ` +
@@ -143,6 +145,7 @@ async function collectSecFilings(): Promise<void> {
         if (error) {
           console.error(`[companies/sec] DB error for ${company.name}:`, error.message)
         } else {
+          totalInserted += rows.length
           console.log(`[companies/sec] Inserted ${rows.length} filing(s) for ${company.name}`)
         }
       }
@@ -153,14 +156,18 @@ async function collectSecFilings(): Promise<void> {
     // Respect SEC rate limit: max 10 requests/second → wait ~120 ms between calls
     await sleep(120)
   }
+
+  return totalInserted
 }
 
 // ─── Part 2: Stock Data ─────────────────────────────────────
 
-async function collectStockData(): Promise<void> {
+async function collectStockData(): Promise<number> {
   const companies = getCompaniesWithCIK()
   // Only companies that have a ticker symbol
   const withTicker = companies.filter(c => c.ticker)
+
+  let savedCount = 0
 
   console.log(`[companies/stock] Fetching quotes for ${withTicker.length} tickers`)
 
@@ -195,6 +202,7 @@ async function collectStockData(): Promise<void> {
       if (error) {
         console.error(`[companies/stock] DB error for ${ticker}:`, error.message)
       } else {
+        savedCount++
         console.log(
           `[companies/stock] Saved ${ticker}: $${price.toFixed(2)} (${(change_pct ?? 0).toFixed(2)}%)`
         )
@@ -206,15 +214,18 @@ async function collectStockData(): Promise<void> {
     // Small delay to avoid hammering Yahoo Finance
     await sleep(200)
   }
+
+  return savedCount
 }
 
 // ─── Main Export ────────────────────────────────────────────
 
-export async function collectCompanyData(): Promise<void> {
+export async function collectCompanyData(): Promise<number> {
   console.log('[companies] Starting company data collection…')
 
-  await collectSecFilings()
-  await collectStockData()
+  const filings = await collectSecFilings()
+  const stocks = await collectStockData()
 
   console.log('[companies] Company data collection complete.')
+  return filings + stocks
 }

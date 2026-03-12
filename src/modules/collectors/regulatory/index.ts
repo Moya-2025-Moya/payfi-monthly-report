@@ -215,7 +215,7 @@ async function collectRegionRssSources(): Promise<RawRegulatory[]> {
   return results
 }
 
-export async function collectRegulatory(): Promise<void> {
+export async function collectRegulatory(): Promise<number> {
   console.log('[regulatory] Starting regulatory collection...')
 
   const [secRss, secEfts, regionRss] = await Promise.all([
@@ -228,7 +228,7 @@ export async function collectRegulatory(): Promise<void> {
 
   if (allItems.length === 0) {
     console.log('[regulatory] No regulatory items found.')
-    return
+    return 0
   }
 
   // Deduplicate by source_url
@@ -247,7 +247,9 @@ export async function collectRegulatory(): Promise<void> {
 
   if (error) {
     console.error('[regulatory] Upsert failed:', error)
+    return 0
   } else {
     console.log(`[regulatory] Successfully upserted ${deduped.length} regulatory items.`)
+    return deduped.length
   }
 }

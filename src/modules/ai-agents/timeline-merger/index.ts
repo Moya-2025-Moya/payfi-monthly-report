@@ -299,17 +299,26 @@ export async function mergeTimeline(
   return { action: aiResult.action, timelineId: resolvedTimelineId }
 }
 
-export async function mergeTimelinesBatch(factIds: string[]): Promise<void> {
+export async function mergeTimelinesBatch(factIds: string[]): Promise<{ assigned: number; created: number; standalone: number; failed: number }> {
   console.log(`[B3] Starting batch timeline merge for ${factIds.length} fact(s)`)
+
+  let assigned = 0
+  let created = 0
+  let standalone = 0
+  let failed = 0
 
   for (const factId of factIds) {
     try {
-      await mergeTimeline(factId)
+      const result = await mergeTimeline(factId)
+      if (result.action === 'assign') assigned++
+      else if (result.action === 'create_new') created++
+      else standalone++
     } catch (err) {
+      failed++
       console.error(`[B3] Error processing fact ${factId}:`, err)
-      // Continue with remaining facts
     }
   }
 
-  console.log(`[B3] Batch complete`)
+  console.log(`[B3] Batch complete — assigned: ${assigned}, created: ${created}, standalone: ${standalone}, failed: ${failed}`)
+  return { assigned, created, standalone, failed }
 }

@@ -30,19 +30,22 @@ export async function translateFact(factId: string): Promise<void> {
 
   const fact = data as AtomicFact
 
+  const hasZh = !!fact.content_zh
+  const hasEn = !!fact.content_en // empty string '' is treated as missing
+
   // Both filled → skip
-  if (fact.content_zh && fact.content_en) {
+  if (hasZh && hasEn) {
     console.log(`[B5] Skipping fact ${factId} — both languages present`)
     return
   }
 
   // Neither filled → skip
-  if (!fact.content_zh && !fact.content_en) {
+  if (!hasZh && !hasEn) {
     console.log(`[B5] Skipping fact ${factId} — no content`)
     return
   }
 
-  if (fact.content_zh && !fact.content_en) {
+  if (hasZh && !hasEn) {
     // ZH→EN: new path (B1 now outputs Chinese)
     const prompt = [
       'Translate the following Chinese atomic fact into English.',
@@ -61,7 +64,7 @@ export async function translateFact(factId: string): Promise<void> {
 
     if (updateError) throw new Error(`[B5] Failed to update fact ${factId}: ${updateError.message}`)
     console.log(`[B5] Translated ZH→EN for fact ${factId}`)
-  } else if (fact.content_en && !fact.content_zh) {
+  } else if (hasEn && !hasZh) {
     // EN→ZH: legacy path
     const template = loadPrompt('translator.md')
     const prompt = template.replace('{content_en}', fact.content_en)
@@ -79,8 +82,10 @@ export async function translateFact(factId: string): Promise<void> {
 
 // ─── 批量翻译 ───
 
-export async function translateFactsBatch(factIds: string[]): Promise<void> {
+export async function translateFactsBatch(factIds: string[]): Promise<{ translated: number; skipped: number; failed: number }> {
   const BATCH_SIZE = 10
+  let translated = 0
+  let failed = 0
 
   for (let i = 0; i < factIds.length; i += BATCH_SIZE) {
     const batch = factIds.slice(i, i + BATCH_SIZE)
@@ -91,10 +96,15 @@ export async function translateFactsBatch(factIds: string[]): Promise<void> {
     for (let j = 0; j < results.length; j++) {
       const result = results[j]
       if (result.status === 'rejected') {
+        failed++
         console.error(`[B5] Failed to translate fact ${batch[j]}:`, result.reason)
+      } else {
+        translated++
       }
     }
   }
 
-  console.log(`[B5] Batch translation complete — ${factIds.length} facts processed`)
+  const skipped = factIds.length - translated - failed
+  console.log(`[B5] Batch translation complete — translated: ${translated}, skipped: ${skipped}, failed: ${failed}`)
+  return { translated, skipped, failed }
 }

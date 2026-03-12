@@ -208,7 +208,7 @@ export async function resolveEntities(factId: string): Promise<void> {
 
 // ─── Batch version: resolves entities for multiple facts with per-fact error isolation ───
 
-export async function resolveEntitiesBatch(factIds: string[]): Promise<void> {
+export async function resolveEntitiesBatch(factIds: string[]): Promise<{ succeeded: number; failed: number }> {
   console.log(`[B2] Starting batch entity resolution for ${factIds.length} fact(s)`)
 
   let succeeded = 0
@@ -225,4 +225,5 @@ export async function resolveEntitiesBatch(factIds: string[]): Promise<void> {
   }
 
   console.log(`[B2] Batch complete — succeeded: ${succeeded}, failed: ${failed}`)
+  return { succeeded, failed }
 }

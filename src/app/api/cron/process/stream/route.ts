@@ -36,6 +36,52 @@ export async function GET() {
       send({ type: 'log', message: `AI 处理流水线启动，当前周次: ${weekNumber}`, level: 'info' })
 
       try {
+        // ── Pre-check: count unprocessed raw items per table ──
+        send({ type: 'progress', step: '预检', message: '统计待处理原始数据...' })
+
+        let totalUnprocessed = 0
+        for (const table of RAW_TABLES) {
+          const tableName = RAW_TABLE_NAMES[table] ?? table
+          const { count, error } = await supabaseAdmin
+            .from(table)
+            .select('*', { count: 'exact', head: true })
+            .eq('processed', false)
+
+          if (error) {
+            send({ type: 'log', message: `  ${tableName}: 查询失败 — ${error.message}`, level: 'error' })
+          } else {
+            const c = count ?? 0
+            totalUnprocessed += c
+            send({ type: 'log', message: `  ${tableName}: ${c} 条待处理`, level: c > 0 ? 'info' : 'success' })
+          }
+        }
+
+        // Also count existing pending_verification facts
+        const { count: pendingCount } = await supabaseAdmin
+          .from('atomic_facts')
+          .select('*', { count: 'exact', head: true })
+          .eq('verification_status', 'pending_verification')
+
+        // Count verified facts not yet translated (content_en is null or empty string)
+        const { count: untranslatedCount } = await supabaseAdmin
+          .from('atomic_facts')
+          .select('*', { count: 'exact', head: true })
+          .in('verification_status', ['verified', 'partially_verified'])
+          .or('content_en.is.null,content_en.eq.')
+
+        send({
+          type: 'log',
+          message: `预检完成 — 待处理原始数据 ${totalUnprocessed} 条，待验证事实 ${pendingCount ?? 0} 条，待翻译 ${untranslatedCount ?? 0} 条`,
+          level: 'info',
+        })
+
+        if (totalUnprocessed === 0 && (pendingCount ?? 0) === 0) {
+          send({ type: 'log', message: '没有需要处理的数据，流水线跳过', level: 'success' })
+          send({ type: 'done', message: '无待处理数据' })
+          controller.close()
+          return
+        }
+
         // ── Phase 1: Fact splitting ──
         send({ type: 'progress', step: '阶段1/6', message: '事实拆分 (B1) — 从原始数据提取原子事实' })
 
@@ -133,8 +179,8 @@ export async function GET() {
         // ── Phase 3: Entity resolution ──
         send({ type: 'progress', step: '阶段3/6', message: '实体识别 (B2) — 关联事实与实体' })
         try {
-          await resolveEntitiesBatch(verifiedFactIds)
-          send({ type: 'log', message: '阶段3完成 — 实体识别完成', level: 'success' })
+          const b2Stats = await resolveEntitiesBatch(verifiedFactIds)
+          send({ type: 'log', message: `阶段3完成 — 成功 ${b2Stats.succeeded} 条，失败 ${b2Stats.failed} 条`, level: 'success' })
         } catch (err) {
           send({ type: 'log', message: `阶段3失败: ${err instanceof Error ? err.message : String(err)}`, level: 'error' })
         }
@@ -142,8 +188,12 @@ export async function GET() {
         // ── Phase 4: Timeline merging ──
         send({ type: 'progress', step: '阶段4/6', message: '时间线归并 (B3) — 将事实分配到时间线' })
         try {
-          await mergeTimelinesBatch(verifiedFactIds)
-          send({ type: 'log', message: '阶段4完成 — 时间线归并完成', level: 'success' })
+          const b3Stats = await mergeTimelinesBatch(verifiedFactIds)
+          send({
+            type: 'log',
+            message: `阶段4完成 — 分配到已有时间线 ${b3Stats.assigned} 条，新建时间线 ${b3Stats.created} 条，独立 ${b3Stats.standalone} 条，失败 ${b3Stats.failed} 条`,
+            level: 'success',
+          })
         } catch (err) {
           send({ type: 'log', message: `阶段4失败: ${err instanceof Error ? err.message : String(err)}`, level: 'error' })
         }
@@ -151,20 +201,26 @@ export async function GET() {
         // ── Phase 5: Contradiction detection ──
         send({ type: 'progress', step: '阶段5/6', message: '矛盾检测 (B4) — 检测事实间矛盾' })
         try {
-          await detectContradictionsBatch(verifiedFactIds)
-          send({ type: 'log', message: '阶段5完成 — 矛盾检测完成', level: 'success' })
+          const b4Stats = await detectContradictionsBatch(verifiedFactIds)
+          send({ type: 'log', message: `阶段5完成 — 已检查 ${b4Stats.checked} 条，失败 ${b4Stats.failed} 条`, level: 'success' })
         } catch (err) {
           send({ type: 'log', message: `阶段5失败: ${err instanceof Error ? err.message : String(err)}`, level: 'error' })
         }
 
         // ── Phase 6: Translation ──
-        send({ type: 'progress', step: '阶段6/6', message: '翻译 (B5) — 英文事实翻译为中文' })
+        send({ type: 'progress', step: '阶段6/6', message: '翻译 (B5) — 双语补全' })
         try {
-          await translateFactsBatch(verifiedFactIds)
-          send({ type: 'log', message: '阶段6完成 — 翻译完成', level: 'success' })
+          const b5Stats = await translateFactsBatch(verifiedFactIds)
+          send({ type: 'log', message: `阶段6完成 — 翻译 ${b5Stats.translated} 条，跳过 ${b5Stats.skipped} 条，失败 ${b5Stats.failed} 条`, level: 'success' })
         } catch (err) {
           send({ type: 'log', message: `阶段6失败: ${err instanceof Error ? err.message : String(err)}`, level: 'error' })
         }
+
+        // ── Final summary ──
+        send({ type: 'log', message: '─── 处理汇总 ───', level: 'info' })
+        send({ type: 'log', message: `  原始数据处理: ${totalRaw} 条 → 提取事实 ${totalFacts} 条`, level: 'info' })
+        send({ type: 'log', message: `  验证结果: 通过 ${verified}，部分通过 ${partial}，拒绝 ${rejected}`, level: 'info' })
+        send({ type: 'log', message: `  后处理: ${verifiedFactIds.length} 条事实完成实体识别、时间线归并、矛盾检测、翻译`, level: 'info' })
 
         send({ type: 'done', message: 'AI 处理流水线全部完成' })
       } catch (err) {

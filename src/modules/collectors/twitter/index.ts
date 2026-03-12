@@ -121,7 +121,7 @@ function mapTweet(tweet: TweetApiItem, handle: string): RawTweet | null {
   }
 }
 
-export async function collectTweets(): Promise<void> {
+export async function collectTweets(): Promise<number> {
   console.log('[twitter] Starting tweet collection...')
 
   // Register the priority accounts for monitoring
@@ -142,7 +142,7 @@ export async function collectTweets(): Promise<void> {
 
   if (allTweets.length === 0) {
     console.log('[twitter] No tweets collected.')
-    return
+    return 0
   }
 
   // Deduplicate by source_url
@@ -161,7 +161,9 @@ export async function collectTweets(): Promise<void> {
 
   if (error) {
     console.error('[twitter] Upsert failed:', error)
+    return 0
   } else {
     console.log(`[twitter] Successfully upserted ${deduped.length} tweets.`)
+    return deduped.length
   }
 }

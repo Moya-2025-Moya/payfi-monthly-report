@@ -108,7 +108,7 @@ async function saveCandidates(
 ): Promise<string[]> {
   const rows = candidates.map(c => ({
     content_zh: c.content,
-    content_en: null,
+    content_en: '',
     fact_type: c.fact_type,
     tags: c.tags,
     source_id: raw.id,

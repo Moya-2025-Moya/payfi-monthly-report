@@ -238,16 +238,22 @@ export async function detectContradictions(factId: string): Promise<void> {
   console.log(`[B4] Done for fact: ${factId}`)
 }
 
-export async function detectContradictionsBatch(factIds: string[]): Promise<void> {
+export async function detectContradictionsBatch(factIds: string[]): Promise<{ checked: number; failed: number }> {
   console.log(`[B4] Batch detecting contradictions for ${factIds.length} facts`)
+
+  let checked = 0
+  let failed = 0
 
   for (const factId of factIds) {
     try {
       await detectContradictions(factId)
+      checked++
     } catch (err) {
+      failed++
       console.error(`[B4] Error processing fact ${factId}:`, err)
     }
   }
 
-  console.log(`[B4] Batch complete`)
+  console.log(`[B4] Batch complete — checked: ${checked}, failed: ${failed}`)
+  return { checked, failed }
 }
