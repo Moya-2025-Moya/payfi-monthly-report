@@ -117,7 +117,7 @@ export async function GET(request: Request) {
             try {
               const result = await processUnprocessedRaw(table, weekNumber, RAW_LIMIT, (current, total) => {
                 logger.log(`  ${tableName}: ${current}/${total}`, 'progress')
-              })
+              }, () => logger.checkCancelled())
               totalRaw += result.total
               totalFacts += result.factIds.length
               logger.log(`  ${tableName}: 处理 ${result.total} 条，提取 ${result.factIds.length} 条事实，丢弃 ${result.dropped}`, 'success')

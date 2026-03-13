@@ -386,7 +386,8 @@ export async function processUnprocessedRaw(
   table: string,
   weekNumber: string,
   limit = 200,
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
+  onCancelCheck?: () => Promise<void>
 ): Promise<{ total: number; factIds: string[]; dropped: number }> {
   const { data: rows, error } = await supabaseAdmin
     .from(table)
@@ -461,8 +462,9 @@ export async function processUnprocessedRaw(
       await supabaseAdmin.from(table).update({ processed: true }).eq('id', raw.id)
     }
 
-    // 非最后一批时短暂等待
+    // 非最后一批时：检查取消 + 短暂等待
     if (i + BATCH_SIZE < rows.length) {
+      if (onCancelCheck) await onCancelCheck()
       await sleep(BATCH_DELAY_MS)
     }
   }

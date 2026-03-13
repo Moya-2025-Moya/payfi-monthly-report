@@ -200,6 +200,7 @@ function PipelineTab() {
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [resetStatus, setResetStatus] = useState('')
   const [activeStep, setActiveStep] = useState<string | null>(null)
+  const [testMode, setTestMode] = useState(false)
   // Per-step latest run info (from DB)
   const [stepRuns, setStepRuns] = useState<Record<string, PipelineRunData | null>>({})
   const [loadingRuns, setLoadingRuns] = useState(true)
@@ -301,7 +302,8 @@ function PipelineTab() {
   async function handleStep(step: typeof PIPELINE_STEPS[number]) {
     setRunningStep(step.key)
     setActiveStep(step.key)
-    await run(step.endpoint)
+    const url = testMode && 'isStream' in step && step.isStream ? `${step.endpoint}?test=true` : step.endpoint
+    await run(url)
     setRunningStep(null)
     // Refresh runs after completion
     try {
@@ -347,8 +349,26 @@ function PipelineTab() {
         />
       )}
 
+      {/* Test mode + controls */}
       <Card>
-        <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>流水线步骤</p>
+        <div className="flex items-center justify-between">
+          <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>流水线步骤</p>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <span className="text-[11px]" style={{ color: testMode ? 'var(--accent)' : 'var(--fg-muted)' }}>
+              {testMode ? '测试模式 (每表3条)' : '完整模式'}
+            </span>
+            <button
+              onClick={() => setTestMode(v => !v)}
+              className="relative w-9 h-5 rounded-full transition-colors"
+              style={{ background: testMode ? 'var(--accent)' : 'var(--border)' }}>
+              <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                style={{ left: testMode ? '18px' : '2px' }} />
+            </button>
+          </label>
+        </div>
+      </Card>
+
+      <Card>
         {loadingRuns ? (
           <p className="text-[12px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>加载状态...</p>
         ) : (
@@ -452,15 +472,20 @@ function PipelineTab() {
       <Card>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[12px] font-semibold" style={{ color: 'var(--danger)' }}>DEV: 数据重置</p>
-            <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>清空所有事实、快照和邮件报告</p>
+            <p className="text-[12px] font-semibold" style={{ color: 'var(--danger)' }}>数据重置</p>
+            <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>清空事实、快照、邮件、叙事、时间线，重置原始数据为未处理</p>
           </div>
           <div className="flex items-center gap-2">
-            {resetStatus && <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{resetStatus}</span>}
+            {resetStatus && (
+              <span className="text-[11px]" style={{ color: resetStatus.includes('失败') ? 'var(--danger)' : 'var(--success)' }}>
+                {resetStatus}
+              </span>
+            )}
             <button
               onClick={() => setShowResetConfirm(true)}
+              disabled={running}
               className="px-4 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
-              style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
+              style={{ borderColor: 'var(--danger)', color: 'var(--danger)', opacity: running ? 0.5 : 1 }}>
               重置数据
             </button>
           </div>
