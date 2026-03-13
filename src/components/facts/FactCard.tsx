@@ -50,9 +50,10 @@ function getEvidenceBadges(fact: AtomicFact): EvidenceBadge[] {
     badges.push({ icon: '✓', label: '来源可达', detail: '原文内容匹配验证通过', type: 'pass' })
   } else if (v1?.status === 'partial') {
     badges.push({ icon: '~', label: '来源部分匹配', detail: '原文内容部分匹配', type: 'warn' })
-  } else if (v1?.status === 'source_unavailable' || (v1?.match_score != null && v1.match_score === 0)) {
-    badges.push({ icon: '!', label: '原文不可达', detail: '来源原文无法获取或解析', type: 'fail' })
+  } else if (v1?.status === 'mismatch') {
+    badges.push({ icon: '!', label: '原文不符', detail: '来源原文内容与事实不匹配', type: 'fail' })
   }
+  // source_unavailable / score=0: 抓取失败不代表事实有问题，不展示 badge
 
   const v2 = fact.v2_result as { source_count?: number; independent_sources?: boolean } | null
   if (v2?.source_count != null && v2.source_count >= 2) {
