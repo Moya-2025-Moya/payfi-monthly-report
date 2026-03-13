@@ -122,6 +122,7 @@ export async function GET(request: Request) {
               totalFacts += result.factIds.length
               logger.log(`  ${tableName}: 处理 ${result.total} 条，提取 ${result.factIds.length} 条事实，丢弃 ${result.dropped}`, 'success')
             } catch (err) {
+              if (err instanceof PipelineCancelledError) throw err
               logger.log(`  ${tableName}: 处理失败 — ${err instanceof Error ? err.message : String(err)}`, 'error')
             }
           }
@@ -213,9 +214,10 @@ export async function GET(request: Request) {
         if (fromStage <= 3) {
           logger.progress('阶段3/6', '实体识别 (B2) — 关联事实与实体')
           try {
-            const b2Stats = await resolveEntitiesBatch(verifiedFactIds)
+            const b2Stats = await resolveEntitiesBatch(verifiedFactIds, () => logger.checkCancelled())
             logger.log(`阶段3完成 — 成功 ${b2Stats.succeeded} 条，失败 ${b2Stats.failed} 条`, 'success')
           } catch (err) {
+            if (err instanceof PipelineCancelledError) throw err
             logger.log(`阶段3失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
           }
         } else {
@@ -228,12 +230,13 @@ export async function GET(request: Request) {
         if (fromStage <= 4) {
           logger.progress('阶段4/6', '时间线归并 (B3) — 将事实分配到时间线')
           try {
-            const b3Stats = await mergeTimelinesBatch(verifiedFactIds)
+            const b3Stats = await mergeTimelinesBatch(verifiedFactIds, () => logger.checkCancelled())
             logger.log(
               `阶段4完成 — 分配到已有时间线 ${b3Stats.assigned} 条，新建 ${b3Stats.created} 条，独立 ${b3Stats.standalone} 条，失败 ${b3Stats.failed} 条`,
               'success'
             )
           } catch (err) {
+            if (err instanceof PipelineCancelledError) throw err
             logger.log(`阶段4失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
           }
         } else {
@@ -246,9 +249,10 @@ export async function GET(request: Request) {
         if (fromStage <= 5) {
           logger.progress('阶段5/6', '矛盾检测 (B4) — 检测事实间矛盾')
           try {
-            const b4Stats = await detectContradictionsBatch(verifiedFactIds)
+            const b4Stats = await detectContradictionsBatch(verifiedFactIds, () => logger.checkCancelled())
             logger.log(`阶段5完成 — 已检查 ${b4Stats.checked} 条，失败 ${b4Stats.failed} 条`, 'success')
           } catch (err) {
+            if (err instanceof PipelineCancelledError) throw err
             logger.log(`阶段5失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
           }
         } else {
@@ -261,9 +265,10 @@ export async function GET(request: Request) {
         if (fromStage <= 6) {
           logger.progress('阶段6/6', '翻译 (B5) — 双语补全')
           try {
-            const b5Stats = await translateFactsBatch(verifiedFactIds)
+            const b5Stats = await translateFactsBatch(verifiedFactIds, () => logger.checkCancelled())
             logger.log(`阶段6完成 — 翻译 ${b5Stats.translated} 条，跳过 ${b5Stats.skipped} 条，失败 ${b5Stats.failed} 条`, 'success')
           } catch (err) {
+            if (err instanceof PipelineCancelledError) throw err
             logger.log(`阶段6失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
           }
         }

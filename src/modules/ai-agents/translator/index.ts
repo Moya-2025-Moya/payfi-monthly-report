@@ -82,12 +82,16 @@ export async function translateFact(factId: string): Promise<void> {
 
 // ─── 批量翻译 ───
 
-export async function translateFactsBatch(factIds: string[]): Promise<{ translated: number; skipped: number; failed: number }> {
+export async function translateFactsBatch(
+  factIds: string[],
+  onCancelCheck?: () => Promise<void>
+): Promise<{ translated: number; skipped: number; failed: number }> {
   const BATCH_SIZE = 10
   let translated = 0
   let failed = 0
 
   for (let i = 0; i < factIds.length; i += BATCH_SIZE) {
+    if (onCancelCheck && i > 0) await onCancelCheck()
     const batch = factIds.slice(i, i + BATCH_SIZE)
     console.log(`[B5] Processing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} facts)`)
 

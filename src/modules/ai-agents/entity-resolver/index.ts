@@ -213,19 +213,23 @@ export async function resolveEntities(factId: string): Promise<void> {
 
 // ─── Batch version: resolves entities for multiple facts with per-fact error isolation ───
 
-export async function resolveEntitiesBatch(factIds: string[]): Promise<{ succeeded: number; failed: number }> {
+export async function resolveEntitiesBatch(
+  factIds: string[],
+  onCancelCheck?: () => Promise<void>
+): Promise<{ succeeded: number; failed: number }> {
   console.log(`[B2] Starting batch entity resolution for ${factIds.length} fact(s)`)
 
   let succeeded = 0
   let failed = 0
 
-  for (const factId of factIds) {
+  for (let i = 0; i < factIds.length; i++) {
+    if (onCancelCheck && i > 0 && i % 5 === 0) await onCancelCheck()
     try {
-      await resolveEntities(factId)
+      await resolveEntities(factIds[i])
       succeeded++
     } catch (err) {
       failed++
-      console.log(`[B2] Failed to resolve entities for fact ${factId}: ${err instanceof Error ? err.message : String(err)}`)
+      console.log(`[B2] Failed to resolve entities for fact ${factIds[i]}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 

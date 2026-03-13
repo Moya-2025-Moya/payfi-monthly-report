@@ -411,25 +411,26 @@ function PipelineTab() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {runningStep === step.key && (
+                    {(runningStep === step.key || (running && activeStep === step.key)) ? (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleCancel() }}
-                        className="px-3 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
+                        className="px-4 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
                         style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
-                        取消
+                        停止
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleStep(step) }}
+                        disabled={running || runningStep !== null}
+                        className="px-4 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
+                        style={{
+                          borderColor: 'var(--border)',
+                          color: 'var(--fg-secondary)',
+                          opacity: (running || runningStep !== null) ? 0.5 : 1,
+                        }}>
+                        执行
                       </button>
                     )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleStep(step) }}
-                      disabled={running || runningStep !== null}
-                      className="px-4 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
-                      style={{
-                        borderColor: runningStep === step.key ? 'var(--accent)' : 'var(--border)',
-                        color: runningStep === step.key ? 'var(--accent)' : 'var(--fg-secondary)',
-                        opacity: (running || runningStep !== null) ? 0.5 : 1,
-                      }}>
-                      {runningStep === step.key ? '运行中...' : '执行'}
-                    </button>
                   </div>
                 </div>
               )
