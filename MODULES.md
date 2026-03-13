@@ -32,13 +32,13 @@
 - 零事实错误 (任何一次错误都会摧毁信任)
 
 **冷启动策略** (前 10 周):
-第 1 周知识库有 80 条人工策展的种子事件 + 0 条自动积累的历史事实。上下文命中率预计 40-50%。
+第 1 周知识库有 180 条人工策展的种子事件 + 0 条自动积累的历史事实。上下文命中率预计 60-70%。
 
 关键措施:
-1. **种子库 80 条**: 覆盖 2019-2026 的重大事件 (IPO、监管、市值里程碑、崩盘、融资)。这是一次性人工投入，但直接决定前 10 周的产品质量。
+1. **种子库 180 条**: 覆盖 2019-2026 的重大事件 (IPO、监管、市值里程碑、崩盘、融资、CBDC、TradFi、跨境支付、RWA、DeFi、Q1 2025 加密支付)。这是一次性人工投入，但直接决定前 10 周的产品质量。
 2. **诚实呈现**: 没有上下文的事实就不显示上下文块。不填充低质量对比。宁可空白也不凑数。
 3. **优先打磨叙事**: 前 10 周，叙事区的上下文可以手动补充 (operator 在 Admin 里编辑 reference_events)。等引擎积累后逐步减少人工干预。
-4. **第 10 周评估点**: 到第 10 周时，知识库应有 80 + ~50 = 130 条。如果上下文命中率仍 < 40%，需要重新评估向量检索阈值或种子库覆盖度。
+4. **第 10 周评估点**: 到第 10 周时，知识库应有 180 + ~50 = 230 条。如果上下文命中率仍 < 50%，需要重新评估向量检索阈值或种子库覆盖度。
 
 **Breaking news 机制**:
 周报是固定节奏，但重大事件 (USDC 脱锚、重大监管行动、市场崩盘) 不能等一周。
@@ -247,27 +247,31 @@ one_liner 是 AI 生成的自由文本 (1 句话，≤ 40 字)，概括本周最
 ├── 头部
 │   ├── 市值行 (USDC $60.2B · USDT $144.1B) — 小字等宽
 │   └── One-liner 标题 — 大字加粗 (20px)
-├── 叙事区 (与邮件同构，但可展开)
+├── 叙事区 (NarrativeRiver，支持 V12 + V13 两种格式)
 │   ├── 叙事卡片 × 3
-│   │   ├── 标题 + "第N周" badge (第1周叙事: 无"上周"行，只显示"起点"+"本周")
-│   │   ├── 上周 → 本周 (高亮) → 下周关注 (虚线)
-│   │   ├── 【历史对比】块 (蓝色左边框，默认可见，醒目)
-│   │   │   └── 参照事件名可点击 → 跳转到该事件首次出现的周报
+│   │   ├── 标题 (18px bold) + "第N周" badge (第1周叙事: 无"上周"行)
+│   │   ├── V12: 水平流式卡片 (起点→上周→本周→下周关注，SVG 箭头)
+│   │   ├── V13: 垂直时间线 (同日事件 B+D 分级)
+│   │   │   ├── high: 正常展示 (13px 粗体，蓝色实心圆点)
+│   │   │   ├── medium: 缩进子项 (12px，空心小圆点)
+│   │   │   └── low: 折叠在 "+N条" 链接后 (11px，点击展开)
+│   │   ├── 【历史可比】块 (默认可见，depth-layer-1)
 │   │   └── 展开: "查看 N 条来源事实" → 折叠面板 (含原文链接)
-│   └── 叙事间距: 24px
-├── 信号区
-│   ├── 分类标题 (仅显示有内容的分类)
-│   └── 每条: 事实 + 内联上下文
-├── 分隔线
-├── 全部事实 (本周 52 条)
-│   ├── 搜索框 (带防抖)
-│   ├── 分类筛选 (tag pills，仅显示本周出现的 tag)
-│   └── 事实列表 (按日期倒序)
-│       ├── 事实内容
-│       ├── 【历史对比】块 (如有，默认可见；无则不显示，不留空白)
-│       ├── 来源链接 (小字灰色，可点击)
-│       └── 置信度标签: ✓ 已验证 / ◐ 部分验证
-└── 页脚: 数据源说明 · 方法论 · Console 入口 (小字链接)
+│   └── 叙事间距: 24px (space-y-4)
+├── 信号区 (次要，border-t 分隔)
+│   ├── 分类标题 (11px, 仅显示有内容的分类)
+│   └── 每条 13px: 事实 + 内联 structured_context
+├── 全部事实 (ContextCard + TrustSpine + EvidenceDrawer)
+│   ├── DepthControl 分段控件 (扫描/上下文/验证/证据，键盘 1/2/3/4)
+│   ├── 搜索框 + tag pills 筛选
+│   └── ContextCard 列表 (按日期倒序，上限 50 条)
+│       ├── 事实内容 + 来源域名 + 日期
+│       ├── EntityTag (可点击 → 激活 Focus Lens)
+│       ├── Depth 1: 历史可比块
+│       ├── Depth 2: TrustSpine (V1-V5 圆点) + 验证摘要
+│       └── Depth 3: 原始证据详情
+├── FocusOverlay (底部浮层，聚焦实体时显示)
+└── 页脚: 验证统计 · 数据源 · Console 入口
 ```
 
 **边界情况处理**:
@@ -276,19 +280,20 @@ one_liner 是 AI 生成的自由文本 (1 句话，≤ 40 字)，概括本周最
 - 事实无上下文: 不显示上下文块，不留空白占位。事实之间间距不变。
 - 搜索无结果: 显示"未找到匹配的事实"，不显示空列表
 
-**与当前设计的关键差异**:
+**当前已实现的交互组件**:
 
-| 现在 | V13 |
-|---|---|
-| DepthControl (4级) 在页面顶部 | 删除。阅读版不需要 |
-| EntityTags (20个标签) 在叙事上方 | 删除。移到 Console |
-| FactPulse (80根柱状图) | 删除。无信息价值 |
-| KnowledgeHeartbeat (12周趋势) | 删除。移到 Console |
-| TrustSpine (5个彩色圆点) | 替换为简单的 ✓/◐ 标签 |
-| NarrativeRiver (水平流式+SVG箭头) | 简化为垂直卡片，文字流 |
-| 上下文在 Depth 1 才可见 | **默认可见，蓝色左边框，最醒目** |
-| Focus Lens (实体聚焦) | 删除。移到 Console |
-| Cmd+K Console | 删除。移到 Console |
+| 组件 | 状态 | 说明 |
+|---|---|---|
+| DepthControl (4级) | ✅ 已集成 | 在"全部事实"区域，键盘 1/2/3/4 切换深度 |
+| EntityTag + Focus Lens | ✅ 已集成 | 点击 tag → 全页面聚焦动画，ESC 退出 |
+| FocusOverlay | ✅ 已集成 | 底部浮层显示聚焦实体名 + ESC 退出按钮 |
+| TrustSpine (5个圆点) | ✅ 已集成 | Depth ≥ 2 时显示 V1-V5 验证链 |
+| EvidenceDrawer | ✅ 已集成 | 点击 TrustSpine 打开右侧验证详情面板 |
+| NarrativeRiver | ✅ 已集成 | V12 水平流式 + V13 时间线（同日事件 B+D 分级） |
+| ContextCard | ✅ 已集成 | 事实卡片 + depth layers + focus 感知 |
+| FactPulse | 已创建 | 未在阅读版使用，待迁移至 Console |
+| KnowledgeHeartbeat | 已创建 | 未在阅读版使用，待迁移至 Console |
+| Cmd+K Console | 未创建 | 计划在 Console 页实现 |
 
 **移动端优先**:
 - 单列布局，max-width: 680px (阅读最佳宽度)
@@ -583,7 +588,7 @@ Insight Gate 规则:
 ```
 条件: narrative 的 context confidence == high 且包含具体数字
 操作: 提取 entity, type, milestones, metrics → INSERT INTO reference_events
-效果: 第1周 80 条种子 → 第10周 130+ 条 → 第50周 300+ 条
+效果: 第1周 180 条种子 → 第10周 230+ 条 → 第50周 400+ 条
 ```
 
 ---
@@ -706,7 +711,7 @@ weekly_snapshots, pipeline_runs, pipeline_checkpoints
 src/config/
 ├── watchlist.ts              # 关注实体 (23 个)
 ├── tag-vocabulary.ts         # 标准 tag 词汇表 (从 watchlist 自动生成 + 主题白名单)
-├── reference-events.ts       # 初始种子知识库 (80 条, 运行后从 DB 读)
+├── reference-events.ts       # 初始种子知识库 (180 条, 运行后从 DB 读)
 ├── twitter-accounts.ts
 ├── sources.ts
 ├── prompts/
@@ -750,7 +755,7 @@ src/app/
 │   ├── page.tsx                   # 周报归档列表 (含跨周趋势)
 │   └── [week]/
 │       ├── page.tsx               # 阅读版 (server component)
-│       └── WeeklyReader.tsx       # 客户端组件 (干净阅读体验)
+│       └── WeeklyReader.tsx       # 客户端组件 (ContextCard + NarrativeRiver + DepthControl + FocusOverlay)
 ├── console/
 │   ├── page.tsx                   # 操作终端 (redirect → 当前周)
 │   └── [week]/
@@ -878,15 +883,11 @@ Console 最大宽度: 1400px (信息密度)
     - 包含: 参照事件、关键里程碑对比表、当前进度 vs 参照进度
 
 3C. 知识库种子扩充 (冷启动关键)
-    - reference_events 80 条种子 (一次性人工投入，已计入冷启动策略)
-    - 覆盖 2019-2026:
-      IPO: Coinbase, Robinhood, Circle
-      监管: GENIUS Act, MiCA, Lummis-Gillibrand, SEC vs Ripple
-      市值里程碑: USDC $10B/$25B/$50B, USDT $50B/$100B, DAI $5B
-      崩盘: UST/Luna, SVB→USDC 脱锚, FTX→行业影响
-      融资: Circle Series F, Tether investment rounds
-      产品: PYUSD launch, FDUSD launch, Ethena USDe launch
-    - 每条种子事件必须有: entity, type, milestones (含日期), metrics (含数字), embedding
+    - ✅ 已完成: 180 条种子已入库 (embedding 待 Voyage API backfill)
+    - 覆盖 2019-2026 + Q1 2025 加密支付:
+      IPO, 监管, 市值里程碑, 崩盘, 融资, 产品,
+      CBDC, TradFi, 跨境支付, RWA, DeFi
+    - 每条种子事件有: entity, type, milestones, metrics, real source_url
 ```
 
 ### Phase 4: Admin 数据质量
@@ -956,6 +957,6 @@ Console 最大宽度: 1400px (信息密度)
 | **P1** | 3A-3B | 上下文引擎输出增强 | 1 天 |
 | **P1** | 4A | 数据质量 Tab | 1 天 |
 | **P2** | 4B-4C | Pipeline 历史 + DB 修复 | 0.5 天 |
-| **P2** | 3C | 知识库扩充 | 0.5 天 |
+| ~~P2~~ | ~~3C~~ | ~~知识库扩充~~ ✅ 180 条已入库 | ~~0.5 天~~ |
 | **P3** | 5A-5C | 归档页升级 | 1-2 天 |
 | **P3** | 6A-6D | Console 增强 | 持续 |
