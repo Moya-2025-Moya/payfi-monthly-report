@@ -1,6 +1,6 @@
 import { getCurrentWeekNumber, supabaseAdmin } from '@/db/client'
 import { redirect } from 'next/navigation'
-import { getWeeklyPageData } from '@/lib/weekly-data'
+import { getWeeklyPageData, getKnowledgeGrowthStats } from '@/lib/weekly-data'
 import { WeeklyMirror } from './WeeklyMirror'
 import type { Metadata } from 'next'
 
@@ -45,7 +45,10 @@ export default async function WeeklyReportPage({ params }: { params: Promise<{ w
   }
 
   const range = parseWeekDateRange(week)
-  const pageData = await getWeeklyPageData(week)
+  const [pageData, knowledgeGrowth] = await Promise.all([
+    getWeeklyPageData(week),
+    getKnowledgeGrowthStats(12),
+  ])
   const currentWeek = getCurrentWeekNumber()
 
   // Fetch all facts with full AtomicFact fields (V1-V5 results for Trust Spine)
@@ -96,19 +99,39 @@ export default async function WeeklyReportPage({ params }: { params: Promise<{ w
       </div>
 
       {!pageData.summaryDetailed ? (
-        <div className="text-center py-16">
-          <p className="text-[14px]" style={{ color: 'var(--fg-muted)' }}>该周暂无数据</p>
-          {!isCurrentWeek && (
-            <a href={`/weekly/${currentWeek}`} className="text-[13px] mt-2 inline-block hover:underline" style={{ color: 'var(--accent)' }}>
-              查看本周周报 →
-            </a>
-          )}
+        <div className="text-center py-16 space-y-3">
+          <div className="text-[32px] opacity-20">
+            <svg width="48" height="48" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="mx-auto opacity-40">
+              <path d="M8 32L20 8L32 32H8Z" fill="var(--fg-muted)" opacity="0.35" />
+              <path d="M14 32L26 12L38 32H14Z" fill="var(--fg-muted)" />
+            </svg>
+          </div>
+          <p className="text-[14px] font-medium" style={{ color: 'var(--fg-muted)' }}>该周暂无数据</p>
+          <p className="text-[12px]" style={{ color: 'var(--fg-muted)' }}>
+            {isCurrentWeek
+              ? 'Pipeline 尚未完成本周快照生成。请前往管理后台查看 pipeline 状态。'
+              : '该周报快照不存在或已过期。'}
+          </p>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            {isCurrentWeek && (
+              <a href="/admin" className="text-[13px] px-3 py-1.5 rounded border hover:border-[var(--accent-muted)]"
+                style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)' }}>
+                查看 Pipeline 状态
+              </a>
+            )}
+            {!isCurrentWeek && (
+              <a href={`/weekly/${currentWeek}`} className="text-[13px] px-3 py-1.5 rounded hover:underline" style={{ color: 'var(--accent)' }}>
+                查看本周周报 →
+              </a>
+            )}
+          </div>
         </div>
       ) : (
         <WeeklyMirror
           summaryDetailed={pageData.summaryDetailed}
           stats={pageData.stats}
           allFacts={allFacts}
+          knowledgeGrowth={knowledgeGrowth}
           snapshotData={{
             newContradictions: (pageData as unknown as { stats: { new_contradictions?: number } | null }).stats?.new_contradictions ?? undefined,
           }}

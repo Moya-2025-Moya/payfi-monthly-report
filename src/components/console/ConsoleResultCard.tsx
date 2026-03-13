@@ -1,7 +1,7 @@
 'use client'
 
 interface ResultItem {
-  type: 'fact' | 'ai' | 'timeline' | 'error'
+  type: 'fact' | 'ai' | 'timeline' | 'error' | 'system'
   content: string
   facts?: { content: string; date?: string; source_url?: string }[]
   timelineEvents?: { date: string; event: string; isPrediction?: boolean }[]
@@ -12,6 +12,14 @@ interface ConsoleResultCardProps {
 }
 
 export function ConsoleResultCard({ result }: ConsoleResultCardProps) {
+  if (result.type === 'system') {
+    return (
+      <div className="px-4 py-2 text-[13px]" style={{ color: 'var(--success)' }}>
+        {result.content}
+      </div>
+    )
+  }
+
   if (result.type === 'error') {
     return (
       <div className="px-4 py-2 text-[13px]" style={{ color: 'var(--danger)' }}>

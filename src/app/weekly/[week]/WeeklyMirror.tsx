@@ -6,6 +6,12 @@ import type { AtomicFact } from '@/lib/types'
 import { ContextCard } from '@/components/facts/ContextCard'
 import { DepthControl } from '@/components/depth/DepthControl'
 import { useDepth } from '@/components/depth/DepthProvider'
+import { BriefingStrip } from '@/components/briefing/BriefingStrip'
+import { KnowledgeHeartbeat } from '@/components/briefing/KnowledgeHeartbeat'
+import { NarrativeRiver } from '@/components/narrative/NarrativeRiver'
+import { useFocusLens } from '@/components/focus/FocusLensProvider'
+import { FocusOverlay } from '@/components/focus/FocusOverlay'
+import { EntityTag } from '@/components/focus/EntityTag'
 
 /* ── Types matching V12 format ── */
 
@@ -35,6 +41,7 @@ interface Props {
   snapshotData?: {
     newContradictions?: number
   }
+  knowledgeGrowth?: { week: string; total: number }[]
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -46,14 +53,12 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 const COLOR = {
-  narrative: '#2563eb',
   context: '#059669',
-  narrativeBg: 'rgba(37,99,235,0.06)',
 } as const
 
-export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData }: Props) {
+export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData, knowledgeGrowth }: Props) {
   const { depth } = useDepth()
-  const [expandedNarrative, setExpandedNarrative] = useState<number | null>(null)
+  const { focusedEntity } = useFocusLens()
   const [factSearch, setFactSearch] = useState('')
   const [factTagFilter, setFactTagFilter] = useState<string | null>(null)
 
@@ -91,9 +96,43 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData }:
   }
   const categoryOrder = ['market_structure', 'product', 'onchain_data', 'milestone', 'data']
 
-  // Verification summary counts
-  const verifiedCount = allFacts?.length ?? 0
-  const rejectedCount = stats?.rejected ?? 0
+  // Build a map of entity → factIds for Focus Lens
+  const entityFactMap = useMemo(() => {
+    if (!allFacts) return new Map<string, string[]>()
+    const map = new Map<string, string[]>()
+    for (const f of allFacts) {
+      for (const tag of f.tags ?? []) {
+        if (!map.has(tag)) map.set(tag, [])
+        map.get(tag)!.push(f.id)
+      }
+    }
+    return map
+  }, [allFacts])
+
+  // Collect all unique entity tags for display
+  const entityTags = useMemo(() => {
+    const tagCounts = new Map<string, number>()
+    for (const f of allFacts ?? []) {
+      for (const tag of f.tags ?? []) {
+        tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1)
+      }
+    }
+    return [...tagCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([tag]) => tag)
+  }, [allFacts])
+
+  // Focus lens: determine if a fact is highlighted
+  const focusedFactIds = useMemo(() => {
+    if (!focusedEntity || !allFacts) return null
+    const ids = new Set<string>()
+    for (const f of allFacts) {
+      const tags = (f.tags ?? []).map(t => t.toLowerCase())
+      if (tags.includes(focusedEntity.toLowerCase())) ids.add(f.id)
+    }
+    return ids
+  }, [focusedEntity, allFacts])
 
   // Facts search/filter
   const allTags = useMemo(() => {
@@ -118,179 +157,47 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData }:
     return result
   }, [allFacts, factSearch, factTagFilter])
 
+  function getFocusClass(factId: string): string {
+    if (!focusedFactIds) return ''
+    return focusedFactIds.has(factId) ? 'focus-highlighted' : 'focus-receded'
+  }
+
   return (
     <div className="space-y-6">
       {/* ── Section 0: Briefing Strip ── */}
-      <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        {/* Fact Pulse bar */}
-        {allFacts && allFacts.length > 0 && (
-          <div className="px-3 pt-3 pb-1">
-            <div className="flex items-end gap-[2px] h-[20px]">
-              {allFacts.slice(0, 80).map((f, i) => {
-                const sectorColor = getSectorColor(f.tags)
-                const h = f.confidence === 'high' ? 16 : f.confidence === 'medium' ? 12 : 8
-                return (
-                  <div key={i} style={{
-                    width: '3px', height: `${h}px`, borderRadius: '1px',
-                    background: sectorColor, opacity: 0.8,
-                  }} />
-                )
-              })}
-            </div>
-            <p className="text-[11px] mt-1" style={{ color: 'var(--fg-muted)' }}>
-              {verifiedCount} verified{rejectedCount > 0 ? ` / ${rejectedCount} rejected` : ''}
-              {snapshotData?.newContradictions ? ` / ${snapshotData.newContradictions} contradictions` : ''}
-            </p>
-          </div>
-        )}
+      <BriefingStrip
+        facts={allFacts ?? []}
+        oneLiner={oneLiner}
+        marketLine={marketLine}
+        rejectedCount={stats?.rejected}
+        contradictionCount={snapshotData?.newContradictions}
+      />
 
-        {/* Market line + One-liner */}
-        <div className="px-4 py-3">
-          {marketLine && (
-            <p className="text-[13px] font-mono mb-2" style={{ color: 'var(--fg-muted)' }}>
-              {marketLine}
-            </p>
-          )}
-          {oneLiner && (
-            <p className="text-[20px] font-bold leading-snug" style={{ color: 'var(--fg-title)' }}>
-              {oneLiner}
-            </p>
-          )}
-        </div>
-      </div>
+      {/* ── Section 1: Knowledge Heartbeat ── */}
+      {knowledgeGrowth && knowledgeGrowth.length > 0 && (
+        <KnowledgeHeartbeat data={knowledgeGrowth} />
+      )}
 
-      {/* ── Depth Control (sticky) ── */}
-      <div className="sticky z-20 py-2 flex items-center justify-between gap-3"
+      {/* ── Depth Control (sticky desktop top / mobile bottom) ── */}
+      <div className="depth-control-sticky sticky z-20 py-2 flex items-center justify-between gap-3"
         style={{ top: 'var(--topbar-h)', background: 'var(--bg)' }}>
         <DepthControl />
         <span className="text-[11px] hidden md:inline" style={{ color: 'var(--fg-muted)' }}>
-          按 1-4 切换深度
+          按 1-4 切换深度 · {'\u2318'}K 搜索
         </span>
       </div>
 
-      {/* ── Section 3: Narratives ── */}
-      {narratives.length > 0 && (
-        <div>
-          <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: COLOR.narrative }}>
-            叙事追踪
-          </h2>
-          <div className="space-y-3">
-            {narratives.slice(0, 3).map((n, idx) => (
-              <div key={idx} className="rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-                <div className="px-4 py-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-[16px] font-semibold" style={{ color: 'var(--fg-title)' }}>
-                      {n.topic}
-                    </h3>
-                    {n.weekCount && n.weekCount > 1 && (
-                      <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ color: COLOR.narrative, background: COLOR.narrativeBg }}>
-                        第{n.weekCount}周
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Narrative River: horizontal flow */}
-                  <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
-                    {/* Origin */}
-                    {n.origin && (
-                      <>
-                        <div className="shrink-0 px-3 py-2 rounded-l-md border text-[12px]" style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)', minWidth: '120px' }}>
-                          <p className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: 'var(--fg-muted)' }}>起点</p>
-                          <p style={{ color: 'var(--fg-secondary)' }}>{n.origin}</p>
-                        </div>
-                        <div className="flex items-center shrink-0" style={{ color: 'var(--border-hover)' }}>
-                          <svg width="24" height="12" viewBox="0 0 24 12"><path d="M0 6h20m0 0l-4-4m4 4l-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
-                        </div>
-                      </>
-                    )}
-
-                    {/* Last week */}
-                    {n.last_week && n.last_week !== '首次追踪' && (
-                      <>
-                        <div className="shrink-0 px-3 py-2 border text-[12px]" style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)', minWidth: '120px' }}>
-                          <p className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: 'var(--fg-muted)' }}>上周</p>
-                          <p style={{ color: 'var(--fg-secondary)' }}>{n.last_week}</p>
-                        </div>
-                        <div className="flex items-center shrink-0" style={{ color: 'var(--border-hover)' }}>
-                          <svg width="24" height="12" viewBox="0 0 24 12"><path d="M0 6h20m0 0l-4-4m4 4l-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
-                        </div>
-                      </>
-                    )}
-
-                    {/* This week (primary) */}
-                    <div className="shrink-0 px-3 py-2 border-2 rounded-md text-[12px]" style={{ borderColor: COLOR.narrative, background: COLOR.narrativeBg, minWidth: '140px' }}>
-                      <p className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: COLOR.narrative }}>本周</p>
-                      <p className="font-medium" style={{ color: 'var(--fg-title)' }}>{n.this_week}</p>
-                    </div>
-
-                    {/* Next week watch (dashed) */}
-                    {n.next_week && (
-                      <>
-                        <div className="flex items-center shrink-0" style={{ color: 'var(--fg-muted)' }}>
-                          <svg width="24" height="12" viewBox="0 0 24 12"><path d="M0 6h20m0 0l-4-4m4 4l-4 4" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="3 3" /></svg>
-                        </div>
-                        <div className="shrink-0 px-3 py-2 rounded-r-md border text-[12px]" style={{ borderColor: 'var(--border)', borderStyle: 'dashed', minWidth: '120px' }}>
-                          <p className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: 'var(--fg-muted)' }}>下周关注</p>
-                          <p style={{ color: 'var(--fg-muted)' }}>{n.next_week}</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Context block (depth >= 1) */}
-                  {n.context && n.context.length > 0 && (
-                    <div className="depth-layer-1" data-depth={depth}>
-                      <div className="mt-2 mb-2 pl-3 py-2 rounded" style={{ background: 'rgba(5,150,105,0.05)' }}>
-                        <p className="text-[10px] font-semibold tracking-wider uppercase mb-1" style={{ color: COLOR.context }}>CONTEXT</p>
-                        {n.context.map((c, ci) => (
-                          <p key={ci} className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
-                            · {c}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Timeline */}
-                  {n.timeline && (
-                    <p className="text-[13px] leading-relaxed mt-1 pl-3" style={{ color: 'var(--fg-muted)' }}>
-                      时间线: {n.timeline}
-                    </p>
-                  )}
-
-                  {/* Expandable source facts */}
-                  {n.facts && n.facts.length > 0 && (
-                    <div className="mt-3">
-                      <button
-                        onClick={() => setExpandedNarrative(expandedNarrative === idx ? null : idx)}
-                        className="text-[11px] font-medium transition-colors"
-                        style={{ color: 'var(--accent)' }}>
-                        {expandedNarrative === idx ? '收起来源' : `查看 ${n.facts.length} 条来源事实 →`}
-                      </button>
-                      {expandedNarrative === idx && (
-                        <div className="mt-2 pl-3 border-l space-y-1.5" style={{ borderColor: 'var(--border)' }}>
-                          {n.facts.map((f, fi) => (
-                            <div key={fi} className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-                              <span className="font-mono mr-2">{f.date}</span>
-                              <span>{f.content}</span>
-                              {f.source_url && (
-                                <a href={f.source_url} target="_blank" rel="noopener noreferrer"
-                                  className="ml-1 text-[11px] hover:underline" style={{ color: 'var(--accent)' }}>
-                                  [来源]
-                                </a>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* ── Entity Tags (Focus Lens entry point) ── */}
+      {entityTags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {entityTags.map(tag => (
+            <EntityTag key={tag} name={tag} factIds={entityFactMap.get(tag) ?? []} />
+          ))}
         </div>
       )}
+
+      {/* ── Section 3: Narrative River ── */}
+      <NarrativeRiver narratives={narratives} />
 
       {/* ── Section 4: Signals (本周精选) ── */}
       {signals.length > 0 && (
@@ -343,7 +250,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData }:
         </div>
       )}
 
-      {/* ── Section 5: Full Facts (using ContextCard) ── */}
+      {/* ── Section 5: Full Facts (using ContextCard + Focus Lens) ── */}
       {allFacts && allFacts.length > 0 && (
         <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
           <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
@@ -385,10 +292,10 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData }:
             </div>
           )}
 
-          {/* Facts list using ContextCard */}
+          {/* Facts list using ContextCard with Focus Lens */}
           <div className="space-y-2">
             {filteredFacts.slice(0, 50).map((f) => (
-              <ContextCard key={f.id} fact={f} />
+              <ContextCard key={f.id} fact={f} focusClassName={getFocusClass(f.id)} />
             ))}
             {filteredFacts.length > 50 && (
               <p className="text-[11px] text-center py-2" style={{ color: 'var(--fg-muted)' }}>
@@ -401,16 +308,11 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData }:
           </div>
         </div>
       )}
+
+      {/* Focus Overlay (floating entity header when focused) */}
+      <FocusOverlay entityInfo={focusedEntity ? {
+        factCount: focusedFactIds?.size,
+      } : undefined} />
     </div>
   )
-}
-
-/* ── Helper: get sector color from tags ── */
-function getSectorColor(tags: string[]): string {
-  const tagStr = tags.join(' ').toLowerCase()
-  if (tagStr.includes('发行') || tagStr.includes('usdc') || tagStr.includes('usdt') || tagStr.includes('stablecoin')) return '#2563eb'
-  if (tagStr.includes('支付') || tagStr.includes('payment')) return '#16a34a'
-  if (tagStr.includes('监管') || tagStr.includes('regul') || tagStr.includes('法案') || tagStr.includes('sec')) return '#d97706'
-  if (tagStr.includes('defi') || tagStr.includes('tvl')) return '#8b5cf6'
-  return '#6b7280'
 }
