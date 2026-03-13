@@ -21,4 +21,4 @@ CREATE INDEX idx_predictions_status ON narrative_predictions (status);
 
 CREATE OR REPLACE TRIGGER narrative_predictions_updated_at
   BEFORE UPDATE ON narrative_predictions
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
