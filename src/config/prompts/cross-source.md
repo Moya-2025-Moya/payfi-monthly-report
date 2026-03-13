@@ -138,6 +138,6 @@
 
 ## 同一事件的多个来源描述
 
-每条来源包含精确的 source_url：
+每条来源包含精确的 source_url。如果只有 1 条来源，直接输出 `cross_validation: "single_source"`。
 
 {source_descriptions}

@@ -61,7 +61,7 @@
 
 # 边界情况处理
 
-1. **原文是空的或无法解析** → `status: "source_unavailable"`, `match_score: 0`, `evidence_quote: null`
+1. **原文是空的、极短(<50字)、或无法解析** → `status: "source_unavailable"`, `match_score: 0`, `evidence_quote: null`
 2. **原文是付费墙内容**（只有标题没有正文） → `status: "source_unavailable"`, `match_score: 0`, `evidence_quote: null`
 3. **原文语言与事实不同** → 正常比对含义，不因语言差异判 no_match
 4. **原文有多个版本的数字** → 找最接近事实的那个版本，partial 并说明

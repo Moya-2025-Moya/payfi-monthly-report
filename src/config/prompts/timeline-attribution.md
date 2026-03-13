@@ -61,7 +61,7 @@
 {
   "confirmed": true,
   "confidence": 88,
-  "reason": "Circle提交S-1修订版是'Circle IPO进程'时间线的直接下一步推进。时间线最新节点是S-1初始提交，修订版是合理的后续事件。"
+  "reason": "Circle 提交 S-1 修订版是 'Circle IPO 进程' 时间线的直接下一步推进。时间线最新节点是 S-1 初始提交，修订版是合理的后续事件。"
 }
 ```
 
@@ -71,7 +71,7 @@
 {
   "confirmed": false,
   "confidence": 25,
-  "reason": "虽然事实涉及Circle，但描述的是USDC在Base链的交易量增长，与'Circle IPO进程'时间线无关。这更适合归入链上数据或USDC增长相关的时间线。"
+  "reason": "虽然事实涉及 Circle，但描述的是 USDC 在 Base 链的交易量增长，与 'Circle IPO 进程' 时间线无关。这更适合归入链上数据或 USDC 增长相关的时间线。"
 }
 ```
 
