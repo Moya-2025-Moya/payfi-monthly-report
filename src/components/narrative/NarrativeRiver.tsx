@@ -17,6 +17,28 @@ interface V13Event {
   significance: 'high' | 'medium' | 'low'
   isExternal?: boolean; externalUrl?: string; sourceUrl?: string
 }
+
+interface DateGroup {
+  date: string
+  primary: V13Event[]   // high significance — full size
+  secondary: V13Event[] // medium significance — sub-items
+  collapsed: V13Event[] // low significance — hidden behind "+N条"
+}
+
+function groupEventsByDate(events: V13Event[]): DateGroup[] {
+  const map = new Map<string, DateGroup>()
+  for (const evt of events) {
+    let group = map.get(evt.date)
+    if (!group) {
+      group = { date: evt.date, primary: [], secondary: [], collapsed: [] }
+      map.set(evt.date, group)
+    }
+    if (evt.significance === 'high') group.primary.push(evt)
+    else if (evt.significance === 'medium') group.secondary.push(evt)
+    else group.collapsed.push(evt)
+  }
+  return [...map.values()]
+}
 interface V13Upcoming {
   date: string; title: string; description: string
   type: 'confirmed' | 'prediction'; source?: string
@@ -54,6 +76,95 @@ const COLOR = {
 
 function isV13(n: NarrativeData): boolean {
   return Array.isArray(n.events) && n.events.length > 0
+}
+
+function TimelineGrouped({ events }: { events: V13Event[] }) {
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set())
+  const groups = groupEventsByDate(events)
+
+  function toggleCollapsed(date: string) {
+    setExpandedDates(prev => {
+      const next = new Set(prev)
+      if (next.has(date)) next.delete(date)
+      else next.add(date)
+      return next
+    })
+  }
+
+  return (
+    <div className="relative pl-4 mb-2" style={{ borderLeft: '2px solid var(--border)' }}>
+      {groups.map((group, gi) => (
+        <div key={gi} className={`relative ${gi < groups.length - 1 ? 'pb-2' : ''}`}>
+          {/* Date label + primary events */}
+          {group.primary.map((evt, i) => (
+            <div key={`p-${i}`} className="relative pb-1.5">
+              <div className="absolute -left-[calc(1rem+5px)] top-[6px] w-[8px] h-[8px] rounded-full"
+                style={{ background: COLOR.narrative }} />
+              <div className="flex items-baseline gap-2">
+                {i === 0 && (
+                  <span className="text-[12px] font-mono shrink-0" style={{ color: 'var(--fg-muted)' }}>
+                    {evt.date.slice(5)}
+                  </span>
+                )}
+                {i > 0 && <span className="w-[3.5ch] shrink-0" />}
+                <span className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>
+                  {evt.title}
+                  {evt.isExternal && (
+                    <span className="text-[10px] ml-1 px-1 py-0.5 rounded"
+                      style={{ color: 'var(--fg-muted)', background: 'var(--surface-alt)' }}>外部</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          ))}
+
+          {/* Secondary events (medium) — indented, smaller */}
+          {group.secondary.map((evt, i) => (
+            <div key={`s-${i}`} className="relative pb-1 pl-[3.5ch]">
+              <div className="absolute -left-[calc(1rem+5px)] top-[5px] w-[6px] h-[6px] rounded-full"
+                style={{ background: 'transparent', border: '1.5px solid var(--fg-muted)' }} />
+              <div className="flex items-baseline gap-2">
+                {group.primary.length === 0 && i === 0 && (
+                  <span className="text-[12px] font-mono shrink-0 -ml-[3.5ch]" style={{ color: 'var(--fg-muted)' }}>
+                    {evt.date.slice(5)}
+                  </span>
+                )}
+                <span className="text-[12px]" style={{ color: 'var(--fg-secondary)' }}>
+                  {evt.title}
+                  {evt.isExternal && (
+                    <span className="text-[10px] ml-1 px-1 py-0.5 rounded"
+                      style={{ color: 'var(--fg-muted)', background: 'var(--surface-alt)' }}>外部</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          ))}
+
+          {/* Collapsed events (low) — hidden behind "+N条" */}
+          {group.collapsed.length > 0 && (
+            <>
+              <button
+                onClick={() => toggleCollapsed(group.date)}
+                className="pl-[3.5ch] text-[11px] transition-colors"
+                style={{ color: 'var(--fg-muted)' }}
+              >
+                {expandedDates.has(group.date)
+                  ? '收起'
+                  : `+${group.collapsed.length}条`}
+              </button>
+              {expandedDates.has(group.date) && group.collapsed.map((evt, i) => (
+                <div key={`c-${i}`} className="relative pb-1 pl-[3.5ch]">
+                  <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
+                    {evt.title}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
@@ -94,35 +205,8 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                     {n.summary}
                   </p>
 
-                  {/* V13: Timeline events */}
-                  <div className="relative pl-4 mb-2" style={{ borderLeft: '2px solid var(--border)' }}>
-                    {n.events!.map((evt, i) => {
-                      const isHigh = evt.significance === 'high'
-                      const isExt = evt.isExternal
-                      return (
-                        <div key={i} className="relative pb-2 last:pb-0">
-                          <div className="absolute -left-[calc(1rem+5px)] top-[6px] w-[8px] h-[8px] rounded-full"
-                            style={{
-                              background: isHigh ? COLOR.narrative : isExt ? 'var(--fg-muted)' : 'var(--border)',
-                              border: isHigh ? 'none' : '1.5px solid var(--fg-muted)',
-                            }} />
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-[12px] font-mono shrink-0" style={{ color: 'var(--fg-muted)' }}>
-                              {evt.date.slice(5)}
-                            </span>
-                            <span className={`text-[13px] ${isHigh ? 'font-semibold' : ''}`}
-                              style={{ color: isHigh ? 'var(--fg-title)' : 'var(--fg-body)' }}>
-                              {evt.title}
-                              {isExt && (
-                                <span className="text-[10px] ml-1 px-1 py-0.5 rounded"
-                                  style={{ color: 'var(--fg-muted)', background: 'var(--surface-alt)' }}>外部</span>
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {/* V13: Timeline events — grouped by date, B+D hierarchy */}
+                  <TimelineGrouped events={n.events!} />
 
                   {/* V13: Upcoming */}
                   {n.upcoming && n.upcoming.length > 0 && (
