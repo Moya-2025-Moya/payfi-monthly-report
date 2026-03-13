@@ -1,4 +1,4 @@
-import { getCurrentWeekNumber } from '@/db/client'
+import { getCurrentWeekNumber, supabaseAdmin } from '@/db/client'
 import { redirect } from 'next/navigation'
 import { getWeeklyPageData } from '@/lib/weekly-data'
 import { WeeklyMirror } from './WeeklyMirror'
@@ -47,6 +47,22 @@ export default async function WeeklyReportPage({ params }: { params: Promise<{ w
   const range = parseWeekDateRange(week)
   const pageData = await getWeeklyPageData(week)
   const currentWeek = getCurrentWeekNumber()
+
+  // Fetch all facts for the full-facts section below the mirror
+  const { data: allFactsRaw } = await supabaseAdmin
+    .from('atomic_facts')
+    .select('content_zh, content_en, fact_date, tags, source_url')
+    .eq('week_number', week)
+    .in('verification_status', ['verified', 'partially_verified'])
+    .order('fact_date', { ascending: false })
+    .limit(200)
+
+  const allFacts = (allFactsRaw ?? []).map(f => ({
+    content: (f.content_zh || f.content_en || '') as string,
+    date: String(f.fact_date).split('T')[0],
+    tags: (f.tags as string[]) ?? [],
+    source_url: (f.source_url as string) ?? undefined,
+  }))
   const isCurrentWeek = week === currentWeek
   const isFutureWeek = week > currentWeek
   const prevWeek = shiftWeek(week, -1)
@@ -97,6 +113,7 @@ export default async function WeeklyReportPage({ params }: { params: Promise<{ w
         <WeeklyMirror
           summaryDetailed={pageData.summaryDetailed}
           stats={pageData.stats}
+          allFacts={allFacts}
         />
       )}
     </div>

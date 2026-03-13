@@ -1,13 +1,14 @@
-// SSE streaming endpoint for snapshot generation — V10
-// Produces: oneLiner, headlines, narratives (with context), signals (by event type)
-// AI boundary: ZERO judgment, ZERO predictions. Pure facts + comparable data + timelines.
+// SSE streaming endpoint for snapshot generation — V11
+// Pipeline: stats → contradiction → AI select → context engine → save → email
+// AI boundary: 零意见 — 结构化事实对比允许，预测/评价禁止
 import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
 import { callHaikuJSON } from '@/lib/ai-client'
 import { createPipelineLogger } from '@/lib/pipeline-logger'
 import { generateEmailHTML, weekToDateRange, weekToMondayDate } from '@/lib/email-template'
 import { saveCheckpoint, loadCheckpoint, clearCheckpoints } from '@/lib/pipeline-checkpoint'
 import { saveWeeklySnapshot } from '@/lib/weekly-data'
-import type { EmailData } from '@/lib/email-template'
+import { generateFactContext } from '@/lib/context-engine'
+import type { EmailData, NarrativeForEmail, SignalItem } from '@/lib/email-template'
 
 export const maxDuration = 120
 
@@ -173,9 +174,9 @@ ${batchInput}`,
           })
         }
 
-        // Step 3: AI — Select 8 items (3 narratives + 5 standalone signals) + generate context
+        // Step 3: AI select + classify + Context Engine
         if (resumeStep < 3) {
-          logger.progress('3/5', 'AI 选取本周重点...')
+          logger.progress('3/5', 'AI 选取 + 上下文引擎...')
           try {
             const { data: topFacts } = await supabaseAdmin
               .from('atomic_facts')
@@ -186,7 +187,6 @@ ${batchInput}`,
               .limit(60)
 
             if (topFacts && topFacts.length > 0) {
-              // Read existing narrative threads
               const { data: activeThreads } = await supabaseAdmin
                 .from('narrative_threads')
                 .select('id, topic, slug')
@@ -199,21 +199,21 @@ ${batchInput}`,
                 .map((f, i) => `[${i}] [${f.fact_type}] ${f.content_zh || f.content_en} (${String(f.fact_date).split('T')[0]}) [tags: ${f.tags.join(', ')}]${f.source_url ? ` [url: ${f.source_url}]` : ''}`)
                 .join('\n')
 
-              // Phase A: Select + classify + generate context
+              // Phase A: AI 选取 + 分类
               const selectionResult = await callHaikuJSON<{
                 one_liner: string
-                headlines: string[]
+                market_line?: string
                 narratives: Array<{
                   topic: string
                   week_count?: number
+                  origin?: string
                   last_week: string
                   this_week: string
                   timeline?: string
-                  comparable?: string
                   fact_indices: number[]
                 }>
                 signals: Array<{
-                  category: 'milestone' | 'product' | 'data'
+                  category: 'market_structure' | 'product' | 'onchain_data'
                   text: string
                   fact_index: number
                 }>
@@ -224,37 +224,36 @@ ${batchInput}`,
 ${threadTopics.length > 0 ? threadTopics.map((t, i) => `${i + 1}. ${t}`).join('\n') : '(暂无)'}
 
 任务:
-1. one_liner: 一句话概括本周（纯事实，不做评价。如 "Circle S-1 修订提交; GENIUS Act 过委员会"）
-2. headlines: 3 条标题（按事件类型排序: 里程碑 > 产品/合作 > 数据）
+1. one_liner: 一句话概括本周（纯事实，如 "Circle S-1 修订提交; GENIUS Act 过委员会"）
+2. market_line: 市值数据行（如 "USDC $60.2B (+2.1%) · USDT $144.1B (+0.8%)"），如果本周有市值数据
 3. narratives: 2-3 条叙事追踪（优先匹配已有线索）
 4. signals: 5 条独立事实信号，按 category 分类
 
 叙事字段:
 - topic: 主题名（如 "Circle IPO 进程"）
 - week_count: 追踪第几周（首次=1）
+- origin: 叙事起点（一句话，如 "2026.02.15 Circle 宣布启动 IPO 流程"），首次追踪必填
 - last_week: 上周进展（1句事实，首次写 "首次追踪"）
 - this_week: 本周进展（1-2句事实）
 - timeline: 关键时间节点（如 "SEC 反馈窗口 3.17 起"），没有则省略
-- comparable: 可比参考数据（如 "Coinbase S-1→IPO 用时 5 个月 (2020.12-2021.04), 当时 USDC 市值 $25B"），没有则省略
 - fact_indices: 事实编号数组
 
 信号字段:
-- category: "milestone" | "product" | "data"
-  - milestone: 首次、突破、监管里程碑
-  - product: 产品发布、合作、合并
-  - data: 数值变化（市值、TVL、用户量等）
-- text: 一行事实描述，含量化数据（如 "Ethena USDe TVL 突破 $5B (历史最大偏离 -0.8%, 2025.04)"）
+- category: "market_structure" | "product" | "onchain_data"
+  - market_structure: IPO/并购/融资/监管里程碑
+  - product: 产品发布/集成/合作
+  - onchain_data: 市值/TVL/交易量变化
+- text: 一行事实描述，含量化数据
 - fact_index: 来源事实编号
 
 绝对规则:
 - 不做预测、不做评价、不说"值得关注"、不说"可能"
-- timeline 和 comparable 只写可验证的事实数据
 - 中英文之间加空格
 
 输出严格 JSON:
 {
   "one_liner": "...",
-  "headlines": ["...", "...", "..."],
+  "market_line": "...",
   "narratives": [...],
   "signals": [...]
 }
@@ -266,47 +265,97 @@ ${factsText}`,
 
               logger.log(`  选取完成: ${selectionResult.narratives?.length ?? 0} 叙事 + ${selectionResult.signals?.length ?? 0} 信号`, 'success')
 
-              // Assemble V10 format
-              const narrativesWithFacts = (selectionResult.narratives ?? []).map(n => ({
-                topic: n.topic,
-                weekCount: n.week_count,
-                last_week: n.last_week,
-                this_week: n.this_week,
-                timeline: n.timeline,
-                comparable: n.comparable,
-                fact_indices: n.fact_indices,
-                facts: n.fact_indices
-                  .map(idx => topFacts[idx])
-                  .filter(Boolean)
-                  .map(f => ({
-                    content: f.content_zh || f.content_en,
-                    date: String(f.fact_date).split('T')[0],
-                    tags: f.tags,
-                    source_url: f.source_url,
-                  })),
-              }))
+              // Phase B: Context Engine — 为每条叙事和信号生成上下文
+              logger.log('  上下文引擎启动...', 'info')
 
-              weeklySummaryDetailed = JSON.stringify({
-                oneLiner: selectionResult.one_liner,
-                headlines: selectionResult.headlines ?? [],
-                narratives: narrativesWithFacts,
-                signals: (selectionResult.signals ?? []).map(s => ({
+              const narrativesWithContext: NarrativeForEmail[] = []
+              for (const n of (selectionResult.narratives ?? []).slice(0, 3)) {
+                // 用叙事的 this_week 作为主要事实输入
+                const primaryFact = n.fact_indices?.[0] != null ? topFacts[n.fact_indices[0]] : null
+                const factTags = primaryFact ? (primaryFact.tags as string[]) : []
+                const factDate = primaryFact ? String(primaryFact.fact_date).split('T')[0] : new Date().toISOString().split('T')[0]
+
+                const ctxResult = await generateFactContext({
+                  content: n.this_week,
+                  tags: factTags,
+                  fact_date: factDate,
+                })
+
+                narrativesWithContext.push({
+                  topic: n.topic,
+                  weekCount: n.week_count,
+                  origin: n.origin,
+                  last_week: n.last_week,
+                  this_week: n.this_week,
+                  timeline: n.timeline,
+                  context: ctxResult.context_lines.length > 0 ? ctxResult.context_lines : undefined,
+                })
+
+                if (ctxResult.context_lines.length > 0) {
+                  logger.log(`    "${n.topic}" → ${ctxResult.context_lines.length} 条上下文 (${ctxResult.confidence})`, 'success')
+                } else {
+                  logger.log(`    "${n.topic}" → 无上下文候选`, 'info')
+                }
+              }
+
+              const signalsWithContext: (SignalItem & { source_url?: string })[] = []
+              for (const s of (selectionResult.signals ?? []).slice(0, 5)) {
+                const factRef = s.fact_index != null ? topFacts[s.fact_index] : null
+                const factTags = factRef ? (factRef.tags as string[]) : []
+                const factDate = factRef ? String(factRef.fact_date).split('T')[0] : new Date().toISOString().split('T')[0]
+
+                const ctxResult = await generateFactContext({
+                  content: s.text,
+                  tags: factTags,
+                  fact_date: factDate,
+                })
+
+                signalsWithContext.push({
                   category: s.category,
                   text: s.text,
-                  source_url: s.fact_index != null ? topFacts[s.fact_index]?.source_url : undefined,
-                })),
+                  context: ctxResult.context_lines[0], // 信号只取第一条上下文
+                  source_url: factRef?.source_url ?? undefined,
+                })
+              }
+
+              logger.log(`  上下文引擎完成`, 'success')
+
+              // Assemble V11 format
+              const narrativesWithFacts = narrativesWithContext.map((n, idx) => {
+                const origNarr = (selectionResult.narratives ?? [])[idx]
+                return {
+                  ...n,
+                  fact_indices: origNarr?.fact_indices,
+                  facts: (origNarr?.fact_indices ?? [])
+                    .map(fidx => topFacts[fidx])
+                    .filter(Boolean)
+                    .map(f => ({
+                      content: f.content_zh || f.content_en,
+                      date: String(f.fact_date).split('T')[0],
+                      tags: f.tags,
+                      source_url: f.source_url,
+                    })),
+                }
               })
 
-              logger.log(`  V10 周报数据组装完成`, 'success')
+              weeklySummaryDetailed = JSON.stringify({
+                version: 'v11',
+                oneLiner: selectionResult.one_liner,
+                marketLine: selectionResult.market_line,
+                narratives: narrativesWithFacts,
+                signals: signalsWithContext,
+              })
+
+              logger.log(`  V11 周报数据组装完成`, 'success')
             } else {
               logger.log('  本周无事实，跳过', 'info')
             }
           } catch (err) {
-            logger.log(`  AI 选取失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+            logger.log(`  AI 选取/上下文失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
           }
 
           await saveCheckpoint({
-            pipeline: PIPELINE_NAME, week_number: weekNumber, step: 3, step_name: 'AI 选取',
+            pipeline: PIPELINE_NAME, week_number: weekNumber, step: 3, step_name: 'AI 选取+上下文',
             data: { totalFacts, highCount, mediumCount, lowCount, rejectedCount, crossWeekConflicts, weeklySummaryDetailed },
           })
         }
@@ -348,22 +397,23 @@ ${factsText}`,
             if (weeklySummaryDetailed) {
               const parsed = JSON.parse(weeklySummaryDetailed)
               const emailData: EmailData = {
-                weekNumber,
                 weekDate: weekToDateRange(weekNumber),
+                marketLine: parsed.marketLine,
                 oneLiner: parsed.oneLiner ?? '',
-                headlines: parsed.headlines ?? [],
-                narratives: (parsed.narratives ?? []).slice(0, 3).map((n: { topic: string; weekCount?: number; last_week: string; this_week: string; timeline?: string; comparable?: string }) => ({
+                narratives: (parsed.narratives ?? []).slice(0, 3).map((n: NarrativeForEmail) => ({
                   topic: n.topic,
                   weekCount: n.weekCount,
+                  origin: n.origin,
                   last_week: n.last_week,
                   this_week: n.this_week,
                   timeline: n.timeline,
-                  comparable: n.comparable,
+                  context: n.context,
                 })),
-                signals: (parsed.signals ?? []).slice(0, 8),
-                totalFacts,
-                verifiedCount: highCount + mediumCount,
-                crossVerifiedCount: crossWeekConflicts,
+                signals: (parsed.signals ?? []).slice(0, 8).map((s: SignalItem) => ({
+                  category: s.category,
+                  text: s.text,
+                  context: s.context,
+                })),
               }
 
               const emailHTML = generateEmailHTML(emailData)
@@ -373,7 +423,7 @@ ${factsText}`,
                 .from('reports')
                 .upsert({
                   date: reportDate,
-                  subject: `StablePulse W${weekNumber.split('-W')[1]} | ${weekToDateRange(weekNumber)}`,
+                  subject: `StablePulse | ${weekToDateRange(weekNumber)}`,
                   content: emailHTML,
                 }, { onConflict: 'date' })
 
