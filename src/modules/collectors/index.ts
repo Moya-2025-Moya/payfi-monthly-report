@@ -47,19 +47,20 @@ export async function runDailyCollection(): Promise<{
     }
   }
 
-  // Wave 1: 独立采集器并行
+  // Wave 1: 独立采集器并行（含 twitter — 现在用 search API，不再依赖 monitor）
   const wave1 = [
     { name: 'on-chain', fn: collectOnChainData },
     { name: 'news', fn: collectNews },
     { name: 'companies', fn: collectCompanyData },
     { name: 'products', fn: collectProductUpdates },
     { name: 'regulatory', fn: collectRegulatory },
+    { name: 'twitter', fn: () => collectTweets().then(count => ({ total: count, breakdown: [] })) },
   ]
 
   const wave1Results = await Promise.allSettled(wave1.map(t => t.fn()))
   wave1Results.forEach((r, i) => recordResult(wave1[i].name, r))
 
-  // Wave 2: funding 依赖 news 数据，必须在 wave1 之后
+  // Wave 2: funding 依赖 raw_news 数据，必须在 news 之后
   const fundingResult = await Promise.allSettled([collectFunding()])
   recordResult('funding', fundingResult[0])
 
