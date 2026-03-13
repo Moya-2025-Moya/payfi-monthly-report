@@ -12,7 +12,7 @@ import { adversarialCheck } from '@/lib/adversarial-check'
 import { growKnowledgeBase } from '@/lib/knowledge-growth'
 import { verifyAdminToken } from '@/lib/admin-auth'
 import { shiftWeek } from '@/lib/week-utils'
-import type { EmailData, NarrativeForEmail, SignalItem } from '@/lib/email-template'
+import type { EmailData, NarrativeForEmail, SignalItem, BriefItem } from '@/lib/email-template'
 
 export const maxDuration = 120
 
@@ -245,31 +245,40 @@ ${batchInput}`,
                   text: string
                   fact_index: number
                 }>
+                briefs: Array<{
+                  text: string
+                  fact_index: number
+                }>
               }>(
-                `你是稳定币行业事实聚合工具。从以下本周事实中选取周报摘要和信号。
+                `你是稳定币行业事实聚合工具。从以下本周事实中选取周报摘要、信号和快讯。
 
 ${narrativeSummaries ? `本周叙事（已由专门系统生成）:\n${narrativeSummaries}\n` : ''}
 任务:
 1. one_liner: 一句话概括本周（纯事实，如 "Circle S-1 修订提交; GENIUS Act 过委员会"）${narrativeSummaries ? '，参考上方叙事摘要' : ''}
 2. market_line: 市值数据行（如 "USDC $60.2B (+2.1%) · USDT $144.1B (+0.8%)"），如果本周有市值数据
 3. signals: 5 条独立事实信号，按 category 分类（不要与叙事重叠）
+4. briefs: 5-10 条零散快讯，覆盖信号和叙事未涵盖的其他有价值事实，一句话概括
 
 信号字段:
 - category: "market_structure" | "product" | "onchain_data" | "regulatory" | "funding"
 - text: 一行事实描述，含量化数据
 - fact_index: 来源事实编号
 
+快讯字段:
+- text: 一句话事实（不要与 signals 或叙事重叠）
+- fact_index: 来源事实编号
+
 绝对规则: 不做预测、不做评价、中英文之间加空格
 
 输出严格 JSON:
-{ "one_liner": "...", "market_line": "...", "signals": [...] }
+{ "one_liner": "...", "market_line": "...", "signals": [...], "briefs": [...] }
 
 本周事实 (共 ${topFacts.length} 条):
 ${factsText}`,
-                { system: '稳定币事实聚合工具。输出严格JSON。不做预测不做评价。signals 5条。', maxTokens: 2000 }
+                { system: '稳定币事实聚合工具。输出严格JSON。不做预测不做评价。signals 5条，briefs 5-10条。', maxTokens: 3000 }
               )
 
-              logger.log(`  AI 选取完成: ${selectionResult.signals?.length ?? 0} 信号`, 'success')
+              logger.log(`  AI 选取完成: ${selectionResult.signals?.length ?? 0} 信号, ${selectionResult.briefs?.length ?? 0} 快讯`, 'success')
 
               // Build v13 narratives from stored rich data
               interface V13Event {
@@ -489,13 +498,23 @@ ${factsText}`,
                 logger.log(`  对抗验证跳过: ${err instanceof Error ? err.message : String(err)}`, 'info')
               }
 
-              // Assemble V13 format
+              // Build briefs with dates from source facts
+              const briefItems: BriefItem[] = (selectionResult.briefs ?? []).slice(0, 10).map(b => {
+                const factRef = b.fact_index != null && b.fact_index >= 0 && b.fact_index < topFacts.length ? topFacts[b.fact_index] : null
+                return {
+                  text: b.text,
+                  date: factRef ? String(factRef.fact_date).split('T')[0].slice(5) : undefined, // MM-DD
+                }
+              })
+
+              // Assemble V15 format
               weeklySummaryDetailed = JSON.stringify({
-                version: 'v13',
+                version: 'v15',
                 oneLiner: selectionResult.one_liner,
                 marketLine: selectionResult.market_line,
                 narratives: v13Narratives,
                 signals: signalsWithContext,
+                briefs: briefItems,
                 sourceCount: new Set(topFacts.map((f: { source_url?: string }) => f.source_url).filter(Boolean)).size || totalFacts,
               })
 
@@ -585,6 +604,7 @@ ${factsText}`,
                   context: s.context,
                   structured_context: s.structured_context,
                 })),
+                briefs: (parsed.briefs ?? []).slice(0, 10) as BriefItem[],
                 stats: {
                   factCount: totalFacts,
                   verifiedCount: highCount + mediumCount,

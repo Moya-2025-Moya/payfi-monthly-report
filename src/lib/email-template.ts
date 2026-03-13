@@ -1,7 +1,8 @@
-// StablePulse Weekly Email — V14 Context-First + Parallel Comparison
+// StablePulse Weekly Email — V15 Design Overhaul
 // Pure <table> layout, no CSS3 (no border-radius, no rgba, no box-shadow)
 // Light theme: #ffffff body, #f7f7f7 outer, #f0f7ff context blocks
-// Context blocks = visual protagonist: border-left 3px #3b82f6 + bg #f0f7ff
+// Unified brand color: #ff6d00 (orange) for brand, #1a1a1a for content hierarchy
+// Context blocks: border-left 3px #c4c4c4 + bg #f5f5f5 (neutral, not competing with brand)
 // font-size >= 13px (Gmail mobile threshold)
 // MSO conditional comments for Outlook
 
@@ -10,7 +11,7 @@ const SITE_URL = 'https://payfi-monthly-report.vercel.app'
 /* ── Types ── */
 
 export interface NarrativeContext {
-  event: string   // e.g. "Coinbase IPO"
+  event: string   // e.g. "Coinbase 上市"
   detail: string  // e.g. "S-1→上市: 118 天 (2020.12→2021.04)"
   // V14: 当前 vs 历史并排对比
   current_entity?: string   // e.g. "Circle"
@@ -35,6 +36,11 @@ export interface SignalItem {
   structured_context?: NarrativeContext // V14: structured with parallel comparison
 }
 
+export interface BriefItem {
+  text: string
+  date?: string
+}
+
 export interface EmailStats {
   factCount: number
   verifiedCount: number
@@ -47,6 +53,7 @@ export interface EmailData {
   oneLiner: string
   narratives: NarrativeForEmail[]
   signals: SignalItem[]
+  briefs?: BriefItem[]    // V15: 零散快讯
   stats: EmailStats
   weekUrl?: string        // full URL to web version, defaults to SITE_URL/weekly/current
 }
@@ -67,16 +74,16 @@ const CATEGORY_ORDER: Array<SignalItem['category']> = [
   'market_structure', 'product', 'onchain_data', 'regulatory', 'funding',
 ]
 
-/* ── Context block builder (the visual protagonist) ── */
+/* ── Context block builder ── */
 function buildContextItem(c: NarrativeContext): string {
-  // Row 1: Historical reference (normal weight, monospace)
-  let html = `<tr><td style="padding:0 0 2px 0;font-size:13px;color:#333333;line-height:1.7;font-family:'Courier New',Courier,monospace;font-weight:bold;">${esc(c.event)}</td></tr>`
-  html += `<tr><td style="padding:0 0 4px 0;font-size:13px;color:#555555;line-height:1.7;font-family:'Courier New',Courier,monospace;">${esc(c.detail)}</td></tr>`
+  // Row 1: Historical reference (monospace, neutral)
+  let html = `<tr><td style="padding:0 0 2px 0;font-size:13px;color:#444444;line-height:1.7;font-family:'Courier New',Courier,monospace;font-weight:bold;">${esc(c.event)}</td></tr>`
+  html += `<tr><td style="padding:0 0 4px 0;font-size:13px;color:#666666;line-height:1.7;font-family:'Courier New',Courier,monospace;">${esc(c.detail)}</td></tr>`
 
-  // Row 2: Current entity parallel comparison (bold, larger, prominent)
+  // Row 2: Current entity parallel comparison (bold, prominent)
   if (c.current_entity && c.current_value) {
     const delta = c.delta_label
-      ? `<span style="color:#3b82f6;font-weight:bold;font-size:14px;"> — ${esc(c.delta_label)}</span>`
+      ? `<span style="color:#ff6d00;font-weight:bold;font-size:14px;"> — ${esc(c.delta_label)}</span>`
       : ''
     html += `<tr><td style="padding:4px 0 6px 0;font-size:14px;color:#111111;line-height:1.6;font-weight:bold;">${esc(c.current_entity)} 当前: ${esc(c.current_value)}${delta}</td></tr>`
   }
@@ -89,15 +96,15 @@ function buildContextBlockInner(items: NarrativeContext[]): string {
 
   const rows = items.map((c, i) => {
     const separator = i > 0
-      ? `<tr><td style="padding:4px 0;border-top:1px solid #dbe8f4;font-size:1px;line-height:1px;">&nbsp;</td></tr>`
+      ? `<tr><td style="padding:4px 0;border-top:1px solid #e0e0e0;font-size:1px;line-height:1px;">&nbsp;</td></tr>`
       : ''
     return separator + buildContextItem(c)
   }).join('\n')
 
   return `<table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-      <td style="border-left:3px solid #3b82f6;background-color:#f0f7ff;padding:12px 16px;">
+      <td style="border-left:3px solid #c4c4c4;background-color:#f5f5f5;padding:12px 16px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%">
-          <tr><td style="padding:0 0 6px;font-size:11px;font-weight:bold;letter-spacing:1px;color:#3b82f6;">参照对比</td></tr>
+          <tr><td style="padding:0 0 6px;font-size:11px;font-weight:bold;letter-spacing:1px;color:#999999;">历史可比</td></tr>
           ${rows}
         </table>
       </td>
@@ -109,13 +116,31 @@ function buildContextBlock(items: NarrativeContext[]): string {
   return `<tr><td style="padding:8px 0 4px;">${buildContextBlockInner(items)}</td></tr>`
 }
 
+/* ── Section header helper ── */
+function sectionHeader(label: string, count?: number): string {
+  const countHtml = count != null
+    ? `<td align="right" style="font-size:11px;color:#999999;">${count} 条</td>`
+    : ''
+  return `<tr><td style="padding:20px 32px 4px;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+      <td style="font-size:13px;font-weight:bold;letter-spacing:0;color:#1a1a1a;">${esc(label)}</td>
+      ${countHtml}
+    </tr></table>
+  </td></tr>`
+}
+
+/* ── Divider helper ── */
+function divider(): string {
+  return `<tr><td style="padding:4px 32px;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #eeeeee;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>`
+}
+
 /* ── Narrative cards ── */
 function buildNarratives(narratives: NarrativeForEmail[]): string {
   if (narratives.length === 0) return ''
 
   const cards = narratives.slice(0, 3).map(n => {
     const weekBadge = n.weekCount && n.weekCount > 1
-      ? `<td align="right" style="font-size:11px;color:#3b82f6;font-family:'Courier New',Courier,monospace;">第${n.weekCount}周</td>`
+      ? `<td align="right" style="font-size:11px;color:#ff6d00;font-family:'Courier New',Courier,monospace;">第${n.weekCount}周</td>`
       : ''
 
     // Origin line (for narratives tracked > 1 week)
@@ -128,10 +153,10 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
       ? `<tr><td style="padding:4px 16px;font-size:13px;color:#666666;line-height:1.6;"><span style="color:#999999;">上周</span>&nbsp;&nbsp;${esc(n.last_week)}</td></tr>`
       : ''
 
-    // This week (highlighted)
+    // This week (highlighted — the star of the card)
     const thisWeekRow = `<tr><td style="padding:4px 16px;font-size:14px;color:#1a1a1a;line-height:1.6;font-weight:bold;"><span style="color:#999999;font-weight:normal;">本周</span>&nbsp;&nbsp;${esc(n.this_week)}</td></tr>`
 
-    // Context block (the protagonist)
+    // Context block
     const contextHtml = n.context && n.context.length > 0
       ? `<tr><td style="padding:4px 16px 4px;">${buildContextBlockInner(n.context)}</td></tr>`
       : ''
@@ -183,21 +208,21 @@ function buildSignals(signals: SignalItem[]): string {
         // V14: prefer structured_context with parallel comparison
         if (s.structured_context) {
           const sc = s.structured_context
-          let ctxContent = `<span style="font-weight:bold;color:#333333;">${esc(sc.event)}</span>: ${esc(sc.detail)}`
+          let ctxContent = `<span style="font-weight:bold;color:#444444;">${esc(sc.event)}</span>: ${esc(sc.detail)}`
           if (sc.current_entity && sc.current_value) {
-            const delta = sc.delta_label ? ` — <span style="color:#3b82f6;font-weight:bold;">${esc(sc.delta_label)}</span>` : ''
+            const delta = sc.delta_label ? ` — <span style="color:#ff6d00;font-weight:bold;">${esc(sc.delta_label)}</span>` : ''
             ctxContent += `<br>${esc(sc.current_entity)} 当前: <strong>${esc(sc.current_value)}</strong>${delta}`
           }
           row += `<tr><td style="padding:0 0 4px 8px;">
             <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-              <td style="border-left:3px solid #3b82f6;background-color:#f0f7ff;padding:6px 10px;font-size:13px;color:#555555;line-height:1.6;font-family:'Courier New',Courier,monospace;">${ctxContent}</td>
+              <td style="border-left:3px solid #c4c4c4;background-color:#f5f5f5;padding:6px 10px;font-size:13px;color:#666666;line-height:1.6;font-family:'Courier New',Courier,monospace;">${ctxContent}</td>
             </tr></table>
           </td></tr>`
         } else if (s.context) {
           // Legacy fallback: plain string context
           row += `<tr><td style="padding:0 0 4px 8px;">
             <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-              <td style="border-left:3px solid #3b82f6;background-color:#f0f7ff;padding:4px 10px;font-size:13px;color:#555555;line-height:1.6;font-family:'Courier New',Courier,monospace;">${esc(s.context)}</td>
+              <td style="border-left:3px solid #c4c4c4;background-color:#f5f5f5;padding:4px 10px;font-size:13px;color:#666666;line-height:1.6;font-family:'Courier New',Courier,monospace;">${esc(s.context)}</td>
             </tr></table>
           </td></tr>`
         }
@@ -214,13 +239,32 @@ function buildSignals(signals: SignalItem[]): string {
     }).join('\n')
 }
 
+/* ── Briefs (零散快讯) ── */
+function buildBriefs(briefs: BriefItem[]): string {
+  if (!briefs || briefs.length === 0) return ''
+
+  return briefs.slice(0, 10).map(b => {
+    const dateTag = b.date
+      ? `<span style="color:#999999;font-family:'Courier New',Courier,monospace;font-size:11px;">${esc(b.date)}</span>&nbsp;&nbsp;`
+      : ''
+    return `<tr><td style="padding:3px 0 3px 0;font-size:13px;color:#555555;line-height:1.7;">${dateTag}${esc(b.text)}</td></tr>`
+  }).join('\n')
+}
+
 /* ── Main generator ── */
 export function generateEmailHTML(data: EmailData): string {
-  const { weekLabel, marketLine, oneLiner, narratives, signals, stats, weekUrl } = data
+  const { weekLabel, marketLine, oneLiner, narratives, signals, briefs, stats, weekUrl } = data
   const webLink = weekUrl || `${SITE_URL}/weekly/current`
 
   const narrativesHTML = buildNarratives(narratives)
   const signalsHTML = buildSignals(signals)
+  const briefsHTML = buildBriefs(briefs ?? [])
+
+  // CTA text: specific about what's in the full version
+  const remainingCount = stats.factCount - narratives.length - signals.length
+  const ctaText = remainingCount > 5
+    ? `另有 ${remainingCount} 条本周事实 →`
+    : '查看完整版 →'
 
   return `<!DOCTYPE html>
 <html lang="zh-CN" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -266,29 +310,24 @@ export function generateEmailHTML(data: EmailData): string {
         <td style="font-size:11px;font-weight:bold;letter-spacing:3px;color:#ff6d00;">STABLEPULSE</td>
         <td align="right" style="font-size:13px;color:#999999;font-family:'Courier New',Courier,monospace;">${esc(weekLabel)}</td>
       </tr>
-      <tr><td colspan="2" style="padding-top:2px;font-size:11px;color:#999999;letter-spacing:1px;">Weekly Stablecoin Intelligence</td></tr>
     </table>
   </td></tr>
 
-  <!-- Header divider -->
-  <tr><td style="padding:12px 32px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:2px solid #ff6d00;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
+  <!-- Header divider (brand orange) -->
+  <tr><td style="padding:10px 32px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:2px solid #ff6d00;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
 
-  <!-- ━━ Market line + One-liner ━━ -->
-  <tr><td style="padding:20px 32px 16px;">
-    ${marketLine ? `<table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="font-size:14px;color:#666666;font-family:'Courier New',Courier,monospace;line-height:1.6;padding-bottom:10px;">${esc(marketLine)}</td></tr></table>` : ''}
-    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="font-size:16px;font-weight:bold;color:#111111;line-height:1.5;">${esc(oneLiner)}</td></tr></table>
+  <!-- ━━ One-liner (hero) ━━ -->
+  <tr><td style="padding:20px 32px 8px;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="font-size:20px;font-weight:bold;color:#1a1a1a;line-height:1.4;">${esc(oneLiner)}</td></tr></table>
   </td></tr>
 
-  <!-- Divider -->
-  <tr><td style="padding:0 32px;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #eeeeee;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
+  <!-- Market line (data, secondary) -->
+  ${marketLine ? `<tr><td style="padding:0 32px 16px;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="font-size:13px;color:#888888;font-family:'Courier New',Courier,monospace;line-height:1.6;">${esc(marketLine)}</td></tr></table></td></tr>` : ''}
+
+  ${divider()}
 
   <!-- ━━ NARRATIVES ━━ -->
-  <tr><td style="padding:20px 32px 4px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-      <td style="font-size:11px;font-weight:bold;letter-spacing:2px;color:#3b82f6;">NARRATIVES</td>
-      <td align="right" style="font-size:11px;color:#999999;">${narratives.length} 条</td>
-    </tr></table>
-  </td></tr>
+  ${sectionHeader('本周叙事', narratives.length)}
 
   <tr><td style="padding:8px 32px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -296,16 +335,10 @@ export function generateEmailHTML(data: EmailData): string {
     </table>
   </td></tr>
 
-  <!-- Divider -->
-  <tr><td style="padding:4px 32px;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #eeeeee;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
+  ${divider()}
 
   <!-- ━━ SIGNALS ━━ -->
-  <tr><td style="padding:20px 32px 4px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-      <td style="font-size:11px;font-weight:bold;letter-spacing:2px;color:#3b82f6;">SIGNALS</td>
-      <td align="right" style="font-size:11px;color:#999999;">${signals.length} 条</td>
-    </tr></table>
-  </td></tr>
+  ${sectionHeader('信号', signals.length)}
 
   <tr><td style="padding:8px 32px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -313,30 +346,37 @@ export function generateEmailHTML(data: EmailData): string {
     </table>
   </td></tr>
 
-  <!-- ━━ Footer: Stats + CTA ━━ -->
-  <tr><td style="padding:20px 32px 8px;">
+  ${briefsHTML ? `${divider()}
+
+  <!-- ━━ BRIEFS (零散快讯) ━━ -->
+  ${sectionHeader('本周快讯')}
+
+  <tr><td style="padding:8px 32px 0;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      ${briefsHTML}
+    </table>
+  </td></tr>` : ''}
+
+  <!-- ━━ Footer ━━ -->
+  <tr><td style="padding:24px 32px 8px;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #eeeeee;font-size:1px;line-height:1px;">&nbsp;</td></tr></table>
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="padding-top:16px;">
-      <tr><td align="center" style="font-size:13px;color:#999999;padding:4px 0;font-family:'Courier New',Courier,monospace;">
-        ${stats.factCount} 条事实 &middot; ${stats.verifiedCount} 条已验证 &middot; ${stats.sourceCount} 个数据源
-      </td></tr>
-      <tr><td align="center" style="font-size:13px;color:#999999;padding:4px 0;">
-        AI 多源交叉验证 &middot; 人工审核 &middot; 零观点
-      </td></tr>
-      <tr><td align="center" style="padding:12px 0 8px;">
+      <tr><td align="center" style="padding:0 0 12px;">
         <a href="${esc(webLink)}" target="_blank"
-          style="font-size:14px;color:#3b82f6;text-decoration:none;font-weight:bold;">查看完整版 &rarr;</a>
+          style="font-size:14px;color:#ff6d00;text-decoration:none;font-weight:bold;">${esc(ctaText)}</a>
+      </td></tr>
+      <tr><td align="center" style="font-size:13px;color:#999999;padding:4px 0;font-family:'Courier New',Courier,monospace;">
+        基于 ${stats.sourceCount} 个数据源 &middot; ${stats.factCount} 条事实 &middot; AI 交叉验证
       </td></tr>
     </table>
   </td></tr>
 
   <!-- ━━ Brand footer ━━ -->
-  <tr><td style="padding:12px 32px 24px;border-top:1px solid #eeeeee;background-color:#f7f7f7;">
+  <tr><td style="padding:12px 32px 24px;background-color:#f7f7f7;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr><td align="center" style="font-size:11px;color:#999999;letter-spacing:1px;padding:4px 0;">STABLEPULSE</td></tr>
-      <tr><td align="center" style="font-size:13px;color:#999999;padding:2px 0;">AI 生成 &middot; 人工审核 &middot; 内部参考</td></tr>
+      <tr><td align="center" style="font-size:11px;color:#bbbbbb;letter-spacing:2px;padding:4px 0;">STABLEPULSE</td></tr>
       <tr><td align="center" style="padding:4px 0;">
-        <a href="{{unsubscribe_url}}" style="font-size:13px;color:#999999;text-decoration:underline;">退订</a>
+        <a href="{{unsubscribe_url}}" style="font-size:11px;color:#bbbbbb;text-decoration:underline;">退订</a>
       </td></tr>
     </table>
   </td></tr>
