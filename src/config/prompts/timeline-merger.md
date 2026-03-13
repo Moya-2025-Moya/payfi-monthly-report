@@ -78,7 +78,7 @@
   "new_timeline": {
     "name": "Stripe稳定币战略",
     "description": "追踪Stripe在稳定币领域的布局，从收购Bridge到推出USDC结算",
-    "entity_id": "stripe的实体ID"
+    "entity_name": "Stripe"
   },
   "reason": "Stripe宣布USDC直接结算，这是一个新的持续事件，目前没有对应的时间线"
 }

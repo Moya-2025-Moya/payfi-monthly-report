@@ -24,7 +24,7 @@ interface AIResponse {
   new_timeline: {
     name: string
     description: string
-    entity_id: string
+    entity_name: string
   } | null
   reason: string
 }
@@ -203,18 +203,16 @@ async function createTimelineAndAssign(
   aiTimeline: NonNullable<AIResponse['new_timeline']>,
   factId: string
 ): Promise<string> {
-  // Resolve entity_id: AI may return a name rather than a UUID — normalize
-  let entityId: string | null = aiTimeline.entity_id || null
+  // Resolve entity_name to entity_id UUID
+  let entityId: string | null = null
+  const entityName = aiTimeline.entity_name || null
 
-  // If it looks like a name (not a UUID), try to resolve it
-  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  if (entityId && !uuidPattern.test(entityId)) {
-    const resolved = await lookupEntityIdByName(entityId)
+  if (entityName) {
+    const resolved = await lookupEntityIdByName(entityName)
     if (resolved) {
       entityId = resolved
     } else {
-      console.warn(`[B3] Could not resolve entity name "${entityId}" — creating timeline without entity_id`)
-      entityId = null
+      console.warn(`[B3] Could not resolve entity name "${entityName}" — creating timeline without entity_id`)
     }
   }
 

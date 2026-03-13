@@ -36,10 +36,10 @@
 3. 注意常见的别名（USDC → Circle, USDT → Tether, DAI → MakerDAO）
 
 匹配规则：
-- "USDC" → 匹配 "Circle"（因为 USDC 是 Circle 的别名）
-- "PYUSD" → 匹配 "PayPal (PYUSD)"
-- "the SEC" → 匹配 "SEC"
-- "Coinbase" → 匹配 "Coinbase"
+- 优先使用已知实体列表中的别名进行匹配（如列表中 Circle 的别名包含 USDC，则 "USDC" 匹配到 "Circle"）
+- 别名映射以 `{known_entities}` 中的数据为准，不要依赖自身知识
+- 忽略大小写差异（"the SEC" → "SEC"）
+- 常见简写匹配全名（"Coinbase" → 列表中的 "Coinbase"）
 
 ## Step 4: 处理新实体
 

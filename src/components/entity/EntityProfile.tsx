@@ -135,10 +135,12 @@ export function EntityProfile({
   entity,
   facts,
   relationships = [],
+  coAppearingEntities = [],
 }: {
   entity: Entity
   facts: AtomicFact[]
   relationships?: EntityRelationship[]
+  coAppearingEntities?: { name: string; count: number; id: string }[]
 }) {
   const desc = entity.description_zh || entity.description_en
 
@@ -314,7 +316,7 @@ export function EntityProfile({
         </div>
       )}
 
-      {/* ═══ Section 6: 关联实体 ═══ */}
+      {/* ═══ Section 6: 关联实体 (DB relationships) ═══ */}
       {relationships.length > 0 && (
         <div>
           <SectionLabel count={relationships.length}>关联实体</SectionLabel>
@@ -334,6 +336,31 @@ export function EntityProfile({
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Section 7: 共现实体 (co-appearing in facts) ═══ */}
+      {coAppearingEntities.length > 0 && (
+        <div>
+          <SectionLabel count={coAppearingEntities.length}>共现实体</SectionLabel>
+          <div className="flex flex-wrap gap-2">
+            {coAppearingEntities.map(ce => (
+              <a
+                key={ce.id}
+                href={`/entities/${ce.id}`}
+                className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors hover:brightness-95"
+                style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+              >
+                <span className="text-[12px] font-medium" style={{ color: 'var(--fg-title)' }}>
+                  {ce.name}
+                </span>
+                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded"
+                  style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
+                  {ce.count} 条共现
+                </span>
+              </a>
+            ))}
           </div>
         </div>
       )}

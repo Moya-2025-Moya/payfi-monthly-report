@@ -13,6 +13,7 @@ import { validateNumericalSanity } from '@/modules/ai-agents/validators/numerica
 import { validateOnchainAnchor } from '@/modules/ai-agents/validators/onchain-anchor'
 import { validateTemporalConsistency } from '@/modules/ai-agents/validators/temporal-consistency'
 import { adjudicate, summarizeVerdicts } from '@/modules/ai-agents/validators/adjudicator'
+import { getVerifiersForFact } from '@/config/verification-strategy'
 
 import { resolveEntitiesBatch } from '@/modules/ai-agents/entity-resolver'
 import { mergeTimelinesBatch } from '@/modules/ai-agents/timeline-merger'
@@ -138,57 +139,58 @@ interface ValidationResult {
   factId: string
   verdict: Verdict
   v1: V1Result
-  v2: V2Result
-  v3: V3Result
-  v4: V4Result
-  v5: V5Result
+  v2: V2Result | null
+  v3: V3Result | null
+  v4: V4Result | null
+  v5: V5Result | null
 }
 
 async function validateFact(fact: AtomicFact): Promise<ValidationResult> {
+  // Decision #14: 按事实类型选择需要运行的验证器
+  const activeVerifiers = getVerifiersForFact(fact.fact_type)
+
   const [r1, r2, r3, r4, r5] = await Promise.allSettled([
     validateSourceTraceback(fact),
-    validateCrossSource(fact),
-    validateNumericalSanity(fact),
-    validateOnchainAnchor(fact),
-    validateTemporalConsistency(fact),
+    activeVerifiers.has('v2') ? validateCrossSource(fact) : Promise.resolve(null),
+    activeVerifiers.has('v3') ? validateNumericalSanity(fact) : Promise.resolve(null),
+    activeVerifiers.has('v4') ? validateOnchainAnchor(fact) : Promise.resolve(null),
+    activeVerifiers.has('v5') ? validateTemporalConsistency(fact) : Promise.resolve(null),
   ])
 
-  // Provide safe fallbacks for any rejected promises
+  // Provide safe fallbacks for any rejected promises; null = verifier not run
   const v1: V1Result = r1.status === 'fulfilled'
     ? r1.value
     : { status: 'source_unavailable', evidence_quote: null, match_score: 0 }
 
-  const v2: V2Result = r2.status === 'fulfilled'
+  const v2: V2Result | null = r2.status === 'fulfilled'
     ? r2.value
-    : {
-        source_count: 1,
-        consistent_count: 1,
-        cross_validation: 'single_source',
-        is_minority: false,
-        majority_value: null,
-        independent_sources: false,
-        source_urls: [],
-        source_independence_note: null,
-        details: null,
-      }
+    : (activeVerifiers.has('v2')
+        ? { source_count: 1, consistent_count: 1, cross_validation: 'single_source' as const, is_minority: false, majority_value: null, independent_sources: false, source_urls: [], source_independence_note: null, details: null }
+        : null)
 
-  const v3: V3Result = r3.status === 'fulfilled'
+  const v3: V3Result | null = r3.status === 'fulfilled'
     ? r3.value
-    : { sanity: 'not_applicable', reason: null, historical_reference: null }
+    : (activeVerifiers.has('v3')
+        ? { sanity: 'not_applicable' as const, reason: null, historical_reference: null }
+        : null)
 
-  const v4: V4Result = r4.status === 'fulfilled'
+  const v4: V4Result | null = r4.status === 'fulfilled'
     ? r4.value
-    : { anchor_status: 'not_applicable', claimed_value: null, actual_value: null, deviation_pct: null }
+    : (activeVerifiers.has('v4')
+        ? { anchor_status: 'not_applicable' as const, claimed_value: null, actual_value: null, deviation_pct: null }
+        : null)
 
-  const v5: V5Result = r5.status === 'fulfilled'
+  const v5: V5Result | null = r5.status === 'fulfilled'
     ? r5.value
-    : { temporal_status: 'unchecked', conflict_detail: null }
+    : (activeVerifiers.has('v5')
+        ? { temporal_status: 'unchecked' as const, conflict_detail: null }
+        : null)
 
   if (r1.status === 'rejected') console.warn(`[B6] V1 failed for ${fact.id}:`, r1.reason)
-  if (r2.status === 'rejected') console.warn(`[B6] V2 failed for ${fact.id}:`, r2.reason)
-  if (r3.status === 'rejected') console.warn(`[B6] V3 failed for ${fact.id}:`, r3.reason)
-  if (r4.status === 'rejected') console.warn(`[B6] V4 failed for ${fact.id}:`, r4.reason)
-  if (r5.status === 'rejected') console.warn(`[B6] V5 failed for ${fact.id}:`, r5.reason)
+  if (activeVerifiers.has('v2') && r2.status === 'rejected') console.warn(`[B6] V2 failed for ${fact.id}:`, r2.reason)
+  if (activeVerifiers.has('v3') && r3.status === 'rejected') console.warn(`[B6] V3 failed for ${fact.id}:`, r3.reason)
+  if (activeVerifiers.has('v4') && r4.status === 'rejected') console.warn(`[B6] V4 failed for ${fact.id}:`, r4.reason)
+  if (activeVerifiers.has('v5') && r5.status === 'rejected') console.warn(`[B6] V5 failed for ${fact.id}:`, r5.reason)
 
   const verdict = adjudicate({ v1, v2, v3, v4, v5 })
 
@@ -288,26 +290,26 @@ async function runValidationPhase(): Promise<ValidationPhaseResult> {
         case 'source_unavailable': v1Unavailable++; break
       }
 
-      switch (r.v2.cross_validation) {
+      if (r.v2) switch (r.v2.cross_validation) {
         case 'consistent':
         case 'partially_consistent': v2Consistent++; break
         case 'inconsistent': v2Inconsistent++; break
         case 'single_source': v2SingleSource++; break
       }
 
-      switch (r.v3.sanity) {
+      if (r.v3) switch (r.v3.sanity) {
         case 'normal': v3Normal++; break
         case 'anomaly': v3Anomaly++; break
         case 'likely_error': v3LikelyError++; break
       }
 
-      switch (r.v4.anchor_status) {
+      if (r.v4) switch (r.v4.anchor_status) {
         case 'anchored': v4Anchored++; break
         case 'deviation': v4Deviation++; break
         case 'mismatch': v4Mismatch++; break
       }
 
-      switch (r.v5.temporal_status) {
+      if (r.v5) switch (r.v5.temporal_status) {
         case 'consistent': v5Consistent++; break
         case 'conflict': v5Conflict++; break
       }

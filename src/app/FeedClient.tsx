@@ -1,6 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { useState } from 'react'
 import { AggregateView } from '@/components/feed/AggregateView'
 import { WeeklySummary } from '@/components/feed/WeeklySummary'
 import type { AtomicFact } from '@/lib/types'
@@ -39,6 +38,15 @@ interface StoredNarrative {
   edges: { id: string; source: string; target: string; label?: string }[]
 }
 
+interface BreakingAlert {
+  title: string
+  summary: string
+  source_url: string
+  urgency: 'breaking' | 'important'
+  detected_at: string
+  source_name: string
+}
+
 interface Props {
   facts: AtomicFact[]
   currentWeek: string
@@ -47,9 +55,10 @@ interface Props {
   summarySimple: string | null
   summaryDetailed: string | null
   marketMetrics?: MarketMetric[]
+  breakingAlerts?: BreakingAlert[]
 }
 
-/* ── Market Overview (replaces DashboardStats) ── */
+/* ── Helper ── */
 function formatMarketCap(value: number): string {
   if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`
   if (value >= 1e9) return `$${(value / 1e9).toFixed(1)}B`
@@ -57,242 +66,175 @@ function formatMarketCap(value: number): string {
   return `$${value.toLocaleString()}`
 }
 
-function MarketOverview({ metrics, factCount, stats }: { metrics?: MarketMetric[]; factCount: number; stats: SnapshotStats | null }) {
-  const getMetric = (symbol: string, name: string) => {
-    if (!metrics) return null
-    return metrics.find(m => m.coin_symbol.toUpperCase() === symbol && m.metric_name === name)
-  }
+/* ── Compact stats bar (replaces old 4-card grid) ── */
+function StatsBar({ metrics, factCount, stats }: { metrics?: MarketMetric[]; factCount: number; stats: SnapshotStats | null }) {
+  const getMetric = (symbol: string) => metrics?.find(m => m.coin_symbol.toUpperCase() === symbol && m.metric_name === 'market_cap')
 
-  const usdtCap = getMetric('USDT', 'market_cap')
-  const usdcCap = getMetric('USDC', 'market_cap')
-  const daiCap = getMetric('DAI', 'market_cap')
-
-  const cards: { label: string; value: string; sub?: string }[] = []
-
-  if (usdtCap) cards.push({ label: 'USDT', value: formatMarketCap(usdtCap.metric_value), sub: '市值' })
-  if (usdcCap) cards.push({ label: 'USDC', value: formatMarketCap(usdcCap.metric_value), sub: '市值' })
-  if (daiCap) cards.push({ label: 'DAI', value: formatMarketCap(daiCap.metric_value), sub: '市值' })
-
-  // Always show fact count
-  const s = stats
-  cards.push({ label: '本周事实', value: String(factCount), sub: s ? `${s.high_confidence} 高可信` : undefined })
-
-  // Limit to 4
-  const displayCards = cards.slice(0, 4)
+  const parts: string[] = []
+  const usdt = getMetric('USDT')
+  const usdc = getMetric('USDC')
+  if (usdt) parts.push(`USDT ${formatMarketCap(usdt.metric_value)}`)
+  if (usdc) parts.push(`USDC ${formatMarketCap(usdc.metric_value)}`)
+  parts.push(`${factCount} 条事实`)
+  if (stats) parts.push(`${stats.high_confidence} 高可信`)
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-      {displayCards.map(c => (
-        <div key={c.label} className="rounded-lg border px-4 py-3"
-          style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          <p className="text-[11px] tracking-wider uppercase mb-1" style={{ color: 'var(--fg-muted)' }}>{c.label}</p>
-          <p className="text-[20px] font-semibold font-mono" style={{ color: 'var(--fg-title)' }}>
-            {c.value}
-          </p>
-          {c.sub && <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{c.sub}</p>}
-        </div>
+    <div className="flex items-center gap-3 flex-wrap mb-6 px-1">
+      {parts.map((p, i) => (
+        <span key={i} className="text-[12px] font-mono" style={{ color: 'var(--fg-muted)' }}>
+          {i > 0 && <span className="mr-3" style={{ color: 'var(--border)' }}>·</span>}
+          {p}
+        </span>
       ))}
     </div>
   )
 }
 
-/* ── Dashboard Charts ── */
-const FACT_TYPE_COLORS: Record<string, string> = {
-  event: '#3b82f6',
-  metric: '#10b981',
-  quote: '#8b5cf6',
-  relationship: '#f59e0b',
-  status_change: '#ef4444',
+/* ── AI-generated narrative summary (from new pipeline format) ── */
+interface AINarrative {
+  topic: string
+  last_week: string
+  this_week: string
+  next_week_watch: string
+  facts?: { content: string; date: string; tags?: string[] }[]
 }
 
-const FACT_TYPE_LABELS: Record<string, string> = {
-  event: '事件',
-  metric: '指标',
-  quote: '引用',
-  relationship: '关系',
-  status_change: '状态变更',
-}
+/* ── Narrative Section — the hero of the homepage ── */
+function NarrativeSection({ narratives, summaryDetailed }: { narratives: StoredNarrative[]; summaryDetailed: string | null }) {
+  // Parse AI-generated narratives from new format
+  let aiNarratives: AINarrative[] = []
+  if (summaryDetailed) {
+    try {
+      const parsed = JSON.parse(summaryDetailed)
+      if (parsed.narratives && Array.isArray(parsed.narratives)) {
+        aiNarratives = parsed.narratives
+      }
+    } catch { /* ignore */ }
+  }
 
-const OBJECTIVITY_COLORS: Record<string, string> = {
-  fact: '#10b981',
-  opinion: '#8b5cf6',
-  analysis: '#3b82f6',
-}
+  // Use AI narratives if available, fall back to stored narratives
+  const hasAINarratives = aiNarratives.length > 0
+  const hasStoredNarratives = narratives.length > 0
 
-const OBJECTIVITY_LABELS: Record<string, string> = {
-  fact: '事实',
-  opinion: '观点',
-  analysis: '分析',
-}
-
-function DashboardCharts({ facts }: { facts: AtomicFact[] }) {
-  const barData = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const f of facts) {
-      const t = f.fact_type ?? 'event'
-      counts.set(t, (counts.get(t) ?? 0) + 1)
-    }
-    return ['event', 'metric', 'quote', 'relationship', 'status_change']
-      .map(key => ({ name: FACT_TYPE_LABELS[key] ?? key, value: counts.get(key) ?? 0, fill: FACT_TYPE_COLORS[key] ?? '#6b7280' }))
-      .filter(d => d.value > 0)
-  }, [facts])
-
-  const pieData = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const f of facts) {
-      const o = f.objectivity ?? 'fact'
-      counts.set(o, (counts.get(o) ?? 0) + 1)
-    }
-    return ['fact', 'opinion', 'analysis']
-      .map(key => ({ name: OBJECTIVITY_LABELS[key] ?? key, value: counts.get(key) ?? 0, color: OBJECTIVITY_COLORS[key] ?? '#6b7280' }))
-      .filter(d => d.value > 0)
-  }, [facts])
-
-  if (facts.length === 0) return null
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-      {/* Fact type distribution bar chart */}
-      <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>事实类型分布</p>
-        <ResponsiveContainer width="100%" height={120}>
-          <BarChart data={barData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--fg-muted)' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: 'var(--fg-muted)' }} axisLine={false} tickLine={false} allowDecimals={false} />
-            <Tooltip
-              contentStyle={{ fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6 }}
-              labelStyle={{ color: 'var(--fg-title)' }}
-              cursor={{ fill: 'var(--surface-alt)' }}
-            />
-            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-              {barData.map((entry, i) => (
-                <Cell key={i} fill={entry.fill} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Objectivity breakdown pie chart */}
-      <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-        <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>客观性分布</p>
-        <div className="flex items-center gap-4">
-          <ResponsiveContainer width="50%" height={120}>
-            <PieChart>
-              <Pie
-                data={pieData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                innerRadius={28}
-                outerRadius={48}
-                paddingAngle={2}
-                strokeWidth={0}
-              >
-                {pieData.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{ fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6 }}
-                labelStyle={{ color: 'var(--fg-title)' }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex flex-col gap-1.5">
-            {pieData.map(d => (
-              <div key={d.name} className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} />
-                <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
-                  {d.name} <span className="font-mono font-medium" style={{ color: 'var(--fg-title)' }}>{d.value}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ── Narrative Preview (Q12) ── */
-function NarrativePreview({ narratives }: { narratives: StoredNarrative[] }) {
-  const [activeIdx, setActiveIdx] = useState(0)
-
-  if (narratives.length === 0) return null
-
-  const active = narratives[activeIdx]
-  // Show only high/medium significance nodes, limit to 5
-  const keyNodes = active.nodes
-    .filter(n => !n.isPrediction && !n.isExternal)
-    .sort((a, b) => {
-      const sigOrder = { high: 0, medium: 1, low: 2 }
-      return (sigOrder[a.significance] ?? 2) - (sigOrder[b.significance] ?? 2)
-    })
-    .slice(0, 5)
+  if (!hasAINarratives && !hasStoredNarratives) return null
 
   const SIG_DOT: Record<string, string> = {
     high: '#ef4444', medium: '#f59e0b', low: 'var(--fg-muted)',
   }
 
   return (
-    <div className="mb-6 rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-        <p className="text-[11px] font-medium tracking-wider uppercase" style={{ color: 'var(--fg-muted)' }}>
-          叙事时间线
-        </p>
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-[11px] font-medium tracking-wider uppercase" style={{ color: '#3b82f6' }}>
+          叙事追踪
+        </h2>
         <a href="/narratives" className="text-[11px] hover:underline" style={{ color: 'var(--accent)' }}>
           查看全部 →
         </a>
       </div>
 
-      {/* Topic tabs if multiple */}
-      {narratives.length > 1 && (
-        <div className="flex gap-1.5 px-4 pt-3 overflow-x-auto">
-          {narratives.map((n, i) => (
-            <button key={i} onClick={() => setActiveIdx(i)}
-              className="shrink-0 px-3 py-1 rounded-full text-[11px] font-medium transition-colors border"
-              style={{
-                background: activeIdx === i ? 'var(--accent-soft)' : 'transparent',
-                borderColor: activeIdx === i ? 'var(--accent-muted)' : 'var(--border)',
-                color: activeIdx === i ? 'var(--accent)' : 'var(--fg-muted)',
-              }}>
-              {n.topic}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="space-y-4">
+        {/* AI-generated narratives (new format) */}
+        {hasAINarratives && aiNarratives.slice(0, 3).map((n, idx) => (
+          <div key={`ai-${idx}`} className="rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            <div className="px-4 py-3">
+              <h3 className="text-[14px] font-semibold mb-2" style={{ color: 'var(--fg-title)' }}>
+                {n.topic}
+              </h3>
 
-      {/* Summary + key nodes */}
-      <div className="px-4 py-3">
-        {active.summary && (
-          <p className="text-[13px] leading-relaxed mb-3" style={{ color: 'var(--fg-secondary)' }}>
-            {active.summary}
-          </p>
-        )}
+              {/* Last week → This week progression */}
+              {n.last_week && n.last_week !== '首次追踪' && (
+                <p className="text-[12px] leading-relaxed mb-1 pl-3 border-l-2" style={{ color: 'var(--fg-muted)', borderColor: 'var(--border)' }}>
+                  上周: {n.last_week}
+                </p>
+              )}
+              <p className="text-[13px] leading-relaxed mb-2" style={{ color: 'var(--fg-secondary)' }}>
+                {n.this_week}
+              </p>
 
-        {keyNodes.length > 0 && (
-          <div className="relative pl-5">
-            {/* Timeline line */}
-            <div className="absolute left-[7px] top-1 bottom-1 w-px" style={{ background: 'var(--border)' }} />
-            <div className="space-y-2">
-              {keyNodes.map(node => (
-                <div key={node.id} className="relative flex items-start gap-2">
-                  {/* Dot */}
-                  <div className="absolute -left-5 top-1.5 w-[14px] flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full" style={{ background: SIG_DOT[node.significance] ?? 'var(--fg-muted)' }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[11px] font-mono mr-2" style={{ color: 'var(--fg-muted)' }}>{node.date}</span>
-                    <span className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{node.title}</span>
+              {/* Grouped facts under this narrative */}
+              {n.facts && n.facts.length > 0 && (
+                <div className="relative pl-5 mb-2">
+                  <div className="absolute left-[7px] top-1 bottom-1 w-px" style={{ background: 'var(--border)' }} />
+                  <div className="space-y-2">
+                    {n.facts.map((f, fi) => (
+                      <div key={fi} className="relative flex items-start gap-2">
+                        <div className="absolute -left-5 top-1.5 w-[14px] flex items-center justify-center">
+                          <div className="w-2 h-2 rounded-full" style={{ background: '#10b981' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[11px] font-mono mr-2" style={{ color: 'var(--fg-muted)' }}>{f.date}</span>
+                          <span className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{f.content}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* Next week watch */}
+              {n.next_week_watch && (
+                <div className="mt-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                  <p className="text-[11px] font-medium" style={{ color: '#f59e0b' }}>
+                    → 下周关注: <span style={{ color: 'var(--fg-muted)' }}>{n.next_week_watch}</span>
+                  </p>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        ))}
+
+        {/* Stored narratives (fallback for weeks without AI narratives) */}
+        {!hasAINarratives && narratives.slice(0, 3).map((narrative, idx) => {
+          const factNodes = narrative.nodes
+            .filter(n => !n.isPrediction && !n.isExternal)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 4)
+          const predictions = narrative.nodes.filter(n => n.isPrediction).slice(0, 2)
+
+          return (
+            <div key={idx} className="rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+              <div className="px-4 py-3">
+                <h3 className="text-[14px] font-semibold mb-2" style={{ color: 'var(--fg-title)' }}>
+                  {narrative.topic}
+                </h3>
+                {narrative.summary && (
+                  <p className="text-[13px] leading-relaxed mb-3" style={{ color: 'var(--fg-secondary)' }}>
+                    {narrative.summary}
+                  </p>
+                )}
+                {factNodes.length > 0 && (
+                  <div className="relative pl-5 mb-2">
+                    <div className="absolute left-[7px] top-1 bottom-1 w-px" style={{ background: 'var(--border)' }} />
+                    <div className="space-y-2">
+                      {factNodes.map(node => (
+                        <div key={node.id} className="relative flex items-start gap-2">
+                          <div className="absolute -left-5 top-1.5 w-[14px] flex items-center justify-center">
+                            <div className="w-2 h-2 rounded-full" style={{ background: SIG_DOT[node.significance] ?? 'var(--fg-muted)' }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[11px] font-mono mr-2" style={{ color: 'var(--fg-muted)' }}>{node.date}</span>
+                            <span className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{node.title}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {predictions.length > 0 && (
+                  <div className="mt-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                    <p className="text-[11px] font-medium mb-1" style={{ color: '#f59e0b' }}>→ 下周关注</p>
+                    {predictions.map(p => (
+                      <p key={p.id} className="text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+                        {p.title}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -300,7 +242,7 @@ function NarrativePreview({ narratives }: { narratives: StoredNarrative[] }) {
 
 /* ── Fact Section: show first 10 + load more ── */
 function FactSection({ facts }: { facts: AtomicFact[] }) {
-  const [showCount, setShowCount] = useState(10)
+  const [showCount, setShowCount] = useState(20)
 
   if (facts.length === 0) {
     return (
@@ -315,11 +257,10 @@ function FactSection({ facts }: { facts: AtomicFact[] }) {
 
   return (
     <div>
-      {/* Section header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <h2 className="text-[14px] font-medium" style={{ color: 'var(--fg-title)' }}>
-            事实流
+          <h2 className="text-[11px] font-medium tracking-wider uppercase" style={{ color: 'var(--fg-muted)' }}>
+            全部事实
           </h2>
           <span className="text-[11px] font-mono px-1.5 py-0.5 rounded"
             style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
@@ -343,25 +284,74 @@ function FactSection({ facts }: { facts: AtomicFact[] }) {
   )
 }
 
+/* ── Breaking Alerts (速报) — only visible when alerts exist ── */
+function BreakingAlertsBar({ alerts }: { alerts: BreakingAlert[] }) {
+  if (alerts.length === 0) return null
+
+  // Show breaking first, then important, max 5
+  const sorted = [...alerts].sort((a, b) => {
+    if (a.urgency === 'breaking' && b.urgency !== 'breaking') return -1
+    if (a.urgency !== 'breaking' && b.urgency === 'breaking') return 1
+    return new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime()
+  }).slice(0, 5)
+
+  return (
+    <div className="mb-4 rounded-lg border" style={{ borderColor: '#ef444440', background: '#ef444408' }}>
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="inline-block w-2 h-2 rounded-full animate-pulse" style={{ background: '#ef4444' }} />
+          <span className="text-[11px] font-semibold tracking-wider uppercase" style={{ color: '#ef4444' }}>
+            速报
+          </span>
+        </div>
+        <div className="space-y-1.5">
+          {sorted.map((alert, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="shrink-0 mt-0.5 text-[10px] font-mono px-1 rounded"
+                style={{
+                  background: alert.urgency === 'breaking' ? '#ef444420' : '#f59e0b20',
+                  color: alert.urgency === 'breaking' ? '#ef4444' : '#f59e0b',
+                }}>
+                {alert.urgency === 'breaking' ? 'BREAKING' : 'IMPORTANT'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <a href={alert.source_url} target="_blank" rel="noopener noreferrer"
+                  className="text-[13px] hover:underline" style={{ color: 'var(--fg-body)' }}>
+                  {alert.title}
+                </a>
+                <span className="text-[11px] ml-2" style={{ color: 'var(--fg-muted)' }}>
+                  {alert.source_name}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Main Homepage Client ── */
-export function FeedClient({ facts, currentWeek, stats, narratives, summarySimple, summaryDetailed, marketMetrics }: Props) {
+export function FeedClient({ facts, currentWeek, stats, narratives, summarySimple, summaryDetailed, marketMetrics, breakingAlerts }: Props) {
   return (
     <div>
-      {/* Market overview */}
-      <MarketOverview metrics={marketMetrics} factCount={facts.length} stats={stats} />
+      {/* Breaking alerts (速报) — above everything, only shown when alerts exist */}
+      <BreakingAlertsBar alerts={breakingAlerts ?? []} />
 
-      {/* Dashboard charts */}
-      <DashboardCharts facts={facts} />
+      {/* Compact stats bar */}
+      <StatsBar metrics={marketMetrics} factCount={facts.length} stats={stats} />
 
-      {/* Weekly summary (Q7) */}
+      {/* Section 1: Narrative tracking — hero of the homepage */}
+      <NarrativeSection narratives={narratives} summaryDetailed={summaryDetailed} />
+
+      {/* Section 2: Weekly news summary (10 items) */}
       {summarySimple && (
-        <WeeklySummary simple={summarySimple} detailed={summaryDetailed} weekNumber={currentWeek} />
+        <div className="mb-8">
+          <WeeklySummary simple={summarySimple} detailed={summaryDetailed} weekNumber={currentWeek} />
+        </div>
       )}
 
-      {/* Narrative preview (Q12) */}
-      <NarrativePreview narratives={narratives} />
-
-      {/* Facts (Q9/Q10) */}
+      {/* Section 3: Full fact stream */}
       <FactSection facts={facts} />
     </div>
   )

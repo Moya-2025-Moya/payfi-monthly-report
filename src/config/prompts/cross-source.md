@@ -71,6 +71,12 @@
 | `consistent` | 所有核心要素（WHO + WHAT）一致，数字差异在5%以内，状态描述兼容 |
 | `partially_consistent` | 核心事件一致，但部分细节有出入（如金额有差异、时间描述不同、状态表述有差别） |
 | `inconsistent` | 核心事件描述存在矛盾（如一个说已发生、另一个说未发生；一个说合作、另一个说竞争） |
+| `single_source` | 所有来源实质上不独立（转载/同源），无法进行有效交叉验证 |
+
+**3+ 来源的判定规则**：
+- 所有来源一致 → `consistent`
+- 多数来源一致，少数有细节偏差 → `partially_consistent`，在 `inconsistent_points` 中列出偏差来源
+- 来源之间存在核心矛盾（无论多少方） → `inconsistent`
 
 ## Step 5: 列出一致点和不一致点
 

@@ -14,6 +14,7 @@ import { validateNumericalSanity } from '@/modules/ai-agents/validators/numerica
 import { validateOnchainAnchor } from '@/modules/ai-agents/validators/onchain-anchor'
 import { validateTemporalConsistency } from '@/modules/ai-agents/validators/temporal-consistency'
 import { adjudicate } from '@/modules/ai-agents/validators/adjudicator'
+import { getVerifiersForFact } from '@/config/verification-strategy'
 
 import { createPipelineLogger, PipelineCancelledError } from '@/lib/pipeline-logger'
 import type { AtomicFact } from '@/lib/types'
@@ -146,19 +147,23 @@ export async function GET(request: Request) {
             logger.log(`  验证: ${Math.min(i + BATCH, facts.length)}/${facts.length}`, 'progress')
 
             const results = await Promise.allSettled(batch.map(async (fact) => {
+              // Decision #14: 按事实类型选择需要运行的验证器
+              const activeVerifiers = getVerifiersForFact(fact.fact_type)
+
+              // V1 (source traceback) always runs via strategy; run only selected verifiers
               const [r1, r2, r3, r4, r5] = await Promise.allSettled([
                 validateSourceTraceback(fact),
-                validateCrossSource(fact),
-                validateNumericalSanity(fact),
-                validateOnchainAnchor(fact),
-                validateTemporalConsistency(fact),
+                activeVerifiers.has('v2') ? validateCrossSource(fact) : Promise.resolve(null),
+                activeVerifiers.has('v3') ? validateNumericalSanity(fact) : Promise.resolve(null),
+                activeVerifiers.has('v4') ? validateOnchainAnchor(fact) : Promise.resolve(null),
+                activeVerifiers.has('v5') ? validateTemporalConsistency(fact) : Promise.resolve(null),
               ])
 
               const v1 = r1.status === 'fulfilled' ? r1.value : { status: 'source_unavailable' as const, evidence_quote: null, match_score: 0 }
-              const v2 = r2.status === 'fulfilled' ? r2.value : { source_count: 1, consistent_count: 1, cross_validation: 'single_source' as const, is_minority: false, majority_value: null, independent_sources: false, source_urls: [], source_independence_note: null, details: null }
-              const v3 = r3.status === 'fulfilled' ? r3.value : { sanity: 'not_applicable' as const, reason: null, historical_reference: null }
-              const v4 = r4.status === 'fulfilled' ? r4.value : { anchor_status: 'not_applicable' as const, claimed_value: null, actual_value: null, deviation_pct: null }
-              const v5 = r5.status === 'fulfilled' ? r5.value : { temporal_status: 'unchecked' as const, conflict_detail: null }
+              const v2 = r2.status === 'fulfilled' ? r2.value : (activeVerifiers.has('v2') ? { source_count: 1, consistent_count: 1, cross_validation: 'single_source' as const, is_minority: false, majority_value: null, independent_sources: false, source_urls: [], source_independence_note: null, details: null } : null)
+              const v3 = r3.status === 'fulfilled' ? r3.value : (activeVerifiers.has('v3') ? { sanity: 'not_applicable' as const, reason: null, historical_reference: null } : null)
+              const v4 = r4.status === 'fulfilled' ? r4.value : (activeVerifiers.has('v4') ? { anchor_status: 'not_applicable' as const, claimed_value: null, actual_value: null, deviation_pct: null } : null)
+              const v5 = r5.status === 'fulfilled' ? r5.value : (activeVerifiers.has('v5') ? { temporal_status: 'unchecked' as const, conflict_detail: null } : null)
 
               const verdict = adjudicate({ v1, v2, v3, v4, v5 })
 

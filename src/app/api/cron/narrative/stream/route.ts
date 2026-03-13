@@ -25,6 +25,18 @@ interface NarrativeTopic {
   label: string
   query: string
   key_entities: string[]
+  continued_thread_id?: string   // if continuing an existing narrative_thread
+  previous_summary?: string      // previous week's summary for context
+}
+
+interface ActiveThread {
+  id: string
+  topic: string
+  slug: string
+  total_weeks: number
+  key_entities: string[]
+  latestSummary: string
+  latestNextWeekWatch: string | null
 }
 
 interface NarrativeNode {
@@ -98,6 +110,40 @@ async function getFactsByQuery(query: string, keywords: string[]): Promise<Atomi
 
 // ─── Step 1: Discover Top 3 topics ───
 
+async function fetchActiveThreads(): Promise<ActiveThread[]> {
+  const { data: threads } = await supabaseAdmin
+    .from('narrative_threads')
+    .select('id, topic, slug, total_weeks, key_entities')
+    .eq('status', 'active')
+    .order('last_updated_week', { ascending: false })
+    .limit(10)
+
+  if (!threads || threads.length === 0) return []
+
+  const activeThreads: ActiveThread[] = []
+  for (const t of threads) {
+    // Fetch the latest entry for this thread
+    const { data: entry } = await supabaseAdmin
+      .from('narrative_thread_entries')
+      .select('summary, next_week_watch')
+      .eq('thread_id', t.id)
+      .order('week_number', { ascending: false })
+      .limit(1)
+      .single()
+
+    activeThreads.push({
+      id: t.id,
+      topic: t.topic,
+      slug: t.slug,
+      total_weeks: t.total_weeks,
+      key_entities: t.key_entities ?? [],
+      latestSummary: entry?.summary ?? '',
+      latestNextWeekWatch: entry?.next_week_watch ?? null,
+    })
+  }
+  return activeThreads
+}
+
 async function discoverTopics(weekNumber: string): Promise<NarrativeTopic[]> {
   const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
   const { data: facts } = await supabaseAdmin
@@ -113,31 +159,82 @@ async function discoverTopics(weekNumber: string): Promise<NarrativeTopic[]> {
   const factsText = facts.map((f: Record<string, unknown>, i: number) => {
     const content = (f.content_zh || f.content_en || '') as string
     const tags = (f.tags as string[])?.join(', ') ?? ''
-    return `[${i}] ${content.slice(0, 100)} | tags: ${tags}`
+    return `[${i}] ${content.slice(0, 200)} | tags: ${tags}`
   }).join('\n')
 
-  return callHaikuJSON<NarrativeTopic[]>(
-    `你是稳定币行业分析师。从以下 ${facts.length} 条最近事实中，识别最重要的 3 个叙事主线。
+  // Fetch active threads for incremental continuity
+  const activeThreads = await fetchActiveThreads()
+
+  const activeThreadsSection = activeThreads.length > 0
+    ? `## 当前活跃叙事线索（优先延续）
+${activeThreads.map(t => `- 「${t.topic}」(已追踪 ${t.total_weeks} 周，ID: ${t.id}): ${t.latestSummary.slice(0, 150)}${t.latestNextWeekWatch ? `\n  下周关注: ${t.latestNextWeekWatch}` : ''}`).join('\n')}
+
+`
+    : ''
+
+  const continuityInstruction = activeThreads.length > 0
+    ? `5. 优先延续上面的活跃叙事线索（如果有新事实支持），也可以引入新线索替换不再活跃的
+6. 对于延续的线索，continued_thread_id 必须填写对应的 ID；新线索留空`
+    : ''
+
+  const jsonExample = activeThreads.length > 0
+    ? `[
+  {
+    "label": "叙事标题（中文）",
+    "query": "用于检索事实的关键词（可中可英）",
+    "key_entities": ["实体1", "实体2"],
+    "continued_thread_id": "填写已有线索ID（如延续），或空字符串（如新线索）"
+  }
+]`
+    : `[
+  {
+    "label": "叙事标题（中文）",
+    "query": "用于检索事实的关键词（可中可英）",
+    "key_entities": ["实体1", "实体2"]
+  }
+]`
+
+  const rawTopics = await callHaikuJSON<Array<{
+    label: string
+    query: string
+    key_entities: string[]
+    continued_thread_id?: string
+  }>>(
+    `你是稳定币行业分析师。以下是本周的事实列表${activeThreads.length > 0 ? '和当前活跃的叙事线索' : ''}。
+
+${activeThreadsSection}## 本周事实列表（共 ${facts.length} 条）
+${factsText}
+
+任务：选择 3 个本周最重要的叙事。
 
 要求：
 1. 恰好 3 个，按重要性排序
 2. 每个叙事要有足够的事实密度（至少 3 条相关事实）
 3. 优先选择：监管进展、重大融资/IPO、产品发布、行业格局变化
 4. 叙事之间不要重叠
-
-事实列表:
-${factsText}
+${continuityInstruction}
 
 输出严格 JSON 数组:
-[
-  {
-    "label": "叙事标题（中文）",
-    "query": "用于检索事实的关键词（可中可英）",
-    "key_entities": ["实体1", "实体2"]
-  }
-]`,
+${jsonExample}`,
     { system: '输出严格 JSON 数组，恰好 3 个元素。' }
   )
+
+  // Enrich topics with previous summary for continued threads
+  const threadMap = new Map(activeThreads.map(t => [t.id, t]))
+  return rawTopics.map(t => {
+    const topic: NarrativeTopic = {
+      label: t.label,
+      query: t.query,
+      key_entities: t.key_entities,
+    }
+    const threadId = t.continued_thread_id
+    if (threadId && threadMap.has(threadId)) {
+      const thread = threadMap.get(threadId)!
+      topic.continued_thread_id = threadId
+      topic.previous_summary = thread.latestSummary
+    }
+    return topic
+  })
 }
 
 // ─── Step 2: Generate timeline from facts ───
@@ -161,31 +258,46 @@ async function generateTimeline(topic: NarrativeTopic, facts: AtomicFact[]): Pro
     return `[${i}] ${date} | ${content} | tags: ${f.tags.join(', ')}`
   }).join('\n')
 
+  const previousContext = topic.previous_summary
+    ? `## 上期叙事摘要（延续线索）
+这是一个已追踪的叙事线索，以下是上一期的摘要，请在此基础上延续：
+${topic.previous_summary}
+
+请确保本期 summary 与上期衔接，体现叙事的发展和变化。
+
+`
+    : ''
+
   return callHaikuJSON<AITimelineResult>(
     `你是稳定币行业叙事分析师。为「${topic.label}」生成结构化时间线。
+
+${previousContext}## 相关性铁律（最重要）
+只保留与「${topic.label}」**直接相关**的事实：
+- ✅ 直接提到该主题/实体/政策
+- ✅ 是该主题因果链上的事件
+- ❌ 仅仅因为在同一行业就算相关
+- ❌ 不同实体的独立行动，与该主题无因果关系
+如果只有 3 条真正相关，就只输出 3 个事件。**宁缺勿滥。**
 
 ## 事实列表（共 ${facts.length} 条）
 ${factsText}
 
 ## 输出要求
-1. summary: 2-3 句概括（中文）
+1. summary: 2-3 句概括（中文）${topic.previous_summary ? '。注意：要体现与上期的衔接和进展' : ''}
 2. branches: 2-3 条分支（按实体/阵营分），每条: id, label, side (left/right), color
-3. events: 8-12 个事件节点，每个:
+3. events: 按实际相关事实数量输出节点（不要硬凑），每个:
    - date (ISO), title (中文简短), description (中文1-2句)
    - significance: high/medium/low
-   - source_indices: 引用的事实索引
+   - source_indices: 引用的事实索引（必须指向真正使用的事实）
    - branch_id, entity_names
 4. connections: 跨分支关联 (0-3条)
-5. gap_queries: 2-4 个英文搜索词，用于搜索 fact base 中缺失的、能让时间线更完整的外部信息。聚焦于:
-   - 时间线中明显的空白时段
-   - 事件的前因后果中缺失的环节
-   - 相关但 fact base 未覆盖的重要事件
+5. gap_queries: 2-4 个英文搜索词，用于搜索 fact base 中缺失的、能让时间线更完整的外部信息
 
 规则:
-- 严格筛选，只保留与「${topic.label}」直接相关的事实
-- 中文输出
+- 中文输出，中英文之间加空格（如 "Circle 提交 S-1"）
 - 按时间正序
 - 合并同一天同一主题的事实
+- 不做预测，不给主观评价
 
 输出严格 JSON。`,
     { system: '稳定币行业叙事分析师。输出严格 JSON。' }
@@ -247,8 +359,15 @@ ${branches.map(b => `- ${b.id}: ${b.label}`).join('\n')}
 ${externalText}
 
 ## 任务
-1. 从搜索结果中选出 5-8 条与「${topic.label}」直接相关的事件，作为 external_events
-2. 基于整条时间线（fact base + 外部），生成 2-3 个"后续关注方向"作为 predictions
+1. 从搜索结果中选出 3-6 条与「${topic.label}」直接相关的事件，作为 external_events
+2. 基于整条时间线（fact base + 外部），生成 2-3 个**可证伪的具体预测**作为 predictions
+
+## predictions 要求（重要）
+predictions 必须是可以在未来验证对错的具体预测，不是模糊的"关注方向"。
+- ✅ "Circle 将在 2026 年 Q2 完成 IPO" — 可证伪
+- ✅ "GENIUS Act 将在 2026 年 6 月前通过参议院投票" — 可证伪
+- ❌ "后续关注: Circle IPO 进展" — 这是 watchlist 不是预测
+- ❌ "后续关注: 稳定币监管动态" — 太模糊
 
 ## 输出格式
 {
@@ -263,8 +382,8 @@ ${externalText}
   ],
   "predictions": [
     {
-      "title": "后续关注: ...",
-      "description": "为什么需要关注（1句话中文）",
+      "title": "具体预测内容（中文）",
+      "description": "预测依据（1句话中文）",
       "branch_id": "${branchIds[0] || 'branch_1'}"
     }
   ]
@@ -272,11 +391,11 @@ ${externalText}
 
 规则:
 - external_events 必须有 source_url（从搜索结果的 url 中取）
-- date 如果搜索结果没有提供，用合理的估计日期
-- predictions 的 title 必须以 "后续关注: " 开头
+- date: 如果搜索结果没有提供日期，使用当天日期并在 title 中标注"(日期估计)"
 - branch_id 必须是已有分支之一: ${branchIds.join(', ')}
-- 只选与主题直接相关的结果，不要硬凑`,
-    { system: '输出严格 JSON。' }
+- 只选与主题直接相关的结果，不要硬凑
+- 中文输出，中英文之间加空格`,
+    { system: '输出严格 JSON。中英文之间加空格。' }
   )
 }
 
@@ -308,7 +427,8 @@ export async function GET() {
           return
         }
         for (const t of topics) {
-          logger.log(`  叙事: ${t.label} (${t.key_entities.join(', ')})`, 'info')
+          const contTag = t.continued_thread_id ? ' [延续]' : ' [新]'
+          logger.log(`  叙事${contTag}: ${t.label} (${t.key_entities.join(', ')})`, 'info')
         }
 
         const narratives: StoredNarrative[] = []
@@ -480,7 +600,9 @@ export async function GET() {
         // Step 5: Write to narrative_threads + narrative_thread_entries for cross-week tracking
         logger.progress('5/5', '持久化叙事线索...')
 
-        for (const narrative of narratives) {
+        for (let ni = 0; ni < narratives.length; ni++) {
+          const narrative = narratives[ni]
+          const correspondingTopic = topics[ni] as NarrativeTopic | undefined
           const slug = narrative.topic
             .replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s-]/g, '')
             .replace(/\s+/g, '-')
@@ -502,44 +624,72 @@ export async function GET() {
             .join('；') || null
 
           try {
-            // Upsert thread
-            const { data: threadData } = await supabaseAdmin
-              .from('narrative_threads')
-              .select('id, total_weeks')
-              .eq('slug', slug)
-              .single()
+            let threadId = ''
+            let isContinuation = false
 
-            let threadId: string
-
-            if (threadData) {
-              // Update existing thread
-              threadId = threadData.id
-              await supabaseAdmin
+            // Check if this topic is a continuation of an existing thread
+            if (correspondingTopic?.continued_thread_id) {
+              const { data: existingThread } = await supabaseAdmin
                 .from('narrative_threads')
-                .update({
-                  last_updated_week: weekNumber,
-                  total_weeks: threadData.total_weeks + 1,
-                  key_entities: allEntities.slice(0, 10),
-                  status: 'active',
-                })
-                .eq('id', threadId)
-            } else {
-              // Insert new thread
-              const { data: newThread } = await supabaseAdmin
-                .from('narrative_threads')
-                .insert({
-                  topic: narrative.topic,
-                  slug,
-                  status: 'active',
-                  first_seen_week: weekNumber,
-                  last_updated_week: weekNumber,
-                  total_weeks: 1,
-                  key_entities: allEntities.slice(0, 10),
-                  tags: allEntities.map(e => e.toLowerCase()).slice(0, 10),
-                })
-                .select('id')
+                .select('id, total_weeks')
+                .eq('id', correspondingTopic.continued_thread_id)
                 .single()
-              threadId = newThread?.id ?? ''
+
+              if (existingThread) {
+                threadId = existingThread.id
+                isContinuation = true
+                await supabaseAdmin
+                  .from('narrative_threads')
+                  .update({
+                    topic: narrative.topic, // update topic label in case AI refined it
+                    last_updated_week: weekNumber,
+                    total_weeks: existingThread.total_weeks + 1,
+                    key_entities: allEntities.slice(0, 10),
+                    status: 'active',
+                  })
+                  .eq('id', threadId)
+              }
+            }
+
+            // Fallback: slug-based matching (for threads not identified by AI but matching by slug)
+            if (!isContinuation) {
+              const { data: threadData } = await supabaseAdmin
+                .from('narrative_threads')
+                .select('id, total_weeks')
+                .eq('slug', slug)
+                .single()
+
+              if (threadData) {
+                // Update existing thread found by slug
+                threadId = threadData.id
+                isContinuation = true
+                await supabaseAdmin
+                  .from('narrative_threads')
+                  .update({
+                    last_updated_week: weekNumber,
+                    total_weeks: threadData.total_weeks + 1,
+                    key_entities: allEntities.slice(0, 10),
+                    status: 'active',
+                  })
+                  .eq('id', threadId)
+              } else {
+                // Insert new thread
+                const { data: newThread } = await supabaseAdmin
+                  .from('narrative_threads')
+                  .insert({
+                    topic: narrative.topic,
+                    slug,
+                    status: 'active',
+                    first_seen_week: weekNumber,
+                    last_updated_week: weekNumber,
+                    total_weeks: 1,
+                    key_entities: allEntities.slice(0, 10),
+                    tags: allEntities.map(e => e.toLowerCase()).slice(0, 10),
+                  })
+                  .select('id')
+                  .single()
+                threadId = newThread?.id ?? ''
+              }
             }
 
             if (threadId) {
@@ -558,7 +708,7 @@ export async function GET() {
                 }, { onConflict: 'thread_id,week_number' })
             }
 
-            logger.log(`  线索持久化: ${narrative.topic} (${threadData ? '更新' : '新建'})`, 'info')
+            logger.log(`  线索持久化: ${narrative.topic} (${isContinuation ? '延续' : '新建'})`, 'info')
           } catch (threadErr) {
             logger.log(`  线索持久化失败: ${narrative.topic} — ${threadErr instanceof Error ? threadErr.message : String(threadErr)}`, 'error')
           }

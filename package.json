@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@supabase/supabase-js": "^2.99.1",
     "@types/dagre": "^0.7.54",
     "@xyflow/react": "^12.10.1",
@@ -20,6 +21,7 @@
     "react-dom": "19.2.3",
     "recharts": "^3.8.0",
     "rss-parser": "^3.13.0",
+    "satori": "^0.25.0",
     "yahoo-finance2": "^3.13.2"
   },
   "devDependencies": {

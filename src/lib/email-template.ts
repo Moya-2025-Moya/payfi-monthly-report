@@ -83,7 +83,13 @@ export function generateEmailHTML(data: EmailData): string {
 
   const opinionsHTML = opinionItems.length > 0 ? buildOpinionSection(opinionItems) : ''
 
-  const narrativesHTML = narratives.map(n => {
+  const narrativesHTML = narratives.map((n, narrativeIndex) => {
+    // Narrative image: rendered server-side as PNG for email clients
+    const narrativeImageURL = `${SITE_URL}/api/narrative-image?week=${encodeURIComponent(data.weekNumber)}&index=${narrativeIndex}`
+    const narrativeImageHTML = `<tr><td style="padding:0 0 12px;">
+      <img src="${narrativeImageURL}" alt="${esc(n.topic)}" width="600" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px;" />
+    </td></tr>`
+
     const factNodes = n.nodes.filter(nd => !nd.isPrediction)
     const predictionNodes = n.nodes.filter(nd => nd.isPrediction)
 
@@ -120,7 +126,9 @@ export function generateEmailHTML(data: EmailData): string {
         `).join('')}
       </td></tr>` : ''
 
-    return `<tr><td style="padding:0 0 16px;">
+    // Narrative image (rendered server-side) + text fallback for clients that block images
+    return `${narrativeImageHTML}
+    <tr><td style="padding:0 0 16px;">
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#111;border-radius:8px;border:1px solid #222;">
         <tr><td style="padding:16px;">
           <p style="margin:0 0 6px;">

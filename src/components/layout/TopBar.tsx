@@ -1,9 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useSearchParams, useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from '@/components/theme/ThemeProvider'
-import { useState, useRef, useEffect, useCallback, Suspense } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 /* ── Orange Mountain Logo ── */
 function MountainLogo({ size = 24 }: { size?: number }) {
@@ -168,80 +168,6 @@ function SearchBar() {
   )
 }
 
-/* ── Week helpers ── */
-function parseWeek(w: string): { year: number; num: number } {
-  const [year, wPart] = w.split('-W')
-  return { year: Number(year), num: Number(wPart) }
-}
-
-function formatWeek(year: number, num: number): string {
-  return `${year}-W${String(num).padStart(2, '0')}`
-}
-
-function shiftWeek(week: string, delta: number): string {
-  const { year, num } = parseWeek(week)
-  const newNum = num + delta
-  if (newNum < 1) return formatWeek(year - 1, 52)
-  if (newNum > 52) return formatWeek(year + 1, 1)
-  return formatWeek(year, newNum)
-}
-
-function weekToDateRange(week: string): string {
-  const { year, num } = parseWeek(week)
-  const jan4 = new Date(Date.UTC(year, 0, 4))
-  const dayOfWeek = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
-  const monday = new Date(jan4)
-  monday.setUTCDate(jan4.getUTCDate() - (dayOfWeek - 1) + (num - 1) * 7)
-  const sunday = new Date(monday)
-  sunday.setUTCDate(monday.getUTCDate() + 6)
-  const fmt = (d: Date) => `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
-  return `${fmt(monday)} - ${fmt(sunday)}`
-}
-
-function getCurrentISOWeek(): string {
-  const now = new Date()
-  const jan4 = new Date(Date.UTC(now.getFullYear(), 0, 4))
-  const dayOfWeek = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
-  const monday = new Date(jan4)
-  monday.setUTCDate(jan4.getUTCDate() - (dayOfWeek - 1))
-  const diff = Math.floor((now.getTime() - monday.getTime()) / (7 * 86400000))
-  return formatWeek(now.getFullYear(), diff + 1)
-}
-
-/* ── Global Week Selector (Q11) ── */
-function WeekSelector() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const pathname = usePathname()
-
-  const weekParam = searchParams.get('week')
-  const currentWeek = weekParam || getCurrentISOWeek()
-
-  function navigate(week: string) {
-    // Navigate to homepage with week param
-    const target = pathname === '/' ? `/?week=${encodeURIComponent(week)}` : `/?week=${encodeURIComponent(week)}`
-    router.push(target)
-  }
-
-  return (
-    <div className="flex items-center gap-1">
-      <button onClick={() => navigate(shiftWeek(currentWeek, -1))}
-        className="p-1 rounded transition-colors hover:bg-[var(--surface-alt)]"
-        style={{ color: 'var(--fg-muted)' }} aria-label="上一周">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M7 2L3 6l4 4" /></svg>
-      </button>
-      <span className="text-[12px] font-mono px-1.5 tabular-nums" style={{ color: 'var(--fg-secondary)' }}>
-        {weekToDateRange(currentWeek)}
-      </span>
-      <button onClick={() => navigate(shiftWeek(currentWeek, 1))}
-        className="p-1 rounded transition-colors hover:bg-[var(--surface-alt)]"
-        style={{ color: 'var(--fg-muted)' }} aria-label="下一周">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M5 2l4 4-4 4" /></svg>
-      </button>
-    </div>
-  )
-}
-
 /* ── Flat navigation items ── */
 const NAV_ITEMS = [
   { href: '/', label: '周报' },
@@ -288,12 +214,8 @@ export function TopBar() {
         })}
       </nav>
 
-      {/* Week selector (Q11) — center */}
-      <div className="flex-1 flex justify-center">
-        <Suspense fallback={<span className="text-[12px] font-mono" style={{ color: 'var(--fg-muted)' }}>...</span>}>
-          <WeekSelector />
-        </Suspense>
-      </div>
+      {/* Center spacer */}
+      <div className="flex-1" />
 
       <SearchBar />
 

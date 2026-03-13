@@ -141,21 +141,27 @@ function buildPrompt(subject: string, facts: AtomicFact[]): string {
     return `[${i}] ${date} | ${content} | 标签: ${f.tags.join(', ')} | 可信度: ${f.confidence ?? '未知'}`
   }).join('\n')
 
-  return `你是一个专业的稳定币行业分析师。请根据以下已验证的原子事实，为「${subject}」整理一条清晰的时间线。
+  return `你是稳定币行业分析师。根据以下已验证的原子事实，为「${subject}」整理一条清晰的时间线。
+
+## 相关性规则（最重要）
+只保留与「${subject}」**直接相关**的事实：
+- ✅ 直接提到该主题/实体
+- ✅ 是该主题因果链上的事件
+- ❌ 仅仅因为在同一行业就算相关
+如果只有 3 条相关事实，就只输出 3 个事件。宁缺勿滥。
 
 ## 要求
-1. 用中文输出
+1. 用中文输出，中英文之间加空格（如 "Circle 提交 S-1"）
 2. 每个时间线事件必须有：日期、标题（简短）、描述（1-2句话）、重要性（high/medium/low）
 3. 按时间顺序排列
 4. 合并同一天的相关事实
-5. 过滤掉与主题无关的事实
-6. 在 summary 中用 2-3 句话概括整条时间线的核心脉络
-7. source_indices 引用下方事实列表的索引号
+5. 在 summary 中用 2-3 句话概括整条时间线的核心脉络
+6. source_indices 必须引用下方事实列表的实际索引号
 
 ## 事实列表（共 ${facts.length} 条）
 ${factsText}
 
-## 输出格式（JSON）
+## 输出格式（严格 JSON）
 {
   "summary": "时间线概述...",
   "events": [

@@ -15,6 +15,13 @@ const OBJECTIVITY_LABELS: Record<string, string> = {
   analysis: '分析',
 }
 
+/* ── Objectivity left-border colors ── */
+const OBJECTIVITY_BORDER_COLORS: Record<string, string> = {
+  fact: '#10b981',     // green
+  opinion: '#8b5cf6',  // purple
+  analysis: '#3b82f6', // blue
+}
+
 /* ── Confidence dot colors ── */
 const CONFIDENCE_COLORS: Record<string, string> = {
   high: 'var(--success)',
@@ -53,7 +60,6 @@ function getEvidenceBadges(fact: AtomicFact): EvidenceBadge[] {
   } else if (v1?.status === 'mismatch') {
     badges.push({ icon: '!', label: '原文不符', detail: '来源原文内容与事实不匹配', type: 'fail' })
   }
-  // source_unavailable / score=0: 抓取失败不代表事实有问题，不展示 badge
 
   const v2 = fact.v2_result as { source_count?: number; independent_sources?: boolean } | null
   if (v2?.source_count != null && v2.source_count >= 2) {
@@ -89,17 +95,13 @@ const BADGE_STYLES: Record<EvidenceBadge['type'], { bg: string; color: string; b
 /* ── Contradiction detection (V7: inline alerts) ── */
 function getContradictions(fact: AtomicFact): string[] {
   const alerts: string[] = []
-  // V5: temporal conflicts
   const v5 = fact.v5_result as { temporal_status?: string; conflict_detail?: string } | null
   if (v5?.temporal_status === 'conflict' && v5.conflict_detail) alerts.push(v5.conflict_detail)
-  // V2: cross-source inconsistency
   const v2 = fact.v2_result as { cross_validation?: string; is_minority?: boolean; majority_value?: string } | null
   if (v2?.is_minority && v2.majority_value) alerts.push(`此数据与多数来源不一致，多数来源显示: ${v2.majority_value}`)
   else if (v2?.cross_validation === 'inconsistent') alerts.push('多个来源报道不一致')
-  // V3: numerical issues
   const v3 = fact.v3_result as { sanity?: string; reason?: string } | null
   if (v3?.sanity === 'likely_error' && v3.reason) alerts.push(v3.reason)
-  // V4: chain mismatch
   const v4 = fact.v4_result as { anchor_status?: string; claimed_value?: number; actual_value?: number } | null
   if (v4?.anchor_status === 'mismatch' && v4.claimed_value != null && v4.actual_value != null) {
     alerts.push(`声称 ${v4.claimed_value.toLocaleString()} vs 链上实际 ${v4.actual_value.toLocaleString()}`)
@@ -146,9 +148,7 @@ function QuoteContent({ content }: { content: string }) {
 
 /* ── Pill label — objectivity-aware (Q33) ── */
 function TypePill({ type, objectivity }: { type: string; objectivity?: string }) {
-  // When objectivity is opinion/analysis, show that instead of fact_type
   const isSubjective = objectivity === 'opinion' || objectivity === 'analysis'
-  // Legacy: quote type without objectivity → treat as opinion
   const isLegacyQuote = type === 'quote' && (!objectivity || objectivity === 'fact')
 
   if (isSubjective) {
@@ -194,7 +194,6 @@ function ConfidenceDot({ confidence }: { confidence: string | null }) {
 /* ── Determine if a fact is subjective (opinion/analysis/legacy quote) ── */
 function isSubjectiveFact(fact: AtomicFact): boolean {
   if (fact.objectivity === 'opinion' || fact.objectivity === 'analysis') return true
-  // Legacy: quote type without objectivity set
   if (fact.fact_type === 'quote' && (!fact.objectivity || fact.objectivity === 'fact')) return true
   return false
 }
@@ -202,7 +201,7 @@ function isSubjectiveFact(fact: AtomicFact): boolean {
 /* ── Get effective objectivity (handles legacy data) ── */
 function getEffectiveObjectivity(fact: AtomicFact): 'fact' | 'opinion' | 'analysis' {
   if (fact.objectivity === 'opinion' || fact.objectivity === 'analysis') return fact.objectivity
-  if (fact.fact_type === 'quote') return 'opinion' // legacy quote → opinion
+  if (fact.fact_type === 'quote') return 'opinion'
   return 'fact'
 }
 
@@ -234,6 +233,28 @@ function AttributionBar({ fact }: { fact: AtomicFact }) {
   )
 }
 
+/* ── Trust level icon based on verification_status ── */
+function TrustIcon({ status }: { status: string }) {
+  if (status === 'verified') {
+    return <span className="text-[13px] shrink-0" style={{ color: '#10b981' }} title="已验证">✓</span>
+  }
+  if (status === 'partially_verified') {
+    return <span className="text-[13px] shrink-0" style={{ color: '#f59e0b' }} title="部分验证">⚠</span>
+  }
+  // pending_verification, rejected, or unknown
+  return <span className="text-[13px] shrink-0" style={{ color: '#9ca3af' }} title="未验证">?</span>
+}
+
+/* ── Truncate text to approximately N characters ── */
+function truncateText(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text
+  return text.slice(0, maxLen).trimEnd() + '…'
+}
+
+/* ════════════════════════════════════════════════════════════
+   FactCard — two display modes: list (default) and detail
+   ════════════════════════════════════════════════════════════ */
+
 export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -244,51 +265,53 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
   const badges = getEvidenceBadges(fact)
   const contradictions = getContradictions(fact)
   const isSubjective = isSubjectiveFact(fact)
-
-  // Separate pass/warn/fail badges
-  const passBadges = badges.filter(b => b.type === 'pass')
-  const warnBadges = badges.filter(b => b.type === 'warn' || b.type === 'fail')
+  const effectiveObj = getEffectiveObjectivity(fact)
+  const borderColor = OBJECTIVITY_BORDER_COLORS[effectiveObj] ?? OBJECTIVITY_BORDER_COLORS.fact
 
   function toggleExpand() {
     setExpanded(e => !e)
   }
 
-  /* ── Compact mode for timeline ── */
-  if (compact && !expanded) {
+  /* ── List mode (default collapsed state) ── */
+  if (!expanded) {
     return (
-      <div className="flex items-start gap-2 py-2 px-1 rounded-md cursor-pointer transition-colors hover:bg-[var(--surface-alt)]"
-        onClick={toggleExpand}>
-        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-          <TypePill type={fact.fact_type} objectivity={fact.objectivity} />
-        </div>
-        <p className="text-[14px] leading-relaxed flex-1 min-w-0" style={{ color: 'var(--fg-body)' }}>{displayContent}</p>
-        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-          {warnBadges.length > 0 && (
-            <span className="px-1 py-0.5 rounded text-[11px]"
-              style={{ background: BADGE_STYLES[warnBadges[0].type].bg, color: BADGE_STYLES[warnBadges[0].type].color }}>
-              {warnBadges[0].label}
-            </span>
-          )}
-          {contradictions.length > 0 && (
-            <span className="px-1 py-0.5 rounded text-[11px]" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
-              矛盾
+      <div
+        className="flex items-center gap-3 py-2 px-3 rounded-md cursor-pointer transition-colors hover:bg-[var(--surface-alt)] group"
+        style={{ borderLeft: `3px solid ${borderColor}` }}
+        onClick={toggleExpand}
+      >
+        {/* Content text, truncated */}
+        <p className="text-[13px] leading-snug flex-1 min-w-0 truncate" style={{ color: 'var(--fg-body)' }}>
+          {truncateText(displayContent, 100)}
+        </p>
+
+        {/* Right-side metadata */}
+        <div className="flex items-center gap-2 shrink-0">
+          <TrustIcon status={fact.verification_status} />
+          {sourceUrls.length > 0 && (
+            <span className="text-[11px] hidden sm:inline" style={{ color: 'var(--fg-muted)' }}>
+              {extractDomain(sourceUrls[0])}
             </span>
           )}
           <time className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{date}</time>
-          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="var(--fg-muted)" strokeWidth="1.5"><path d="M5 3l4 4-4 4" /></svg>
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="var(--fg-muted)" strokeWidth="1.5"
+            className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <path d="M5 3l4 4-4 4" />
+          </svg>
         </div>
       </div>
     )
   }
 
+  /* ── Detail mode (expanded) ── */
   return (
     <div
-      className={compact ? 'rounded-lg border overflow-hidden transition-colors mb-1' : 'rounded-lg border overflow-hidden transition-colors'}
+      className="rounded-lg border overflow-hidden transition-colors"
       style={{
-        borderColor: expanded ? 'var(--border-hover)' : isSubjective ? (getEffectiveObjectivity(fact) === 'opinion' ? 'rgba(139,92,246,0.25)' : 'rgba(59,130,246,0.25)') : 'var(--border)',
-        borderLeft: isSubjective ? `3px solid ${getEffectiveObjectivity(fact) === 'opinion' ? '#8b5cf6' : '#3b82f6'}` : undefined,
+        borderColor: isSubjective ? (effectiveObj === 'opinion' ? 'rgba(139,92,246,0.25)' : 'rgba(59,130,246,0.25)') : 'var(--border-hover)',
+        borderLeft: `3px solid ${borderColor}`,
         background: isSubjective
-          ? (getEffectiveObjectivity(fact) === 'opinion' ? 'rgba(139,92,246,0.04)' : 'rgba(59,130,246,0.04)')
+          ? (effectiveObj === 'opinion' ? 'rgba(139,92,246,0.04)' : 'rgba(59,130,246,0.04)')
           : 'var(--surface)',
       }}
     >
@@ -311,7 +334,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
           </div>
           <button onClick={toggleExpand} className="shrink-0 mt-1 p-0.5 rounded transition-colors" style={{ color: 'var(--fg-muted)' }}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"
-              style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 150ms ease' }}>
+              style={{ transform: 'rotate(90deg)', transition: 'transform 150ms ease' }}>
               <path d="M5 3l4 4-4 4" />
             </svg>
           </button>
@@ -328,7 +351,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
           </div>
         )}
 
-        {/* V7: Evidence badges — shown in default state */}
+        {/* V7: Evidence badges */}
         {badges.length > 0 && !isSubjective && (
           <div className="mt-2 flex flex-wrap gap-1">
             {badges.map((badge, i) => {
@@ -344,7 +367,7 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
           </div>
         )}
 
-        {/* V7: Contradiction alerts — inline, always visible */}
+        {/* V7: Contradiction alerts */}
         {contradictions.length > 0 && (
           <div className="mt-2 space-y-1">
             {contradictions.map((c, i) => (
@@ -372,69 +395,66 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
         </div>
 
         {/* Expanded: verification details + all metadata */}
-        <div ref={contentRef} className="overflow-hidden transition-all duration-150"
-          style={{ maxHeight: expanded ? '2000px' : '0', opacity: expanded ? 1 : 0 }}>
-          {expanded && (
-            <div className="mt-4 pt-4 border-t space-y-4" style={{ borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
+        <div ref={contentRef}>
+          <div className="mt-4 pt-4 border-t space-y-4" style={{ borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
 
-              {/* Source URLs (Q22: sources first) */}
-              {sourceUrls.length > 0 && (
-                <div>
-                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>信息源</p>
-                  <div className="space-y-1">
-                    {sourceUrls.map((url, i) => (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                        className="block text-[12px] truncate hover:underline" style={{ color: 'var(--info)' }}>
-                        {extractDomain(url)} — {url}
-                      </a>
-                    ))}
-                  </div>
+            {/* Source URLs */}
+            {sourceUrls.length > 0 && (
+              <div>
+                <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>信息源</p>
+                <div className="space-y-1">
+                  {sourceUrls.map((url, i) => (
+                    <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                      className="block text-[12px] truncate hover:underline" style={{ color: 'var(--info)' }}>
+                      {extractDomain(url)} — {url}
+                    </a>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Verification evidence details */}
-              {badges.length > 0 && (
-                <div>
-                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>验证证据</p>
-                  <div className="space-y-1.5">
-                    {badges.map((badge, i) => {
-                      const s = BADGE_STYLES[badge.type]
-                      return (
-                        <div key={i} className="flex items-center gap-2 text-[12px]">
-                          <span className="w-4 text-center" style={{ color: s.color }}>{badge.icon}</span>
-                          <span className="font-medium" style={{ color: s.color }}>{badge.label}</span>
-                          <span style={{ color: 'var(--fg-muted)' }}>— {badge.detail}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
+            {/* Verification evidence details */}
+            {badges.length > 0 && (
+              <div>
+                <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>验证证据</p>
+                <div className="space-y-1.5">
+                  {badges.map((badge, i) => {
+                    const s = BADGE_STYLES[badge.type]
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-[12px]">
+                        <span className="w-4 text-center" style={{ color: s.color }}>{badge.icon}</span>
+                        <span className="font-medium" style={{ color: s.color }}>{badge.label}</span>
+                        <span style={{ color: 'var(--fg-muted)' }}>— {badge.detail}</span>
+                      </div>
+                    )
+                  })}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Tags */}
-              {fact.tags.length > 0 && (
-                <div>
-                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>标签</p>
-                  <div className="flex gap-1 flex-wrap">
-                    {fact.tags.map(tag => (
-                      <span key={tag} className="px-1.5 py-0.5 rounded text-[11px]"
-                        style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
+            {/* Tags */}
+            {fact.tags.length > 0 && (
+              <div>
+                <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>标签</p>
+                <div className="flex gap-1 flex-wrap">
+                  {fact.tags.map(tag => (
+                    <span key={tag} className="px-1.5 py-0.5 rounded text-[11px]"
+                      style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
+                      {tag}
+                    </span>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* English content if bilingual */}
-              {fact.content_zh && fact.content_en && (
-                <div>
-                  <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>English</p>
-                  <p className="text-[13px] italic" style={{ color: 'var(--fg-secondary)' }}>{fact.content_en}</p>
-                </div>
-              )}
-            </div>
-          )}
+            {/* English content if bilingual */}
+            {fact.content_zh && fact.content_en && (
+              <div>
+                <p className="text-[11px] tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>English</p>
+                <p className="text-[13px] italic" style={{ color: 'var(--fg-secondary)' }}>{fact.content_en}</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

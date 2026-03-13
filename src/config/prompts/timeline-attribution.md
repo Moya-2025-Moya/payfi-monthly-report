@@ -61,7 +61,7 @@
 {
   "confirmed": true,
   "confidence": 88,
-  "reason": "该事实描述Circle提交S-1修订版，是'Circle IPO进程'时间线的直接下一步推进。时间线最新节点是S-1初始提交，修订版是合理的后续事件。"
+  "reason": "Circle提交S-1修订版是'Circle IPO进程'时间线的直接下一步推进。时间线最新节点是S-1初始提交，修订版是合理的后续事件。"
 }
 ```
 

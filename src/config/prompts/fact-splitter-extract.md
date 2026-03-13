@@ -120,11 +120,16 @@ speaker 字段必须包含足够信息让读者理解发言人身份：
 |---|---|---|
 | event | 发生了一个具体事件 | 有明确的主语+动作+时间 |
 | metric | 包含可量化的数据点 | 有数字+单位 |
-| quote | 某人的原话 | 有引号或明确的"某人说" |
+| quote | 某人的**直接引语**（原话） | 原文中有引号包裹的直接引述 |
 | relationship | 两个实体间的关系变化 | 涉及合作/投资/竞争等 |
 | status_change | 某事物的状态发生了流转 | 从A状态变为B状态 |
 
-## Step 4.5: 判断客观性（objectivity）
+**quote vs event 的判断（重要）**：
+- 原文有引号包裹的直接引语 → `quote`："Jeremy Allaire 说：'We are committed to transparency'"
+- 转述/间接引述某人的观点（无引号）→ `event` + `objectivity=opinion`："Circle CEO Jeremy Allaire 认为稳定币将取代跨境汇款"
+- 某人宣布了客观事实 → `event` + `objectivity=fact`："Jeremy Allaire 宣布 Circle 将于Q2上市"
+
+## Step 5: 判断客观性（objectivity）
 
 对每条提取的内容，判断它是客观事实还是主观观点/分析：
 
@@ -139,23 +144,24 @@ speaker 字段必须包含足够信息让读者理解发言人身份：
 2. `opinion`：必须有具体人名 + 头衔（如 "Circle CEO Jeremy Allaire"）
 3. `analysis`：机构级归因即可（如 "Bernstein"、"高盛研报"）
 4. 无归因的主观内容（"市场认为"、"分析师预计"）→ 不提取
-5. quote 类型不一定是 opinion — 如果引述的是客观陈述（如 CEO 宣布公司计划），objectivity 应为 `fact`
+5. quote 类型的 objectivity 取决于引述内容：客观陈述 → `fact`，主观判断 → `opinion`/`analysis`
 
 **示例：**
-- "Circle CEO Jeremy Allaire 认为稳定币将取代跨境汇款" → fact_type=quote, objectivity=opinion, speaker="Circle CEO Jeremy Allaire"
-- "Bernstein 分析师预测 Circle 股价将达到 $80" → fact_type=quote, objectivity=analysis, speaker="Bernstein"
-- "Jeremy Allaire 宣布 Circle 将于Q2上市" → fact_type=event, objectivity=fact, speaker=null（这是客观事件公告）
+- "Circle CEO Jeremy Allaire 说：'We are committed to transparency'" → fact_type=quote, objectivity=fact, speaker="Circle CEO Jeremy Allaire"（客观陈述的直接引语）
+- "Circle CEO Jeremy Allaire 认为稳定币将取代跨境汇款" → fact_type=event, objectivity=opinion, speaker="Circle CEO Jeremy Allaire"（转述观点，无引号，用 event）
+- "Bernstein 分析师预测 Circle 股价将达到 $80" → fact_type=event, objectivity=analysis, speaker="Bernstein"（转述分析结论）
+- "Jeremy Allaire 宣布 Circle 将于Q2上市" → fact_type=event, objectivity=fact, speaker=null（客观事件公告）
 
-## Step 5: 提取指标字段（仅metric类型）
+## Step 6: 提取指标字段（仅metric类型）
 
 如果是metric类型，必须填写：
 - metric_name: 用小写下划线格式，如 `annual_revenue`, `market_cap_usdc`, `weekly_volume`
 - metric_value: 纯数字，不带单位。$1.7B = 1700000000
 - metric_unit: USD / ETH / 个 / % 等
 - metric_period: 时间范围，如 "2025-FY", "2026-Q1", "2026-W10", "as of 2026-03-09"
-- metric_change: 变化描述，如 "+23% YoY", "-5% WoW"。没有变化信息则不填
+- metric_change: 变化描述，统一格式 `[+/-]数值[%] [YoY/QoQ/WoW/MoM]`。示例: "+23% YoY", "-5% WoW", "+$200M QoQ"。没有变化信息则填 null
 
-## Step 6: 打标签
+## Step 7: 打标签
 
 每个事实打1-5个标签。标签规则：
 - 使用英文小写
@@ -163,7 +169,7 @@ speaker 字段必须包含足够信息让读者理解发言人身份：
 - 包含涉及的主题（如 ipo, revenue, regulation, market_cap）
 - 包含涉及的赛道（如 payments, defi, issuance）
 
-## Step 7: 标注证据句
+## Step 8: 标注证据句
 
 对每个事实，必须从原文中复制出支持该事实的原句。如果找不到原句，则不应提取该事实。
 
@@ -264,9 +270,9 @@ speaker 字段必须包含足够信息让读者理解发言人身份：
 # 其他边界规则
 
 1. **宁缺毋滥**：不确定是否在原文中有依据 → 不提取
-2. **中文输出**：content字段一律用中文。英文原文翻译为中文，保留专有名词英文（公司名、产品名、缩写如 USDC、SEC、S-1 等）
+2. **中文输出 + 中英文加空格**：content 字段一律用中文，保留专有名词英文（公司名、产品名、缩写如 USDC、SEC、S-1 等）。**中英文之间必须加空格**：✅ "Circle 于2026年" ❌ "Circle于2026年"；✅ "USDC 市值达到 520 亿美元" ❌ "USDC市值达到520亿美元"
 3. **不推断**：原文说"收入$1.7B"，不要自己算出季度均值
-4. **保留模糊**：原文说"approximately $1.7B"，content中保留"approximately"
+4. **保留模糊**：原文说"approximately $1.7B"，content中翻译为"约17亿美元"（用中文"约"表达模糊性）
 5. **引用原话**：如果是quote类型，content中必须包含原文引号内的内容
 6. **合并同一事实**：同一篇文章中如果多处描述了同一件事（如标题和正文都提到），只提取一次，选信息最完整的表述
 7. **日期精确**：如果原文有具体日期就用具体日期，没有就用文章发布日期

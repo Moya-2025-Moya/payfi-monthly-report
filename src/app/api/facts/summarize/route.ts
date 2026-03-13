@@ -10,7 +10,7 @@ export async function POST(req: Request) {
 
     const factsText = facts.slice(0, 20).map((f, i) => `${i + 1}. ${f}`).join('\n')
     const summary = await callHaiku(
-      `你是稳定币行业分析师。根据以下关于「${entity}」的本周事实，用一句话（30字以内）总结本周核心动态。只输出总结，不要解释。\n\n${factsText}`
+      `根据以下关于「${entity}」的本周事实，用一句话（30字以内）客观总结本周核心动态。只输出总结，不要解释，不要预测，不要评价。只陈述事实中明确提到的内容。\n\n${factsText}`
     )
 
     return NextResponse.json({ summary: summary.trim() })

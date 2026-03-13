@@ -73,11 +73,16 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
     .split(/\n\n/)
     .filter(l => l.trim())
 
-  // Parse detailed version
+  // Parse detailed version — supports both legacy array and new { news, narratives } format
   let detailedItems: DetailedItem[] = []
   if (detailed) {
     try {
-      detailedItems = JSON.parse(detailed)
+      const parsed = JSON.parse(detailed)
+      if (Array.isArray(parsed)) {
+        detailedItems = parsed
+      } else if (parsed.news && Array.isArray(parsed.news)) {
+        detailedItems = parsed.news
+      }
     } catch { /* ignore */ }
   }
 

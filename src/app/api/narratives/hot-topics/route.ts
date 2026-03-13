@@ -50,7 +50,7 @@ export async function GET() {
   const factsText = facts.map((f: Record<string, unknown>, i: number) => {
     const content = (f.content_zh || f.content_en || '') as string
     const tags = (f.tags as string[])?.join(', ') ?? ''
-    return `[${i}] ${content.slice(0, 100)} | tags: ${tags}`
+    return `[${i}] ${content.slice(0, 200)} | tags: ${tags}`
   }).join('\n')
 
   const prompt = `你是稳定币行业分析师。根据以下 ${facts.length} 条最近的已验证事实，识别 5-8 个热门叙事主线。

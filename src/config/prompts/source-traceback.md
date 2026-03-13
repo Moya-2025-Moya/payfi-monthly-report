@@ -41,11 +41,16 @@
 
 ## Step 4: 做出判定
 
-| 判定 | 标准 | match_score 范围 |
+| status | 标准 | match_score 范围 |
 |---|---|---|
 | `matched` | 原文中有明确对应内容，核心要素（实体+事件+数字）完全一致 | 80-100 |
 | `partial` | 原文有相关内容但细节有出入（如数字略有差异、缺少某些细节） | 40-79 |
 | `no_match` | 原文中找不到支持该事实的内容，或内容明显矛盾 | 0-39 |
+| `source_unavailable` | 原文为空、无法解析、或为付费墙内容 | 0 |
+
+**边界参考（80分 vs 79分的区别）**：
+- 80分: 所有核心要素一致，仅有措辞差异（"acquired" vs "bought"）
+- 79分: 核心事件一致但缺少一个次要细节（如原文提到金额但事实省略了）
 
 ## Step 5: 提取证据引用
 
@@ -56,8 +61,8 @@
 
 # 边界情况处理
 
-1. **原文是空的或无法解析** → `status: "source_unavailable"`，不否定也不确认
-2. **原文是付费墙内容**（只有标题没有正文） → `status: "source_unavailable"`
+1. **原文是空的或无法解析** → `status: "source_unavailable"`, `match_score: 0`, `evidence_quote: null`
+2. **原文是付费墙内容**（只有标题没有正文） → `status: "source_unavailable"`, `match_score: 0`, `evidence_quote: null`
 3. **原文语言与事实不同** → 正常比对含义，不因语言差异判 no_match
 4. **原文有多个版本的数字** → 找最接近事实的那个版本，partial 并说明
 5. **事实是对原文的合理总结** → `matched`（不需要逐字一致，含义一致即可）

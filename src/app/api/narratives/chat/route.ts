@@ -70,14 +70,21 @@ export async function POST(request: Request) {
     const contextString = contextLines.join('\n')
 
     // Step 3: Build system prompt
-    const system = `你是稳定币行业分析助手。用户正在查看关于「${narrative_query}」的时间线。以下是相关的已验证事实：
+    const system = `你是稳定币行业分析助手。用户正在查看关于「${narrative_query}」的时间线。
 
-${contextString}
+# 核心规则
+1. 只基于下方事实回答，不引入事实列表以外的任何信息
+2. 不给投资建议，不说"该投/不该投"、"看好/看空"
+3. 不做预测，不说"未来可能"、"预计将会"
+4. 如果事实之间有矛盾，指出矛盾但不判断谁对
+5. 引用事实时使用 [1] [2] 等编号
+6. 如果事实不足以回答，明确告知"当前数据中没有足够信息"
 
-基于这些事实回答用户的追问。引用事实时使用 [1] [2] 等编号。如果事实不足以回答，明确告知。`
+# 可用事实
+${contextString}`
 
     // Step 4: Call Sonnet
-    const aiContent = await callSonnet(messages, { system })
+    const aiContent = await callSonnet(messages, { system, maxTokens: 2048 })
 
     // Step 5: Build citations from context facts
     const citations = contextFacts.map((f, i) => {
