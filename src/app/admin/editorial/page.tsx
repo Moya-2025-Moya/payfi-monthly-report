@@ -160,7 +160,31 @@ export default function EditorialPage() {
                 </div>
               </div>
               {facts.map(fact => (
-                <FactCard key={fact.id} fact={fact} />
+                <div key={fact.id} className="relative group">
+                  <FactCard fact={fact} />
+                  {/* Review action buttons */}
+                  <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => setFacts(prev => prev.map(f => f.id === fact.id ? { ...f, selected: true } : f))}
+                      className="text-[11px] px-2 py-1 rounded border transition-colors"
+                      style={{
+                        borderColor: fact.selected ? 'var(--success)' : 'var(--border)',
+                        color: fact.selected ? 'var(--success)' : 'var(--fg-muted)',
+                        background: fact.selected ? 'rgba(16,185,129,0.06)' : 'transparent',
+                      }}>
+                      {fact.selected ? '已批准' : '批准'}
+                    </button>
+                    <button
+                      onClick={() => setFacts(prev => prev.map(f => f.id === fact.id ? { ...f, selected: false } : f))}
+                      className="text-[11px] px-2 py-1 rounded border transition-colors"
+                      style={{
+                        borderColor: !fact.selected ? 'var(--danger)' : 'var(--border)',
+                        color: !fact.selected ? 'var(--danger)' : 'var(--fg-muted)',
+                      }}>
+                      排除
+                    </button>
+                  </div>
+                </div>
               ))}
               <div className="pt-4 text-center">
                 <button onClick={() => setStage('select')}

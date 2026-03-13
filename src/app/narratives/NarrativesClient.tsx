@@ -314,9 +314,188 @@ function AddTopicButton({ onAdd }: { onAdd: (topic: string) => void }) {
   )
 }
 
+/* ── Thread + Prediction types ── */
+
+interface ThreadEntry {
+  week_number: string
+  summary: string
+  key_developments: string[]
+  node_count: number
+  significance: string
+}
+
+interface NarrativeThread {
+  id: string
+  topic: string
+  slug: string
+  status: string
+  first_seen_week: string
+  last_updated_week: string
+  total_weeks: number
+  entries: ThreadEntry[]
+}
+
+interface Prediction {
+  id: string
+  narrative_topic: string
+  week_number: string
+  title: string
+  description: string | null
+  watched: boolean
+  status: string
+  review_note: string | null
+  reviewed_week: string | null
+}
+
+const PRED_STATUS_COLORS: Record<string, { color: string; label: string }> = {
+  pending: { color: 'var(--fg-muted)', label: '待验证' },
+  confirmed: { color: 'var(--success)', label: '已确认' },
+  invalidated: { color: 'var(--danger)', label: '未验证' },
+  ongoing: { color: 'var(--info)', label: '持续中' },
+}
+
+/* ── Cross-week Thread Timeline ── */
+function ThreadTimeline({ threads }: { threads: NarrativeThread[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  if (threads.length === 0) return null
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="text-[13px] font-medium" style={{ color: 'var(--fg-title)' }}>跨周叙事线索</h3>
+        <span className="text-[11px] font-mono px-1.5 py-0.5 rounded"
+          style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
+          {threads.length}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {threads.map(thread => {
+          const isExpanded = expandedId === thread.id
+          const statusLabel = thread.status === 'active' ? '进行中' : '休眠'
+          const statusColor = thread.status === 'active' ? 'var(--success)' : 'var(--warning)'
+
+          return (
+            <div key={thread.id} className="rounded-lg border overflow-hidden"
+              style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+              <div className="flex items-center justify-between px-4 py-3 cursor-pointer"
+                onClick={() => setExpandedId(isExpanded ? null : thread.id)}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full" style={{ background: statusColor }} />
+                  <span className="text-[13px] font-medium" style={{ color: 'var(--fg-title)' }}>
+                    {thread.topic}
+                  </span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded"
+                    style={{ color: statusColor, background: `${statusColor}12` }}>
+                    {statusLabel} · 第{thread.total_weeks}周
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
+                    {thread.first_seen_week} → {thread.last_updated_week}
+                  </span>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="var(--fg-muted)" strokeWidth="1.5"
+                    style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }}>
+                    <path d="M4 2l4 4-4 4" />
+                  </svg>
+                </div>
+              </div>
+
+              {isExpanded && thread.entries.length > 0 && (
+                <div className="px-4 pb-3 border-t" style={{ borderColor: 'var(--border)' }}>
+                  {/* Horizontal week timeline */}
+                  <div className="flex gap-3 overflow-x-auto py-3">
+                    {thread.entries.map((entry, i) => {
+                      const sigColor = entry.significance === 'high' ? '#ef4444' : entry.significance === 'medium' ? '#f59e0b' : 'var(--fg-muted)'
+                      return (
+                        <div key={i} className="shrink-0 w-[200px] rounded-md border p-3"
+                          style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)' }}>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="w-[6px] h-[6px] rounded-full" style={{ background: sigColor }} />
+                            <span className="text-[11px] font-mono font-medium" style={{ color: 'var(--fg-muted)' }}>
+                              {entry.week_number}
+                            </span>
+                            <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
+                              {entry.node_count} 节点
+                            </span>
+                          </div>
+                          <p className="text-[12px] leading-relaxed line-clamp-3" style={{ color: 'var(--fg-body)' }}>
+                            {entry.summary}
+                          </p>
+                          {entry.key_developments.length > 0 && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {entry.key_developments.slice(0, 2).map((d, j) => (
+                                <p key={j} className="text-[11px] truncate" style={{ color: 'var(--fg-muted)' }}>
+                                  · {d}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ── Prediction Tracker ── */
+function PredictionTracker({ predictions }: { predictions: Prediction[] }) {
+  if (predictions.length === 0) return null
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="text-[13px] font-medium" style={{ color: 'var(--fg-title)' }}>预测追踪</h3>
+        <span className="text-[11px] font-mono px-1.5 py-0.5 rounded"
+          style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
+          {predictions.length}
+        </span>
+      </div>
+      <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        {predictions.map((pred, i) => {
+          const sc = PRED_STATUS_COLORS[pred.status] ?? PRED_STATUS_COLORS.pending
+          return (
+            <div key={pred.id}
+              className={`px-4 py-3 ${i < predictions.length - 1 ? 'border-b' : ''}`}
+              style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>{pred.week_number}</span>
+                    <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ color: sc.color, background: `${sc.color}12` }}>
+                      {sc.label}
+                    </span>
+                    <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{pred.narrative_topic}</span>
+                  </div>
+                  <p className="text-[13px]" style={{ color: 'var(--fg-body)' }}>{pred.title}</p>
+                  {pred.description && (
+                    <p className="text-[12px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{pred.description}</p>
+                  )}
+                  {pred.review_note && (
+                    <p className="text-[11px] mt-1 italic" style={{ color: sc.color }}>
+                      回顾 ({pred.reviewed_week}): {pred.review_note}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /* ── Main Client ── */
 
-export function NarrativesClient({ narratives }: { narratives: StoredNarrative[] }) {
+export function NarrativesClient({ narratives, threads = [], predictions = [] }: { narratives: StoredNarrative[]; threads?: NarrativeThread[]; predictions?: Prediction[] }) {
   const [activeIdx, setActiveIdx] = useState(0)
   const [selectedNode, setSelectedNode] = useState<NarrativeNodeData | null>(null)
 
@@ -340,6 +519,12 @@ export function NarrativesClient({ narratives }: { narratives: StoredNarrative[]
 
   return (
     <div>
+      {/* Cross-week thread timeline */}
+      <ThreadTimeline threads={threads} />
+
+      {/* Prediction tracker */}
+      <PredictionTracker predictions={predictions} />
+
       {/* Topic tabs + Add topic button */}
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1 items-center">
         {narratives.map((n, i) => (

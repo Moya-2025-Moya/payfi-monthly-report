@@ -23,6 +23,17 @@ interface EntityResult {
   description?: string
 }
 
+interface NarrativeThreadResult {
+  id: string
+  topic: string
+  slug: string
+  status: string
+  first_seen_week: string
+  last_updated_week: string
+  total_weeks: number
+  key_entities: string[]
+}
+
 type TabKey = 'entities' | 'facts' | 'narratives'
 
 function getDomain(url?: string): string {
@@ -52,6 +63,7 @@ function SearchContent() {
 
   const [facts, setFacts] = useState<FactResult[]>([])
   const [entities, setEntities] = useState<EntityResult[]>([])
+  const [narrativeThreads, setNarrativeThreads] = useState<NarrativeThreadResult[]>([])
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>('entities')
 
@@ -59,6 +71,7 @@ function SearchContent() {
     if (!q.trim()) {
       setFacts([])
       setEntities([])
+      setNarrativeThreads([])
       return
     }
 
@@ -72,13 +85,17 @@ function SearchContent() {
       fetch('/api/entities', { signal: controller.signal })
         .then(r => r.json())
         .catch(() => []),
-    ]).then(([factData, entityData]) => {
+      fetch(`/api/narrative-threads?q=${encodeURIComponent(q)}`, { signal: controller.signal })
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => []),
+    ]).then(([factData, entityData, threadData]) => {
       setFacts(Array.isArray(factData) ? factData : [])
       const lower = q.toLowerCase()
       const filtered = (Array.isArray(entityData) ? entityData : []).filter(
         (e: EntityResult) => e.name?.toLowerCase().includes(lower)
       )
       setEntities(filtered)
+      setNarrativeThreads(Array.isArray(threadData) ? threadData : [])
       // Auto-select first non-empty tab
       if (filtered.length > 0) setActiveTab('entities')
       else if (Array.isArray(factData) && factData.length > 0) setActiveTab('facts')
@@ -91,7 +108,7 @@ function SearchContent() {
   const tabs: { key: TabKey; label: string; count: number }[] = [
     { key: 'entities', label: '实体', count: entities.length },
     { key: 'facts', label: '事实', count: facts.length },
-    { key: 'narratives', label: '叙事', count: 0 },
+    { key: 'narratives', label: '叙事', count: narrativeThreads.length },
   ]
 
   return (
@@ -240,9 +257,52 @@ function SearchContent() {
             </div>
           )}
 
-          {/* Narrative results (placeholder) */}
+          {/* Narrative thread results */}
           {activeTab === 'narratives' && (
-            <EmptyState text="叙事搜索功能开发中" />
+            <div>
+              {narrativeThreads.length === 0 ? (
+                <EmptyState text="未找到匹配的叙事线索" />
+              ) : (
+                <div className="space-y-2">
+                  {narrativeThreads.map(t => {
+                    const statusLabel = t.status === 'active' ? '进行中' : t.status === 'dormant' ? '休眠' : '已结束'
+                    const statusColor = t.status === 'active' ? 'var(--success)' : t.status === 'dormant' ? 'var(--warning)' : 'var(--fg-muted)'
+                    return (
+                      <Link
+                        key={t.id}
+                        href={`/narratives?thread=${t.slug}`}
+                        className="block rounded-lg border px-4 py-3 transition-colors hover:shadow-sm"
+                        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[14px] font-medium" style={{ color: 'var(--fg-title)' }}>
+                            {t.topic}
+                          </span>
+                          <span className="text-[11px] px-1.5 py-0.5 rounded"
+                            style={{ color: statusColor, background: `${statusColor}15`, border: `1px solid ${statusColor}25` }}>
+                            {statusLabel}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--fg-muted)' }}>
+                          <span>第 {t.total_weeks} 周追踪</span>
+                          <span>{t.first_seen_week} → {t.last_updated_week}</span>
+                        </div>
+                        {t.key_entities.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {t.key_entities.slice(0, 5).map(e => (
+                              <span key={e} className="text-[11px] px-1.5 py-0.5 rounded"
+                                style={{ background: 'var(--surface-alt)', color: 'var(--fg-muted)' }}>
+                                {e}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           )}
         </>
       )}

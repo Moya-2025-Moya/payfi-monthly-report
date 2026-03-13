@@ -10,6 +10,15 @@ import type { AtomicFact } from '@/lib/types'
 
 export const maxDuration = 300
 
+function shiftWeekStr(week: string, delta: number): string {
+  const [yearStr, wPart] = week.split('-W')
+  const year = Number(yearStr)
+  const num = Number(wPart) + delta
+  if (num < 1) return `${year - 1}-W${String(52 + num).padStart(2, '0')}`
+  if (num > 52) return `${year + 1}-W${String(num - 52).padStart(2, '0')}`
+  return `${year}-W${String(num).padStart(2, '0')}`
+}
+
 // ─── Types ───
 
 interface NarrativeTopic {
@@ -439,7 +448,7 @@ export async function GET() {
         }
 
         // Step 4: Save to weekly_snapshots
-        logger.progress('4/4', '保存叙事时间线到快照...')
+        logger.progress('4/5', '保存叙事时间线到快照...')
 
         // Read existing snapshot and merge
         const { data: existing } = await supabaseAdmin
@@ -462,6 +471,156 @@ export async function GET() {
         if (error) throw new Error(`保存失败: ${error.message}`)
 
         logger.log(`已保存 ${narratives.length} 条叙事时间线`, 'success')
+
+        // Step 5: Write to narrative_threads + narrative_thread_entries for cross-week tracking
+        logger.progress('5/5', '持久化叙事线索...')
+
+        for (const narrative of narratives) {
+          const slug = narrative.topic
+            .replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .toLowerCase()
+            .slice(0, 60)
+
+          // Collect all entity names from nodes
+          const allEntities = [...new Set(narrative.nodes.flatMap(n => n.entityNames))]
+          // Collect all fact IDs
+          const allFactIds = [...new Set(narrative.nodes.flatMap(n => n.factIds).filter(Boolean))]
+          // Key developments from high significance nodes
+          const keyDevelopments = narrative.nodes
+            .filter(n => n.significance === 'high' && !n.isPrediction && !n.isExternal)
+            .map(n => n.title)
+          // Next week watch from prediction nodes
+          const nextWeekWatch = narrative.nodes
+            .filter(n => n.isPrediction)
+            .map(n => n.title)
+            .join('；') || null
+
+          try {
+            // Upsert thread
+            const { data: threadData } = await supabaseAdmin
+              .from('narrative_threads')
+              .select('id, total_weeks')
+              .eq('slug', slug)
+              .single()
+
+            let threadId: string
+
+            if (threadData) {
+              // Update existing thread
+              threadId = threadData.id
+              await supabaseAdmin
+                .from('narrative_threads')
+                .update({
+                  last_updated_week: weekNumber,
+                  total_weeks: threadData.total_weeks + 1,
+                  key_entities: allEntities.slice(0, 10),
+                  status: 'active',
+                })
+                .eq('id', threadId)
+            } else {
+              // Insert new thread
+              const { data: newThread } = await supabaseAdmin
+                .from('narrative_threads')
+                .insert({
+                  topic: narrative.topic,
+                  slug,
+                  status: 'active',
+                  first_seen_week: weekNumber,
+                  last_updated_week: weekNumber,
+                  total_weeks: 1,
+                  key_entities: allEntities.slice(0, 10),
+                  tags: allEntities.map(e => e.toLowerCase()).slice(0, 10),
+                })
+                .select('id')
+                .single()
+              threadId = newThread?.id ?? ''
+            }
+
+            if (threadId) {
+              // Upsert entry for this week
+              await supabaseAdmin
+                .from('narrative_thread_entries')
+                .upsert({
+                  thread_id: threadId,
+                  week_number: weekNumber,
+                  summary: narrative.summary,
+                  key_developments: keyDevelopments,
+                  next_week_watch: nextWeekWatch,
+                  fact_ids: allFactIds,
+                  node_count: narrative.nodes.filter(n => !n.isPrediction).length,
+                  significance: narrative.nodes.some(n => n.significance === 'high') ? 'high' : 'medium',
+                }, { onConflict: 'thread_id,week_number' })
+            }
+
+            logger.log(`  线索持久化: ${narrative.topic} (${threadData ? '更新' : '新建'})`, 'info')
+          } catch (threadErr) {
+            logger.log(`  线索持久化失败: ${narrative.topic} — ${threadErr instanceof Error ? threadErr.message : String(threadErr)}`, 'error')
+          }
+        }
+
+        // Write prediction nodes to narrative_predictions table (Direction B)
+        for (const narrative of narratives) {
+          const predNodes = narrative.nodes.filter(n => n.isPrediction)
+          for (const pred of predNodes) {
+            try {
+              await supabaseAdmin
+                .from('narrative_predictions')
+                .insert({
+                  narrative_topic: narrative.topic,
+                  week_number: weekNumber,
+                  title: pred.title,
+                  description: pred.description,
+                  watched: false,
+                  status: 'pending',
+                })
+              logger.log(`  预测写入: ${pred.title.slice(0, 40)}...`, 'info')
+            } catch { /* ignore duplicates */ }
+          }
+        }
+
+        // Auto-review previous week's predictions against this week's facts
+        const prevWeek = shiftWeekStr(weekNumber, -1)
+        try {
+          const { data: prevPredictions } = await supabaseAdmin
+            .from('narrative_predictions')
+            .select('*')
+            .eq('week_number', prevWeek)
+            .eq('status', 'pending')
+
+          if (prevPredictions && prevPredictions.length > 0) {
+            // Get this week's fact summaries for review context
+            const thisWeekFactSummary = narratives.map(n => n.summary).join(' ')
+
+            for (const pred of prevPredictions) {
+              // Simple keyword match to determine if prediction materialized
+              const keywords = pred.title.replace(/^后续关注[：:]\s*/, '').split(/[，、\s]+/).filter(Boolean)
+              const matched = keywords.some((kw: string) => thisWeekFactSummary.includes(kw))
+
+              await supabaseAdmin
+                .from('narrative_predictions')
+                .update({
+                  status: matched ? 'confirmed' : 'ongoing',
+                  review_note: matched ? `本周叙事中出现相关进展` : '尚未观察到明确进展',
+                  reviewed_week: weekNumber,
+                })
+                .eq('id', pred.id)
+            }
+            logger.log(`  自动回顾上周 ${prevPredictions.length} 条预测`, 'info')
+          }
+        } catch { /* ignore */ }
+
+        // Mark threads not updated this week as dormant (if last updated > 3 weeks ago)
+        try {
+          const threeWeeksAgo = shiftWeekStr(weekNumber, -3)
+          await supabaseAdmin
+            .from('narrative_threads')
+            .update({ status: 'dormant' })
+            .eq('status', 'active')
+            .lt('last_updated_week', threeWeeksAgo)
+          logger.log('  已标记休眠线索', 'info')
+        } catch { /* ignore */ }
+
         await logger.done({ message: `叙事时间线生成完成: ${narratives.map(n => n.topic).join(', ')}` })
       } catch (err) {
         await logger.fail(`叙事生成失败: ${err instanceof Error ? err.message : String(err)}`)

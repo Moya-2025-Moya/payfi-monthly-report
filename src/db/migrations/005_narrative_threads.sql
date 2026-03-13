@@ -40,4 +40,4 @@ CREATE INDEX idx_thread_entries_thread ON narrative_thread_entries (thread_id);
 -- Trigger for updated_at
 CREATE OR REPLACE TRIGGER narrative_threads_updated_at
   BEFORE UPDATE ON narrative_threads
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();

@@ -104,7 +104,7 @@ export function WeeklySummary({ simple, detailed, weekNumber }: { simple: string
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
         <p className="text-[11px] font-medium tracking-wider uppercase" style={{ color: 'var(--info)' }}>
-          {lang === 'zh' ? '本周动态' : 'Weekly Update'}
+          {lang === 'zh' ? '本周概要' : 'Weekly Summary'}
         </p>
         <div className="flex items-center gap-2">
           {/* Language toggle */}

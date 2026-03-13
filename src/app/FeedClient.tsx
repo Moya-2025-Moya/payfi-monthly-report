@@ -17,6 +17,14 @@ interface SnapshotStats {
   active_entities: number
 }
 
+interface MarketMetric {
+  coin_symbol: string
+  metric_name: string
+  metric_value: number
+  metric_unit: string | null
+  fetched_at: string
+}
+
 interface StoredNarrative {
   topic: string
   summary: string
@@ -38,28 +46,50 @@ interface Props {
   narratives: StoredNarrative[]
   summarySimple: string | null
   summaryDetailed: string | null
+  marketMetrics?: MarketMetric[]
 }
 
-/* ── Dashboard Stats (Q6) ── */
-function DashboardStats({ stats, factCount }: { stats: SnapshotStats | null; factCount: number }) {
-  const s = stats ?? { total_facts: factCount, new_facts: factCount, high_confidence: 0, medium_confidence: 0, low_confidence: 0, rejected: 0, new_entities: 0, active_entities: 0 }
+/* ── Market Overview (replaces DashboardStats) ── */
+function formatMarketCap(value: number): string {
+  if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(1)}B`
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(0)}M`
+  return `$${value.toLocaleString()}`
+}
 
-  const cards: { label: string; value: number | string; color?: string }[] = [
-    { label: '已验证事实', value: factCount },
-    { label: '高可信', value: s.high_confidence, color: 'var(--success)' },
-    { label: '中可信', value: s.medium_confidence, color: 'var(--warning)' },
-    { label: '活跃实体', value: s.active_entities || s.new_entities },
-  ]
+function MarketOverview({ metrics, factCount, stats }: { metrics?: MarketMetric[]; factCount: number; stats: SnapshotStats | null }) {
+  const getMetric = (symbol: string, name: string) => {
+    if (!metrics) return null
+    return metrics.find(m => m.coin_symbol.toUpperCase() === symbol && m.metric_name === name)
+  }
+
+  const usdtCap = getMetric('USDT', 'market_cap')
+  const usdcCap = getMetric('USDC', 'market_cap')
+  const daiCap = getMetric('DAI', 'market_cap')
+
+  const cards: { label: string; value: string; sub?: string }[] = []
+
+  if (usdtCap) cards.push({ label: 'USDT', value: formatMarketCap(usdtCap.metric_value), sub: '市值' })
+  if (usdcCap) cards.push({ label: 'USDC', value: formatMarketCap(usdcCap.metric_value), sub: '市值' })
+  if (daiCap) cards.push({ label: 'DAI', value: formatMarketCap(daiCap.metric_value), sub: '市值' })
+
+  // Always show fact count
+  const s = stats
+  cards.push({ label: '本周事实', value: String(factCount), sub: s ? `${s.high_confidence} 高可信` : undefined })
+
+  // Limit to 4
+  const displayCards = cards.slice(0, 4)
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-      {cards.map(c => (
+      {displayCards.map(c => (
         <div key={c.label} className="rounded-lg border px-4 py-3"
           style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <p className="text-[11px] tracking-wider uppercase mb-1" style={{ color: 'var(--fg-muted)' }}>{c.label}</p>
-          <p className="text-[22px] font-semibold font-mono" style={{ color: c.color ?? 'var(--fg-title)' }}>
+          <p className="text-[20px] font-semibold font-mono" style={{ color: 'var(--fg-title)' }}>
             {c.value}
           </p>
+          {c.sub && <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{c.sub}</p>}
         </div>
       ))}
     </div>
@@ -268,9 +298,9 @@ function NarrativePreview({ narratives }: { narratives: StoredNarrative[] }) {
   )
 }
 
-/* ── Fact Section (Q9/Q10: aggregate only, collapsed by default) ── */
+/* ── Fact Section: show first 10 + load more ── */
 function FactSection({ facts }: { facts: AtomicFact[] }) {
-  const [expanded, setExpanded] = useState(false)
+  const [showCount, setShowCount] = useState(10)
 
   if (facts.length === 0) {
     return (
@@ -279,6 +309,9 @@ function FactSection({ facts }: { facts: AtomicFact[] }) {
       </div>
     )
   }
+
+  const visibleFacts = facts.slice(0, showCount)
+  const remaining = facts.length - showCount
 
   return (
     <div>
@@ -293,85 +326,29 @@ function FactSection({ facts }: { facts: AtomicFact[] }) {
             {facts.length}
           </span>
         </div>
-        <button onClick={() => setExpanded(e => !e)}
-          className="text-[12px] px-3 py-1 rounded-md border transition-colors"
-          style={{ borderColor: 'var(--border)', color: expanded ? 'var(--accent)' : 'var(--fg-muted)' }}>
-          {expanded ? '收起' : '展开全部'}
-        </button>
       </div>
 
-      {/* Collapsed: show top entities as preview */}
-      {!expanded ? (
-        <CollapsedFactPreview facts={facts} onExpand={() => setExpanded(true)} />
-      ) : (
-        <AggregateView facts={facts} />
+      <AggregateView facts={visibleFacts} />
+
+      {remaining > 0 && (
+        <div className="mt-4 text-center">
+          <button onClick={() => setShowCount(s => s + 20)}
+            className="text-[13px] px-5 py-2 rounded-md border transition-colors hover:border-[var(--accent-muted)]"
+            style={{ borderColor: 'var(--border)', color: 'var(--accent)', background: 'var(--surface)' }}>
+            加载更多 ({remaining} 条)
+          </button>
+        </div>
       )}
     </div>
   )
 }
 
-/* ── Collapsed preview: show entity names + counts, click to expand ── */
-function CollapsedFactPreview({ facts, onExpand }: { facts: AtomicFact[]; onExpand: () => void }) {
-  // Compute objectivity breakdown
-  const factCount = facts.filter(f => f.objectivity === 'fact' || !f.objectivity).length
-  const opinionCount = facts.filter(f => f.objectivity === 'opinion').length
-  const analysisCount = facts.filter(f => f.objectivity === 'analysis').length
-
-  // Group by entity (simplified)
-  const entityCounts = new Map<string, number>()
-  for (const f of facts) {
-    const entity = f.tags?.[0] ?? '其他'
-    entityCounts.set(entity, (entityCounts.get(entity) ?? 0) + 1)
-  }
-  const topEntities = [...entityCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-
-  return (
-    <div className="rounded-lg border p-4 cursor-pointer transition-colors hover:border-[var(--border-hover)]"
-      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
-      onClick={onExpand}>
-      {/* Objectivity breakdown */}
-      <div className="flex items-center gap-4 mb-3 text-[12px]">
-        <span style={{ color: 'var(--fg-body)' }}>
-          <span className="font-mono font-medium" style={{ color: 'var(--fg-title)' }}>{factCount}</span> 事实
-        </span>
-        {opinionCount > 0 && (
-          <span style={{ color: '#8b5cf6' }}>
-            <span className="font-mono font-medium">{opinionCount}</span> 观点
-          </span>
-        )}
-        {analysisCount > 0 && (
-          <span style={{ color: '#3b82f6' }}>
-            <span className="font-mono font-medium">{analysisCount}</span> 分析
-          </span>
-        )}
-      </div>
-
-      {/* Top entity tags */}
-      <div className="flex flex-wrap gap-1.5">
-        {topEntities.map(([entity, count]) => (
-          <span key={entity} className="px-2 py-1 rounded text-[12px]"
-            style={{ background: 'var(--surface-alt)', color: 'var(--fg-secondary)', border: '1px solid var(--border)' }}>
-            {entity} <span className="font-mono text-[11px]" style={{ color: 'var(--fg-muted)' }}>{count}</span>
-          </span>
-        ))}
-      </div>
-
-      {/* Expand hint */}
-      <p className="mt-3 text-[11px] text-center" style={{ color: 'var(--fg-muted)' }}>
-        点击展开全部事实 →
-      </p>
-    </div>
-  )
-}
-
 /* ── Main Homepage Client ── */
-export function FeedClient({ facts, currentWeek, stats, narratives, summarySimple, summaryDetailed }: Props) {
+export function FeedClient({ facts, currentWeek, stats, narratives, summarySimple, summaryDetailed, marketMetrics }: Props) {
   return (
     <div>
-      {/* Dashboard stats (Q6) */}
-      <DashboardStats stats={stats} factCount={facts.length} />
+      {/* Market overview */}
+      <MarketOverview metrics={marketMetrics} factCount={facts.length} stats={stats} />
 
       {/* Dashboard charts */}
       <DashboardCharts facts={facts} />

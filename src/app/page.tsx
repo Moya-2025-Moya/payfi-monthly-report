@@ -73,7 +73,7 @@ async function getHomepageData(week: string): Promise<HomepageData> {
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
   const { week: weekParam } = await searchParams
   const week = weekParam ?? getCurrentWeekNumber()
-  const [{ data }, homepage] = await Promise.all([
+  const [{ data }, homepage, { data: metricsData }] = await Promise.all([
     supabaseAdmin
       .from('atomic_facts')
       .select('*')
@@ -82,9 +82,24 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       .order('fact_date', { ascending: false })
       .limit(200),
     getHomepageData(week),
+    supabaseAdmin
+      .from('raw_onchain_metrics')
+      .select('coin_symbol, metric_name, metric_value, metric_unit, fetched_at')
+      .in('coin_symbol', ['USDT', 'USDC', 'DAI'])
+      .eq('metric_name', 'market_cap')
+      .order('fetched_at', { ascending: false })
+      .limit(9),
   ])
 
   const facts = (data ?? []) as AtomicFact[]
+
+  // Deduplicate: keep latest per coin_symbol
+  const latestMetrics: typeof metricsData = []
+  const seen = new Set<string>()
+  for (const m of (metricsData ?? [])) {
+    const key = `${m.coin_symbol}-${m.metric_name}`
+    if (!seen.has(key)) { seen.add(key); latestMetrics.push(m) }
+  }
 
   return (
     <FeedClient
@@ -94,6 +109,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       narratives={homepage.narratives}
       summarySimple={homepage.summarySimple}
       summaryDetailed={homepage.summaryDetailed}
+      marketMetrics={latestMetrics}
     />
   )
 }

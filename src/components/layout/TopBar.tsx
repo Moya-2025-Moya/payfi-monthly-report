@@ -247,7 +247,6 @@ const NAV_ITEMS = [
   { href: '/', label: '周报' },
   { href: '/entities', label: '实体' },
   { href: '/narratives', label: '叙事' },
-  { href: '/snapshots', label: '历史' },
 ] as const
 
 // Keep for MobileNav compatibility
@@ -300,14 +299,9 @@ export function TopBar() {
 
       <div className="flex items-center gap-1 shrink-0 ml-3">
         <Link href="/admin"
-          className="text-[11px] px-2 py-1 rounded transition-colors"
-          style={{ color: pathname.startsWith('/admin') ? 'var(--accent)' : 'var(--fg-muted)' }}>
-          管理
-        </Link>
-        <Link href="/settings"
           className="p-1.5 rounded-md transition-colors"
-          style={{ color: pathname.startsWith('/settings') ? 'var(--accent)' : 'var(--fg-muted)' }}
-          aria-label="设置">
+          style={{ color: pathname.startsWith('/admin') ? 'var(--accent)' : 'var(--fg-muted)' }}
+          aria-label="管理后台">
           <svg width="14" height="14" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="7.5" cy="7.5" r="2" />
             <path d="M12.7 9.5a1.1 1.1 0 00.2 1.2l.04.04a1.33 1.33 0 11-1.88 1.88l-.04-.04a1.1 1.1 0 00-1.2-.2 1.1 1.1 0 00-.67 1.01v.12a1.33 1.33 0 11-2.67 0v-.06a1.1 1.1 0 00-.72-1.01 1.1 1.1 0 00-1.2.2l-.04.04a1.33 1.33 0 11-1.88-1.88l.04-.04a1.1 1.1 0 00.2-1.2 1.1 1.1 0 00-1.01-.67h-.12a1.33 1.33 0 110-2.67h.06a1.1 1.1 0 001.01-.72 1.1 1.1 0 00-.2-1.2l-.04-.04A1.33 1.33 0 114.4 2.32l.04.04a1.1 1.1 0 001.2.2h.05a1.1 1.1 0 00.67-1.01v-.12a1.33 1.33 0 112.67 0v.06a1.1 1.1 0 00.67 1.01 1.1 1.1 0 001.2-.2l.04-.04a1.33 1.33 0 111.88 1.88l-.04.04a1.1 1.1 0 00-.2 1.2v.05a1.1 1.1 0 001.01.67h.12a1.33 1.33 0 110 2.67h-.06a1.1 1.1 0 00-1.01.67z" />

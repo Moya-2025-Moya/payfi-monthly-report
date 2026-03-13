@@ -154,8 +154,8 @@ function TypePill({ type, objectivity }: { type: string; objectivity?: string })
     const label = OBJECTIVITY_LABELS[objectivity] ?? objectivity
     const color = objectivity === 'opinion' ? '#8b5cf6' : '#3b82f6'
     return (
-      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none"
-        style={{ background: `${color}15`, color, border: `1px solid ${color}30` }}>
+      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold leading-none"
+        style={{ background: `${color}18`, color, border: `1px solid ${color}35` }}>
         {label}
       </span>
     )
@@ -284,8 +284,11 @@ export function FactCard({ fact, compact = false }: { fact: AtomicFact; compact?
     <div
       className={compact ? 'rounded-lg border overflow-hidden transition-colors mb-1' : 'rounded-lg border overflow-hidden transition-colors'}
       style={{
-        borderColor: expanded ? 'var(--border-hover)' : 'var(--border)',
-        background: isSubjective ? 'var(--surface-alt)' : 'var(--surface)',
+        borderColor: expanded ? 'var(--border-hover)' : isSubjective ? (getEffectiveObjectivity(fact) === 'opinion' ? 'rgba(139,92,246,0.25)' : 'rgba(59,130,246,0.25)') : 'var(--border)',
+        borderLeft: isSubjective ? `3px solid ${getEffectiveObjectivity(fact) === 'opinion' ? '#8b5cf6' : '#3b82f6'}` : undefined,
+        background: isSubjective
+          ? (getEffectiveObjectivity(fact) === 'opinion' ? 'rgba(139,92,246,0.04)' : 'rgba(59,130,246,0.04)')
+          : 'var(--surface)',
       }}
     >
       {/* Q5: Attribution bar for opinion/analysis */}

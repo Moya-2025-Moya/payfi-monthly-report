@@ -1,4 +1,4 @@
-# MECE 模块划分 & 边界定义 V7
+# MECE 模块划分 & 边界定义 V8
 
 > 产品: StablePulse — 稳定币行业原子化知识引擎
 > 定位: **内部情报工具** — 为 VC 团队、投资人、老板提供高效的稳定币行业信息获取（网站 + 邮件，同一受众）
@@ -42,17 +42,20 @@
 四大差异化贯穿: ① 验证透明(证据徽章) ② 矛盾预警(内联) ③ 观点分离(结构化) ④ 叙事连续性(跨周)
 ```
 
-> **V7 变更摘要** (基于 V6):
-> - **产品定位**: 内部情报工具（VC 团队），非外部产品。网站和邮件受众相同
-> - **四大差异化**: 验证透明(证据徽章) + 矛盾预警(内联) + 观点/事实分离(结构化) + 叙事连续性(跨周)
-> - **验证展示**: 不用数字评分，用证据徽章（✓ 3源验证 · 链上锚定 · 来源可达）
-> - **观点处理**: B1 prompt 强制归因（人名+机构+头衔），FactCard 区分展示，邮件独立观点区
-> - **叙事持久化**: 新增 narrative_threads + narrative_thread_entries 表，跨周追踪
-> - **矛盾预警**: 从隐藏元数据提升为内联展示，直接出现在相关事实旁
-> - **邮件模板**: 情报简报风格，含验证徽章、矛盾警告、独立观点区、跨周叙事追踪、数据区
-> - **编辑台**: 新增编辑工作流 — 采集 → 审核 → 选稿 → 排版 → 预览 → 发布
-> - **AI 原则**: AI 不做决策，只做结构化处理
-> - (V6 变更仍然有效: 首页重做、TopBar、FactCard简化、笔记删除、设置拆分、字号、CSS变量等)
+> **V8 变更摘要** (基于 V7):
+> - **Direction A — Living Narrative Graph**: 叙事 pipeline Step 5 写入 narrative_threads + narrative_thread_entries。/narratives 页面新增跨周线索时间线横向展示
+> - **Direction B — Prediction Tracking**: pipeline 自动写入 narrative_predictions + 上周预测自动回顾。/narratives 新增预测追踪面板
+> - **首页市场数据**: DashboardStats 替换为 MarketOverview (USDT/USDC/DAI 市值 from raw_onchain_metrics)
+> - **事实流重构**: 移除折叠模式 → 直接展示前10条 + "加载更多"
+> - **观点卡强化**: 左边框色带 + 更大 TypePill + 更强背景色
+> - **页面精简**: 删除 /snapshots、/notes、/settings、/subscribe。/settings 功能合并入 /admin
+> - **订阅管理**: 新增 /admin/subscribers 管理页面 + /api/subscribers API
+> - **叙事搜索**: /search 页面新增叙事线索搜索 tab + /api/narrative-threads API
+> - **编辑台增强**: Review 阶段新增批准/排除按钮
+> - **导航精简**: TopBar 移除"历史"入口，设置图标直接导向 /admin
+> - **DB修复**: migration 005 trigger 函数名修正 update_updated_at_column → update_updated_at
+> - **Supabase 审计**: 确认 bookmarks、team_questions、user_preferences 为废弃表；确认 004/003 newsletter migration 重复
+> - (V7 变更仍然有效: 四大差异化、证据徽章、矛盾预警、观点分离、叙事持久化、编辑台、邮件模板)
 
 ---
 
@@ -368,31 +371,31 @@ raw_*表 (A层多源采集，双层关键词过滤)
 | **框架** | Next.js 16 App Router + Tailwind 4 |
 | **目录** | `src/app/` |
 
-#### 页面结构 (8页面)
+#### 页面结构 (7页面)
 ```
 src/app/
-├── page.tsx                       # ⭐ 首页: 仪表盘(市值+事件统计) + 周报落地页(Top10+叙事+迷你图)
+├── page.tsx                       # ⭐ 首页: 市场概览(USDT/USDC/DAI市值) + 本周概要 + 叙事预览 + 事实流(前10+加载更多)
 ├── entities/
 │   ├── page.tsx                   # 实体列表 (watchlist兜底，搜索/筛选)
-│   └── [id]/page.tsx              # ⭐ 实体档案: 档案卡头部 + 指标图表 + 事件流 + AI摘要 + 关联实体
-├── narratives/page.tsx            # ⭐ 叙事时间线: 预生成Top3 + 追加主题入口 + 右侧详情面板 + 预测独立区
-├── snapshots/
-│   ├── page.tsx                   # 历史周报归档
-│   └── [id]/page.tsx              # 重定向到 /?week=...
-├── subscribe/page.tsx             # 🆕 订阅页: 收集邮箱
-├── search/page.tsx                # 搜索结果: 按实体/事实/叙事分类展示
-├── settings/page.tsx              # 用户偏好 (主题、语言等)
-├── admin/page.tsx                 # 🆕 管理面板: pipeline操作 + 数据质量(盲区+矛盾)
-└── api/                           # API Routes
+│   └── [id]/page.tsx              # ⭐ 实体档案: 档案卡头部 + 指标图表 + 事件流 + 概要 + 关联实体
+├── narratives/page.tsx            # ⭐ 叙事时间线: 跨周线索 + 预测追踪 + Top3时间线 + 详情面板
+├── search/page.tsx                # 搜索结果: 按实体/事实/叙事线索分类展示
+├── admin/
+│   ├── page.tsx                   # 管理后台: 系统状态 + pipeline操作 + 邮件分发 + 开发模式
+│   ├── editorial/page.tsx         # 编辑台: 审核(批准/排除) → 选稿 → 排版 → 预览 → 发布
+│   ├── email-preview/page.tsx     # 邮件预览
+│   └── subscribers/page.tsx       # 🆕 订阅者管理: 添加/退订/恢复
+└── api/                           # API Routes (含 /api/narrative-threads, /api/subscribers)
 ```
 
 #### 导航结构 (TopBar 平铺，无 Sidebar)
 ```
 TopBar 左侧: Logo + 页面入口平铺
-  周报(/) | 实体(/entities) | 叙事(/narratives) | 历史(/snapshots) | 订阅(/subscribe)
-  (溢出时用下拉分组)
+  周报(/) | 实体(/entities) | 叙事(/narratives)
 
-TopBar 右侧: 全局搜索 + 主题切换 + 管理入口(/admin) + 设置(/settings)
+TopBar 中间: 周选择器 (← 日期范围 →)
+
+TopBar 右侧: 全局搜索 + 管理入口(齿轮图标→/admin) + 主题切换
 ```
 
 #### 日期格式
@@ -414,27 +417,28 @@ TopBar 右侧: 全局搜索 + 主题切换 + 管理入口(/admin) + 设置(/sett
 
 ---
 
-### 首页设计 ⭐ (V7 已实现)
+### 首页设计 ⭐ (V8 更新)
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  TopBar: 周报 | 实体 | 叙事 | 历史               │
-│  ← 3月10日-3月16日 →  (周选择器在 TopBar 内)       │
+│  TopBar: 周报 | 实体 | 叙事     ← 3月10-16日 →    │
 ├─────────────────────────────────────────────────┤
-│  DashboardStats (4 卡片)                         │
-│  已验证事实 | 高可信 | 中可信 | 活跃实体             │
+│  MarketOverview (4 卡片)                         │
+│  USDT $144.3B | USDC $60.1B | DAI $5.3B | 事实32 │  ← 来自 raw_onchain_metrics
 ├─────────────────────────────────────────────────┤
-│  WeeklySummary Top 10 (可展开详情)                │
+│  DashboardCharts (类型分布柱状 + 客观性饼图)        │
+├─────────────────────────────────────────────────┤
+│  本周概要 Top 10 (中英双语切换 + 可展开详情)        │
 ├─────────────────────────────────────────────────┤
 │  NarrativePreview (主题 Tab + Top5 关键节点)       │
 ├─────────────────────────────────────────────────┤
-│  FactSection (默认折叠)                           │
-│  CollapsedFactPreview: objectivity 分布 + 实体标签 │
-│  展开后: 聚合视图 FactCard 列表                    │
+│  事实流 (直接显示前10条)                           │
+│  AggregateView → FactCard 列表                   │
+│  [加载更多 (X 条)] 按钮                            │
 └─────────────────────────────────────────────────┘
 ```
 
-> 无视图切换（Q10 已删除），只有聚合视图。事实区默认折叠避免信息过载。
+> 无折叠，直接展示事实。"加载更多"渐进式加载。
 
 ### FactCard 设计 ⭐
 
@@ -447,11 +451,11 @@ TopBar 右侧: 全局搜索 + 主题切换 + 管理入口(/admin) + 设置(/sett
 │ ⚠️ 与XX事实存在数值矛盾 (如有)         │  ← 矛盾预警内联
 └──────────────────────────────────────┘
 
-观点/分析卡片:
+观点/分析卡片 (V8: 左边框色带 + 更强背景):
 ┌──────────────────────────────────────┐
-│ [观点] 紫色标签                        │
-│ "引述内容..."                         │
-│ —— Circle CEO Jeremy Allaire         │  ← 完整归因
+│▌[观点] 紫色标签(11px, semibold)       │  ← 左边框3px紫色
+│▌"引述内容..."                        │     背景 rgba(139,92,246,0.04)
+│▌—— Circle CEO Jeremy Allaire        │  ← 完整归因
 │ 来源域名 · 日期                        │
 └──────────────────────────────────────┘
 
@@ -670,9 +674,10 @@ fact_sectors              # 事实↔赛道 关联
 fact_contradictions       # 事实矛盾
 blind_spot_reports        # 盲区报告快照
 
-── 叙事连续性层 (V7 新增) ──
-narrative_threads         # 🆕 叙事线程主表 (跨周持久化，如 "Circle IPO")
-narrative_thread_entries  # 🆕 叙事线程条目 (每周每线程的进展快照)
+── 叙事连续性层 (V7+V8) ──
+narrative_threads         # 叙事线程主表 — pipeline Step 5 自动写入，跨周持久化
+narrative_thread_entries  # 叙事线程条目 — 每周每线程的进展快照
+narrative_predictions     # 预测追踪 — pipeline 自动写入 + 上周自动回顾
 
 ── 分发层 (V7 新增) ──
 subscriptions             # 订阅管理 (email, status, unsubscribe_token)
@@ -682,7 +687,11 @@ email_logs                # 邮件发送记录
 ── 系统层 ──
 weekly_snapshots          # 周报快照 (含 narratives, weekly_summary, weekly_summary_detailed)
 pipeline_runs             # 运行日志
-narrative_predictions     # 叙事预测追踪 (关注标记 + 下周回顾)
+
+── 废弃表 (可安全删除) ──
+bookmarks                # 未使用
+team_questions           # 未使用
+user_preferences         # 未使用
 ```
 
 ### F2 配置管理
@@ -744,6 +753,21 @@ schedule.ts               # 采集和推送时间表
 18. ~~预测节点追踪（narrative_predictions 表 + 关注标记 + 状态管理）~~
 19. ~~全局搜索分类结果（/search 页面，按实体/事实/叙事分类）~~
 20. ~~实体页关联图谱（融入EntityProfile，关系类型标签展示）~~
+
+### V8 新增实现 ✅ 已完成
+21. ~~Direction A: 叙事 pipeline Step 5 → narrative_threads/entries 持久化~~
+22. ~~Direction B: 预测自动写入 narrative_predictions + 上周回顾~~
+23. ~~首页 DashboardStats → MarketOverview (USDT/USDC/DAI 市值)~~
+24. ~~事实流：移除折叠 → 直接显示前10条 + 加载更多~~
+25. ~~观点卡片：左边框色带 + 更大 TypePill + 更强背景色~~
+26. ~~页面精简：删除 /snapshots /notes /settings /subscribe~~
+27. ~~合并 /settings 功能到 /admin~~
+28. ~~新增 /admin/subscribers 订阅者管理~~
+29. ~~搜索页新增叙事线索搜索 + /api/narrative-threads~~
+30. ~~编辑台 Review 阶段新增批准/排除按钮~~
+31. ~~导航精简（移除"历史"，齿轮图标直通 /admin）~~
+32. ~~DB修复：migration 005 trigger 函数名修正~~
+33. ~~Supabase 审计完成（废弃表确认）~~
 
 ---
 
