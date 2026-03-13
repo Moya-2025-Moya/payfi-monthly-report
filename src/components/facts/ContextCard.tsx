@@ -5,6 +5,8 @@ import type { AtomicFact } from '@/lib/types'
 import { TrustSpine } from './TrustSpine'
 import { EvidenceDrawer } from './EvidenceDrawer'
 import { useDepth } from '@/components/depth/DepthProvider'
+import { useFocusLens } from '@/components/focus/FocusLensProvider'
+import { EntityTag } from '@/components/focus/EntityTag'
 
 /* ── Constants ── */
 const CONFIDENCE_COLORS: Record<string, string> = {
@@ -109,6 +111,7 @@ interface ContextCardProps {
 
 export function ContextCard({ fact, context, focusClassName }: ContextCardProps) {
   const { depth } = useDepth()
+  const { focusedEntity, focusedEntityFacts } = useFocusLens()
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const openDrawer = useCallback(() => setDrawerOpen(true), [])
@@ -118,10 +121,17 @@ export function ContextCard({ fact, context, focusClassName }: ContextCardProps)
   const date = new Date(fact.fact_date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
   const sourceUrls = getSourceUrls(fact)
 
+  // Focus lens: determine if this card is highlighted, receded, or neutral
+  const focusCls = focusedEntity
+    ? (focusedEntityFacts.has(fact.id) || fact.tags?.some(t => t.toLowerCase() === focusedEntity.toLowerCase())
+        ? 'focus-highlighted'
+        : 'focus-receded')
+    : ''
+
   return (
     <>
       <div
-        className={`rounded-lg border transition-all duration-300 ${focusClassName || ''}`}
+        className={`rounded-lg border transition-all duration-300 ${focusClassName || ''} ${focusCls}`}
         style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
         data-depth={depth}
       >
@@ -176,10 +186,7 @@ export function ContextCard({ fact, context, focusClassName }: ContextCardProps)
             {fact.tags.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {fact.tags.map(tag => (
-                  <span key={tag} className="px-1.5 py-0.5 rounded text-[11px]"
-                    style={{ color: 'var(--fg-muted)', border: '1px solid var(--border)' }}>
-                    {tag}
-                  </span>
+                  <EntityTag key={tag} name={tag} />
                 ))}
               </div>
             )}
@@ -192,7 +199,7 @@ export function ContextCard({ fact, context, focusClassName }: ContextCardProps)
             <div className="px-3 pb-2.5 pt-0">
               <div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
                 <div className="pl-2 py-1.5 rounded" style={{ background: 'rgba(5,150,105,0.04)' }}>
-                  <p className="text-[10px] font-semibold tracking-wider uppercase mb-1" style={{ color: '#059669' }}>CONTEXT</p>
+                  <p className="text-[10px] font-semibold tracking-wider uppercase mb-1" style={{ color: '#059669' }}>历史可比</p>
                   {context.map((c, i) => (
                     <p key={i} className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
                       · {c}

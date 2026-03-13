@@ -64,16 +64,20 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
 
   return (
     <div>
-      <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: COLOR.narrative }}>
+      <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-4" style={{ color: COLOR.narrative }}>
         叙事追踪
       </h2>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {narratives.slice(0, 3).map((n, idx) => (
-          <div key={idx} className="rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-            <div className="px-4 py-3">
+          <div key={idx} className="rounded-lg border" style={{
+            borderColor: 'var(--border)',
+            background: 'var(--surface)',
+            borderLeft: `3px solid ${COLOR.narrative}`,
+          }}>
+            <div className="px-5 py-4">
               {/* Header */}
               <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-[16px] font-semibold" style={{ color: 'var(--fg-title)' }}>
+                <h3 className="text-[18px] font-bold" style={{ color: 'var(--fg-title)' }}>
                   {n.topic}
                 </h3>
                 {n.weekCount && n.weekCount > 1 && (
@@ -178,7 +182,7 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
               {n.context && n.context.length > 0 && (
                 <div className="depth-layer-1" data-depth={depth}>
                   <div className="mt-2 mb-2 pl-3 py-2 rounded" style={{ background: 'rgba(5,150,105,0.05)' }}>
-                    <p className="text-[10px] font-semibold tracking-wider uppercase mb-1" style={{ color: COLOR.context }}>CONTEXT</p>
+                    <p className="text-[10px] font-semibold tracking-wider uppercase mb-1" style={{ color: COLOR.context }}>历史可比</p>
                     {n.context.map((c, ci) => (
                       <p key={ci} className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
                         · {formatContextItem(c)}

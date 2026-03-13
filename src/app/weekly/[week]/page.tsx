@@ -25,10 +25,10 @@ export default async function WeeklyReportPage({ params }: { params: Promise<{ w
   const pageData = await getWeeklyPageData(week)
   const currentWeek = getCurrentWeekNumber()
 
-  // Lighter query — no V1-V5 results (those are for Console's TrustSpine)
+  // Full query including V1-V5 results for TrustSpine + EvidenceDrawer
   const { data: allFactsRaw } = await supabaseAdmin
     .from('atomic_facts')
-    .select('id, content_zh, content_en, fact_type, tags, source_url, metric_name, metric_value, metric_unit, metric_change, verification_status, confidence, fact_date, week_number')
+    .select('id, content_zh, content_en, fact_type, tags, source_url, metric_name, metric_value, metric_unit, metric_change, verification_status, confidence, fact_date, week_number, v1_result, v2_result, v3_result, v4_result, v5_result')
     .eq('week_number', week)
     .in('verification_status', ['verified', 'partially_verified'])
     .order('fact_date', { ascending: false })
