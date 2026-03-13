@@ -95,41 +95,56 @@ function formatContextItem(c: ContextItem): string {
 
 function ContextBlock({ items }: { items: ContextItem[] }) {
   if (items.length === 0) return null
+
+  // Check if any item has a real comparison (current_entity + delta)
+  const hasComparison = items.some(c => typeof c !== 'string' && c.current_entity && c.delta_label)
+
   return (
-    <div className="mt-2 rounded-r" style={{
-      borderLeft: '3px solid var(--info)',
+    <div className="mt-3" style={{
       background: 'var(--context-bg)',
-      padding: '10px 14px',
+      borderRadius: '6px',
+      padding: '14px 16px',
     }}>
-      <p className="text-[11px] font-medium tracking-wider uppercase mb-1.5" style={{ color: 'var(--info)' }}>
-        参照对比
-      </p>
       {items.map((c, i) => {
         if (typeof c === 'string') {
           return (
-            <p key={i} className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-secondary)', fontFamily: 'var(--font-mono), monospace' }}>
+            <p key={i} className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
               {c}
             </p>
           )
         }
+
+        const hasDelta = c.current_entity && c.current_value && c.delta_label
+
         return (
-          <div key={i} className={i > 0 ? 'mt-2 pt-2 border-t border-[var(--border)]' : ''}>
-            {/* Historical reference */}
-            <p className="text-[13px] leading-relaxed" style={{ fontFamily: 'var(--font-mono), monospace' }}>
-              <span className="font-bold" style={{ color: 'var(--fg-title)' }}>{c.event}</span>
-              <span style={{ color: 'var(--fg-secondary)' }}>: {c.detail}</span>
+          <div key={i} className={i > 0 ? 'mt-3 pt-3 border-t' : ''} style={{ borderColor: 'var(--border)' }}>
+            {/* Reference event — subdued, providing context */}
+            <p className="text-[12px] leading-relaxed mb-1" style={{ color: 'var(--fg-muted)' }}>
+              {c.event}{c.detail ? `  ·  ${c.detail}` : ''}
             </p>
-            {/* Current entity parallel comparison */}
-            {c.current_entity && c.current_value && (
-              <p className="text-[14px] font-semibold mt-1" style={{ color: 'var(--fg-title)' }}>
-                {c.current_entity} 当前: {c.current_value}
-                {c.delta_label && (
-                  <span className="ml-2 text-[13px]" style={{ color: 'var(--info)' }}>
+
+            {/* Current value + delta — this is the "punchline" */}
+            {hasDelta ? (
+              // Check if delta is a "no comparison" message (e.g. "不同维度，无直接对比")
+              c.delta_label && /无.*对比|不同维度|不适用/.test(c.delta_label) ? (
+                <p className="text-[12px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>
+                  {c.current_entity}: {c.current_value}
+                </p>
+              ) : (
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <p className="text-[14px] font-semibold" style={{ color: 'var(--fg-title)' }}>
+                    {c.current_entity}: {c.current_value}
+                  </p>
+                  <span className="text-[14px] font-bold" style={{ color: 'var(--accent)' }}>
                     {c.delta_label}
                   </span>
-                )}
+                </div>
+              )
+            ) : c.current_entity && c.current_value ? (
+              <p className="text-[13px]" style={{ color: 'var(--fg-secondary)' }}>
+                {c.current_entity}: {c.current_value}
               </p>
-            )}
+            ) : null}
           </div>
         )
       })}
