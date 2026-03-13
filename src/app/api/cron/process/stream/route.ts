@@ -20,7 +20,7 @@ import { createPipelineLogger, PipelineCancelledError } from '@/lib/pipeline-log
 import { verifyAdminToken } from '@/lib/admin-auth'
 import type { AtomicFact } from '@/lib/types'
 
-export const maxDuration = 600
+export const maxDuration = 900
 
 const RAW_TABLES = ['raw_news', 'raw_filings', 'raw_product_updates', 'raw_funding', 'raw_regulatory'] as const
 const RAW_TABLE_NAMES: Record<string, string> = {
@@ -212,21 +212,56 @@ export async function GET(request: Request) {
           .in('verification_status', ['verified', 'partially_verified'])
 
         const verifiedFactIds = (verifiedRows ?? []).map((r: { id: string }) => r.id)
-        logger.log(`  ${verifiedFactIds.length} 条已验证事实`, 'info')
+        logger.log(`${verifiedFactIds.length} 条已验证事实`, 'info')
+
+        // ── 增量过滤：只处理尚未完成各阶段的事实 ──
+        // B2: 过滤掉已有 fact_entities 记录的事实
+        const { data: b2DoneRows } = await supabaseAdmin
+          .from('fact_entities')
+          .select('fact_id')
+          .in('fact_id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
+        const b2DoneSet = new Set((b2DoneRows ?? []).map((r: { fact_id: string }) => r.fact_id))
+        const b2TodoIds = verifiedFactIds.filter(id => !b2DoneSet.has(id))
+
+        // B3: 过滤掉已有 timeline_facts 记录的事实
+        const { data: b3DoneRows } = await supabaseAdmin
+          .from('timeline_facts')
+          .select('fact_id')
+          .in('fact_id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
+        const b3DoneSet = new Set((b3DoneRows ?? []).map((r: { fact_id: string }) => r.fact_id))
+        const b3TodoIds = verifiedFactIds.filter(id => !b3DoneSet.has(id))
+
+        // B4: 过滤掉已作为 fact_id_a 检查过的事实
+        const { data: b4DoneRows } = await supabaseAdmin
+          .from('fact_contradictions')
+          .select('fact_id_a')
+          .in('fact_id_a', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
+        const b4DoneSet = new Set((b4DoneRows ?? []).map((r: { fact_id_a: string }) => r.fact_id_a))
+        // B4 比较特殊：没有矛盾的事实不会有记录，所以不能用这个方法跳过
+        // 改用：跟 B2 一样只处理本次新验证的事实（b2TodoIds 之外的都是老的）
+        // 但更可靠的方式是：对所有事实都跑 B4（因为新老事实可能矛盾）
+        // 折中：只对本次新增的事实运行 B4
+        const b4TodoIds = b2TodoIds.length > 0 ? b2TodoIds : []
+
+        logger.log(`增量: B2 待处理 ${b2TodoIds.length}/${verifiedFactIds.length}, B3 待处理 ${b3TodoIds.length}/${verifiedFactIds.length}, B4 待处理 ${b4TodoIds.length}`, 'info')
 
         // ── Stage 3: Entity resolution ──
         if (fromStage <= 3) {
-          logger.progress('阶段3/6', '实体识别 (B2) — 关联事实与实体')
-          try {
-            const b2Stats = await resolveEntitiesBatch(
-              verifiedFactIds,
-              () => logger.checkCancelled(),
-              (current, total) => logger.log(`  实体识别: ${current}/${total}`, 'progress')
-            )
-            logger.log(`阶段3完成 — 成功 ${b2Stats.succeeded} 条，失败 ${b2Stats.failed} 条`, 'success')
-          } catch (err) {
-            if (err instanceof PipelineCancelledError) throw err
-            logger.log(`阶段3失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+          if (b2TodoIds.length > 0) {
+            logger.progress('阶段3/6', `实体识别 (B2) — ${b2TodoIds.length} 条待处理`)
+            try {
+              const b2Stats = await resolveEntitiesBatch(
+                b2TodoIds,
+                () => logger.checkCancelled(),
+                (current, total) => logger.log(`  实体识别: ${current}/${total}`, 'progress')
+              )
+              logger.log(`阶段3完成 — 成功 ${b2Stats.succeeded} 条，失败 ${b2Stats.failed} 条 (跳过 ${b2DoneSet.size} 条已处理)`, 'success')
+            } catch (err) {
+              if (err instanceof PipelineCancelledError) throw err
+              logger.log(`阶段3失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+            }
+          } else {
+            logger.log('阶段3 跳过 — 所有事实已完成实体识别', 'info')
           }
         } else {
           logger.log('阶段3 跳过', 'info')
@@ -236,20 +271,24 @@ export async function GET(request: Request) {
 
         // ── Stage 4: Timeline merging ──
         if (fromStage <= 4) {
-          logger.progress('阶段4/6', '时间线归并 (B3) — 将事实分配到时间线')
-          try {
-            const b3Stats = await mergeTimelinesBatch(
-              verifiedFactIds,
-              () => logger.checkCancelled(),
-              (current, total) => logger.log(`  时间线归并: ${current}/${total}`, 'progress')
-            )
-            logger.log(
-              `阶段4完成 — 分配到已有时间线 ${b3Stats.assigned} 条，新建 ${b3Stats.created} 条，独立 ${b3Stats.standalone} 条，失败 ${b3Stats.failed} 条`,
-              'success'
-            )
-          } catch (err) {
-            if (err instanceof PipelineCancelledError) throw err
-            logger.log(`阶段4失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+          if (b3TodoIds.length > 0) {
+            logger.progress('阶段4/6', `时间线归并 (B3) — ${b3TodoIds.length} 条待处理`)
+            try {
+              const b3Stats = await mergeTimelinesBatch(
+                b3TodoIds,
+                () => logger.checkCancelled(),
+                (current, total) => logger.log(`  时间线归并: ${current}/${total}`, 'progress')
+              )
+              logger.log(
+                `阶段4完成 — 分配 ${b3Stats.assigned}，新建 ${b3Stats.created}，独立 ${b3Stats.standalone}，失败 ${b3Stats.failed} (跳过 ${b3DoneSet.size} 条已处理)`,
+                'success'
+              )
+            } catch (err) {
+              if (err instanceof PipelineCancelledError) throw err
+              logger.log(`阶段4失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+            }
+          } else {
+            logger.log('阶段4 跳过 — 所有事实已完成时间线归并', 'info')
           }
         } else {
           logger.log('阶段4 跳过', 'info')
@@ -259,17 +298,21 @@ export async function GET(request: Request) {
 
         // ── Stage 5: Contradiction detection ──
         if (fromStage <= 5) {
-          logger.progress('阶段5/6', '矛盾检测 (B4) — 检测事实间矛盾')
-          try {
-            const b4Stats = await detectContradictionsBatch(
-              verifiedFactIds,
-              () => logger.checkCancelled(),
-              (current, total) => logger.log(`  矛盾检测: ${current}/${total}`, 'progress')
-            )
-            logger.log(`阶段5完成 — 已检查 ${b4Stats.checked} 条，失败 ${b4Stats.failed} 条`, 'success')
-          } catch (err) {
-            if (err instanceof PipelineCancelledError) throw err
-            logger.log(`阶段5失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+          if (b4TodoIds.length > 0) {
+            logger.progress('阶段5/6', `矛盾检测 (B4) — ${b4TodoIds.length} 条待处理`)
+            try {
+              const b4Stats = await detectContradictionsBatch(
+                b4TodoIds,
+                () => logger.checkCancelled(),
+                (current, total) => logger.log(`  矛盾检测: ${current}/${total}`, 'progress')
+              )
+              logger.log(`阶段5完成 — 已检查 ${b4Stats.checked} 条，失败 ${b4Stats.failed} 条`, 'success')
+            } catch (err) {
+              if (err instanceof PipelineCancelledError) throw err
+              logger.log(`阶段5失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
+            }
+          } else {
+            logger.log('阶段5 跳过 — 无新事实需要矛盾检测', 'info')
           }
         } else {
           logger.log('阶段5 跳过', 'info')
