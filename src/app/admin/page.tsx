@@ -179,12 +179,15 @@ const PIPELINE_STEPS = [
 ] as const
 
 /* Status badge colors */
-function statusColor(status: string | undefined): { bg: string; fg: string; label: string } {
+function statusColor(run: PipelineRunData | null | undefined): { bg: string; fg: string; label: string } {
+  const status = run?.status
+  // Detect cancelled: explicit 'cancelled' or 'failed' with cancellation marker
+  const isCancelled = status === 'cancelled' || (status === 'failed' && run?.stats === null && run?.logs?.some(l => l.message.includes('用户取消')))
+  if (isCancelled) return { bg: 'var(--surface-alt)', fg: 'var(--fg-muted)', label: '已取消' }
   switch (status) {
     case 'running': return { bg: 'var(--accent-soft)', fg: 'var(--accent)', label: '运行中' }
     case 'completed': return { bg: 'var(--success-soft, rgba(34,197,94,0.1))', fg: 'var(--success)', label: '已完成' }
     case 'failed': return { bg: 'rgba(239,68,68,0.1)', fg: 'var(--danger)', label: '失败' }
-    case 'cancelled': return { bg: 'var(--surface-alt)', fg: 'var(--fg-muted)', label: '已取消' }
     default: return { bg: 'var(--surface-alt)', fg: 'var(--fg-muted)', label: '未执行' }
   }
 }
@@ -375,7 +378,7 @@ function PipelineTab() {
           <div className="space-y-2">
             {PIPELINE_STEPS.map(step => {
               const stepRun = stepRuns[step.pipelineType]
-              const sc = statusColor(stepRun?.status)
+              const sc = statusColor(stepRun)
               const isActive = activeStep === step.key
               return (
                 <div key={step.key}

@@ -90,10 +90,11 @@ export async function createPipelineLogger(
       if (!runId) return
       const { data } = await supabaseAdmin
         .from('pipeline_runs')
-        .select('status')
+        .select('status, error')
         .eq('id', runId)
         .single()
-      if (data?.status === 'cancelled') {
+      // Detect cancellation: either explicit 'cancelled' status or 'failed' with cancellation marker
+      if (data?.status === 'cancelled' || (data?.status === 'failed' && data?.error === 'cancelled_by_user')) {
         throw new PipelineCancelledError()
       }
     },
@@ -103,10 +104,17 @@ export async function createPipelineLogger(
       logs.push({ time, message: '用户取消', level: 'error' })
       send({ type: 'error', message: '用户取消' })
       if (runId) {
-        await supabaseAdmin
+        // Try 'cancelled' first, fall back to 'failed' if DB constraint doesn't allow it
+        const { error: err1 } = await supabaseAdmin
           .from('pipeline_runs')
-          .update({ status: 'cancelled', completed_at: time, logs })
+          .update({ status: 'cancelled', completed_at: time, logs, error: 'cancelled_by_user' })
           .eq('id', runId)
+        if (err1) {
+          await supabaseAdmin
+            .from('pipeline_runs')
+            .update({ status: 'failed', completed_at: time, logs, error: 'cancelled_by_user' })
+            .eq('id', runId)
+        }
       }
     },
 
