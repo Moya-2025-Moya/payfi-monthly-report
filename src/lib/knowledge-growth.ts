@@ -103,7 +103,9 @@ ${factsText}
       metrics: e.metric_key && e.metric_value ? { [e.metric_key]: e.metric_value } : {},
       tags: e.tags,
       auto_generated: true,
-      verified: false,  // Quality gate: auto-generated events start unverified
+      verified: false,
+      confidence_score: 0.6,  // Auto-generated events start at 0.6; context engine uses >= 0.5
+      created_at: new Date().toISOString(),
     }
     if (embeddings?.[i]) {
       row.embedding = JSON.stringify(embeddings[i])

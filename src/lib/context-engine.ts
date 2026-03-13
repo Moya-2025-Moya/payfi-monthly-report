@@ -44,15 +44,17 @@ interface FactInput {
 
 // ── Stage 1: 事件分类 (纯规则) ──
 
-const CLASSIFICATION_RULES: { pattern: EventPattern; keywords: string[] }[] = [
-  { pattern: 'ipo_filing', keywords: ['s-1', 'ipo', '上市', '公开发行', '直接上市', 'sec 提交', '招股'] },
-  { pattern: 'enforcement', keywords: ['罚款', '和解', 'wells notice', '执法', '诉讼', '指控', '处罚', 'sec 起诉'] },
-  { pattern: 'regulatory_bill', keywords: ['法案', '法规', '立法', '通过', '委员会', 'genius', 'mica', '监管框架', '咨询文件'] },
-  { pattern: 'market_cap_change', keywords: ['市值', '市场份额', '突破', '增长', '下跌', '$', '亿', 'billion', 'tvl'] },
-  { pattern: 'tvl_milestone', keywords: ['tvl', '锁仓', '总锁定', 'defi'] },
-  { pattern: 'funding_round', keywords: ['融资', '领投', 'series', '轮', '投资', '估值', '收购'] },
-  { pattern: 'product_launch', keywords: ['发布', '上线', '推出', '发行', '集成', 'launch', '合作'] },
-  { pattern: 'partnership', keywords: ['合作', '协议', '联盟', 'partnership', '收购', '并购'] },
+const CLASSIFICATION_RULES: { pattern: EventPattern; keywords: string[]; weight: number }[] = [
+  // Higher weight = higher priority when tie-breaking. Order matters for same-weight.
+  // Deduplicated: each keyword appears in at most ONE category (the most specific one)
+  { pattern: 'ipo_filing', keywords: ['s-1', 'ipo', '上市', '公开发行', '直接上市', 'sec 提交', '招股'], weight: 3 },
+  { pattern: 'enforcement', keywords: ['罚款', '和解', 'wells notice', '执法', '诉讼', '指控', '处罚', 'sec 起诉'], weight: 3 },
+  { pattern: 'regulatory_bill', keywords: ['法案', '法规', '立法', '委员会', 'genius', 'mica', '监管框架', '咨询文件'], weight: 2 },
+  { pattern: 'tvl_milestone', keywords: ['tvl', '锁仓', '总锁定'], weight: 2 },
+  { pattern: 'market_cap_change', keywords: ['市值', '市场份额', 'billion', '亿'], weight: 1 },
+  { pattern: 'funding_round', keywords: ['融资', '领投', 'series', '轮', '估值'], weight: 2 },
+  { pattern: 'product_launch', keywords: ['发布', '上线', '推出', '发行', '集成', 'launch'], weight: 1 },
+  { pattern: 'partnership', keywords: ['合作', '协议', '联盟', 'partnership', '并购', '收购'], weight: 1 },
 ]
 
 export function classifyEvent(fact: FactInput): EventPattern | null {
@@ -61,14 +63,16 @@ export function classifyEvent(fact: FactInput): EventPattern | null {
   let bestScore = 0
 
   for (const rule of CLASSIFICATION_RULES) {
-    const score = rule.keywords.filter(kw => text.includes(kw)).length
-    if (score > bestScore) {
+    const hits = rule.keywords.filter(kw => text.includes(kw)).length
+    // Weighted score: more specific categories (higher weight) win ties
+    const score = hits * 10 + rule.weight
+    if (hits >= 1 && score > bestScore) {
       bestScore = score
       bestMatch = rule.pattern
     }
   }
 
-  return bestScore >= 1 ? bestMatch : null
+  return bestMatch
 }
 
 // ── Stage 2: 候选检索 (确定性) ──
@@ -132,8 +136,9 @@ async function retrieveCandidates(
       if (refMatches) {
         for (const rm of refMatches) {
           if (candidates.some(c => c.reference_id === rm.id)) continue
-          // Quality gate: skip unverified auto-generated events from DB
-          if (rm.auto_generated && rm.verified === false) continue
+          // Quality gate: skip low-confidence auto-generated events
+          // Auto-generated events start at 0.6 confidence — usable but deprioritized
+          if (rm.auto_generated && rm.verified === false && (rm.confidence_score ?? 0) < 0.5) continue
           const milestones = (rm.milestones as { date: string; event: string }[]) ?? []
           const metrics = (rm.metrics as Record<string, string | number>) ?? {}
           const milestonesText = milestones.map(m => `${m.date}: ${m.event}`).join('; ')
@@ -319,21 +324,78 @@ function validateComparison(comp: ContextComparison, candidateCount: number): bo
   return true
 }
 
+// ── Quality Gate 2.5: Delta numeric validation ──
+// Don't trust AI math — verify delta_label against actual numbers
+
+function extractNumber(s: string): number | null {
+  // Extract first numeric value, handling "$5B", "118 天", "42%", "$1.7B" etc.
+  const match = s.match(/[\$￥]?([\d,.]+)\s*(b|billion|m|million|k|万|亿|%|天|days?)?/i)
+  if (!match) return null
+  let num = parseFloat(match[1].replace(/,/g, ''))
+  const unit = (match[2] ?? '').toLowerCase()
+  if (unit === 'b' || unit === 'billion') num *= 1e9
+  else if (unit === 'm' || unit === 'million') num *= 1e6
+  else if (unit === 'k') num *= 1e3
+  else if (unit === '亿') num *= 1e8
+  else if (unit === '万') num *= 1e4
+  return num
+}
+
+function validateDelta(comp: ContextComparison): ContextComparison {
+  if (!comp.delta_label || !comp.current_value || !comp.metric_value) return comp
+
+  const currentNum = extractNumber(comp.current_value)
+  const refNum = extractNumber(comp.metric_value)
+  if (currentNum === null || refNum === null || refNum === 0) {
+    // Can't validate — strip delta rather than show potentially wrong data
+    return { ...comp, delta_label: undefined }
+  }
+
+  const ratio = currentNum / refNum
+  const pctDiff = Math.abs((ratio - 1) * 100)
+
+  // Extract claimed percentage/multiplier from delta_label
+  const claimedMatch = comp.delta_label.match(/([\d.]+)\s*(%|x|倍)/)
+  if (!claimedMatch) return comp // non-standard format, keep as-is
+
+  const claimedNum = parseFloat(claimedMatch[1])
+  const claimedUnit = claimedMatch[2]
+
+  let expectedNum: number
+  if (claimedUnit === 'x' || claimedUnit === '倍') {
+    expectedNum = ratio > 1 ? ratio : 1 / ratio
+  } else {
+    expectedNum = pctDiff
+  }
+
+  // Allow 20% tolerance for rounding differences
+  if (Math.abs(claimedNum - expectedNum) / Math.max(expectedNum, 1) > 0.2) {
+    // Recalculate with correct value
+    const direction = comp.delta_label.match(/^(快|慢|大|小|多|少|高|低)/)?.[0] ?? ''
+    if (pctDiff > 100) {
+      const multiplier = (ratio > 1 ? ratio : 1 / ratio).toFixed(1)
+      return { ...comp, delta_label: `${direction} ${multiplier}x` }
+    } else {
+      return { ...comp, delta_label: `${direction} ${Math.round(pctDiff)}%` }
+    }
+  }
+
+  return comp
+}
+
 // ── Quality Gate 3: Insight 校验 (V13 新增) ──
 // Schema 通过不等于有洞察。过滤无价值的对比。
 
 function validateInsight(comp: ContextComparison, fact: FactInput): boolean {
-  // Rule 1: 不能是相邻周的同指标数据
-  // If date_range only covers ~1 week from fact_date, it's just week-over-week change
-  const dateMatch = comp.date_range.match(/(\d{4})\.?(\d{2})?/)
+  // Rule 1: Reference must be >60 days from fact — otherwise it's just recent noise
+  // Parse dates like "2020.12→2021.04", "2024.06", "2025.01.15"
+  const dateMatch = comp.date_range.match(/(\d{4})\.(\d{2})\.?(\d{2})?/)
   if (dateMatch) {
-    const factYear = parseInt(fact.fact_date.slice(0, 4))
-    const factMonth = parseInt(fact.fact_date.slice(5, 7))
-    const refYear = parseInt(dateMatch[1])
-    const refMonth = dateMatch[2] ? parseInt(dateMatch[2]) : 0
-    // Same year + adjacent month = likely too recent
-    if (refYear === factYear && refMonth > 0 && Math.abs(refMonth - factMonth) <= 1) {
-      // Allow if it's a different entity comparison; if entity unknown, reject adjacent-week data
+    const refDate = new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3] ?? '15'}`)
+    const factDate = new Date(fact.fact_date)
+    const daysDiff = Math.abs((factDate.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24))
+    if (daysDiff < 60) {
+      // Allow if it's a different entity comparison
       if (!fact.entity || !comp.reference_event || comp.reference_event.toLowerCase().includes(fact.entity.toLowerCase())) {
         return false
       }
@@ -369,8 +431,11 @@ export async function generateFactContext(fact: FactInput): Promise<ContextResul
     // Gate 2: Schema 校验
     const schemaValid = comparisons.filter(c => validateComparison(c, candidates.length))
 
+    // Gate 2.5: Delta numeric validation — recalculate AI-generated deltas
+    const deltaValidated = schemaValid.map(c => validateDelta(c))
+
     // Gate 3: Insight 校验
-    const insightValid = schemaValid.filter(c => validateInsight(c, fact))
+    const insightValid = deltaValidated.filter(c => validateInsight(c, fact))
 
     if (confidence === 'low' && insightValid.length === 0) {
       return { context_lines: [], comparisons: [], event_type: eventType, used_reference_ids: [], confidence: 'low' }

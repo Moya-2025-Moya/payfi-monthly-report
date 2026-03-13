@@ -34,6 +34,7 @@ export interface SignalItem {
   text: string
   context?: string                     // legacy one-liner (backward compat)
   structured_context?: NarrativeContext // V14: structured with parallel comparison
+  source_url?: string                  // V15: link to original source
 }
 
 export interface BriefItem {
@@ -62,12 +63,12 @@ function esc(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  market_structure: '市场',
-  product: '产品',
-  onchain_data: '链上',
-  regulatory: '监管',
-  funding: '融资',
+const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
+  market_structure: { label: '市场', color: '#1a73e8' },
+  product: { label: '产品', color: '#0d904f' },
+  onchain_data: { label: '链上', color: '#7b61ff' },
+  regulatory: { label: '监管', color: '#d93025' },
+  funding: { label: '融资', color: '#e37400' },
 }
 
 const CATEGORY_ORDER: Array<SignalItem['category']> = [
@@ -104,7 +105,7 @@ function buildContextBlockInner(items: NarrativeContext[]): string {
   return `<table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
       <td style="border-left:3px solid #c4c4c4;background-color:#f5f5f5;padding:12px 16px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%">
-          <tr><td style="padding:0 0 6px;font-size:11px;font-weight:bold;letter-spacing:1px;color:#999999;">历史可比</td></tr>
+          <tr><td style="padding:0 0 4px;font-size:11px;letter-spacing:1px;color:#bbbbbb;">COMPARABLE</td></tr>
           ${rows}
         </table>
       </td>
@@ -153,8 +154,8 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
       ? `<tr><td style="padding:4px 16px;font-size:13px;color:#666666;line-height:1.6;"><span style="color:#999999;">上周</span>&nbsp;&nbsp;${esc(n.last_week)}</td></tr>`
       : ''
 
-    // This week (highlighted — the star of the card)
-    const thisWeekRow = `<tr><td style="padding:4px 16px;font-size:14px;color:#1a1a1a;line-height:1.6;font-weight:bold;"><span style="color:#999999;font-weight:normal;">本周</span>&nbsp;&nbsp;${esc(n.this_week)}</td></tr>`
+    // This week (highlighted — the star of the card) — 16px vs 13px origin/last_week for clear hierarchy
+    const thisWeekRow = `<tr><td style="padding:6px 16px;font-size:16px;color:#111111;line-height:1.5;font-weight:bold;"><span style="color:#ff6d00;font-weight:bold;font-size:11px;letter-spacing:1px;">本周</span>&nbsp;&nbsp;${esc(n.this_week)}</td></tr>`
 
     // Context block
     const contextHtml = n.context && n.context.length > 0
@@ -202,8 +203,11 @@ function buildSignals(signals: SignalItem[]): string {
     .filter(cat => grouped[cat]?.length)
     .map(cat => {
       const items = grouped[cat]!.map(s => {
-        // Signal fact line
-        let row = `<tr><td style="padding:2px 0 2px 8px;font-size:14px;color:#333333;line-height:1.7;">&middot; ${esc(s.text)}</td></tr>`
+        // Signal fact line (with optional source link)
+        const sourceLink = s.source_url
+          ? ` <a href="${esc(s.source_url)}" target="_blank" style="color:#999999;font-size:11px;text-decoration:none;">&#x2197;</a>`
+          : ''
+        let row = `<tr><td style="padding:2px 0 2px 8px;font-size:14px;color:#333333;line-height:1.7;">&middot; ${esc(s.text)}${sourceLink}</td></tr>`
 
         // V14: prefer structured_context with parallel comparison
         if (s.structured_context) {
@@ -232,7 +236,7 @@ function buildSignals(signals: SignalItem[]): string {
 
       return `<tr><td style="padding:0 0 12px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%">
-          <tr><td style="padding:0 0 4px;font-size:13px;font-weight:bold;color:#666666;">${esc(CATEGORY_LABELS[cat] ?? cat)}</td></tr>
+          <tr><td style="padding:0 0 4px;font-size:13px;font-weight:bold;color:${CATEGORY_LABELS[cat]?.color ?? '#666666'};">${esc(CATEGORY_LABELS[cat]?.label ?? cat)}</td></tr>
           ${items}
         </table>
       </td></tr>`
@@ -245,7 +249,7 @@ function buildBriefs(briefs: BriefItem[]): string {
 
   return briefs.slice(0, 10).map(b => {
     const dateTag = b.date
-      ? `<span style="color:#999999;font-family:'Courier New',Courier,monospace;font-size:11px;">${esc(b.date)}</span>&nbsp;&nbsp;`
+      ? `<span style="color:#666666;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:bold;">${esc(b.date)}</span>&nbsp;&nbsp;`
       : ''
     return `<tr><td style="padding:3px 0 3px 0;font-size:13px;color:#555555;line-height:1.7;">${dateTag}${esc(b.text)}</td></tr>`
   }).join('\n')
@@ -260,9 +264,11 @@ export function generateEmailHTML(data: EmailData): string {
   const signalsHTML = buildSignals(signals)
   const briefsHTML = buildBriefs(briefs ?? [])
 
-  // CTA text: specific about what's in the full version
-  const remainingCount = stats.factCount - narratives.length - signals.length
-  const ctaText = remainingCount > 5
+  // CTA text: email covers ~3 narratives + ~5 signals + ~10 briefs = ~18 items
+  // Remaining = total facts minus what's visually represented
+  const coveredCount = narratives.length * 3 + signals.length + (briefs ?? []).length
+  const remainingCount = Math.max(0, stats.factCount - coveredCount)
+  const ctaText = remainingCount > 3
     ? `另有 ${remainingCount} 条本周事实 →`
     : '查看完整版 →'
 

@@ -300,21 +300,27 @@ ${factsText}`,
 
               const v13Narratives: V13Narrative[] = []
 
-              // Fetch previous week's narrative summaries for "上周" temporal progression
+              // Fetch previous week's narrative summaries from narrative_thread_entries (canonical source)
               const prevWeek = shiftWeek(weekNumber, -1)
               const prevNarrativeMap = new Map<string, string>()
               try {
-                const { data: prevSnapshot } = await supabaseAdmin
-                  .from('weekly_snapshots')
-                  .select('snapshot_data')
+                const { data: prevEntries } = await supabaseAdmin
+                  .from('narrative_thread_entries')
+                  .select('thread_id, summary')
                   .eq('week_number', prevWeek)
-                  .single()
-                const prevSummaryData = prevSnapshot?.snapshot_data as Record<string, unknown> | undefined
-                const prevDetailedStr = (prevSummaryData?.weekly_summary_detailed ?? '') as string
-                if (prevDetailedStr) {
-                  const prevParsed = JSON.parse(prevDetailedStr)
-                  for (const pn of (prevParsed.narratives ?? [])) {
-                    if (pn.topic && pn.summary) prevNarrativeMap.set(pn.topic, pn.summary as string)
+                if (prevEntries && prevEntries.length > 0) {
+                  // Map thread_id → topic via narrative_threads
+                  const threadIds = prevEntries.map(e => e.thread_id)
+                  const { data: threadTopics } = await supabaseAdmin
+                    .from('narrative_threads')
+                    .select('id, topic')
+                    .in('id', threadIds)
+                  if (threadTopics) {
+                    const topicMap = new Map(threadTopics.map(t => [t.id, t.topic]))
+                    for (const e of prevEntries) {
+                      const topic = topicMap.get(e.thread_id)
+                      if (topic && e.summary) prevNarrativeMap.set(topic, e.summary)
+                    }
                   }
                 }
               } catch (err) {
@@ -582,18 +588,26 @@ ${factsText}`,
                 weekLabel: weekToDateRange(weekNumber),
                 marketLine: parsed.marketLine,
                 oneLiner: parsed.oneLiner ?? '',
-                narratives: (parsed.narratives ?? []).slice(0, 3).map((n: { topic: string; summary: string; weekCount?: number; upcoming?: Array<{ date: string; title: string }>; context?: Array<{ event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string }>; last_week?: string; origin?: string }) => {
+                narratives: (parsed.narratives ?? []).slice(0, 3).map((n: { topic: string; summary: string; weekCount?: number; upcoming?: Array<{ date: string; title: string }>; events?: Array<{ title: string; description?: string; significance?: string }>; context?: Array<{ event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string }>; last_week?: string; origin?: string }) => {
                   // Transform V13Narrative → NarrativeForEmail
                   const upcoming = (n.upcoming ?? [])
                   const nextWatch = upcoming.length > 0
                     ? upcoming.map(u => `${u.date}: ${u.title}`).join('; ')
                     : undefined
+                  // Extract this_week from highest-significance event title (specific fact),
+                  // NOT the AI summary (which is a generic narrative overview)
+                  const events = n.events ?? []
+                  const highEvent = events.find(e => e.significance === 'high')
+                  const thisWeekText = highEvent
+                    ? highEvent.title + (highEvent.description && highEvent.description !== highEvent.title ? ` — ${highEvent.description}` : '')
+                    : n.summary  // fallback to summary only if no high-significance event
+
                   return {
                     topic: n.topic,
                     weekCount: n.weekCount,
                     origin: n.origin,
                     last_week: n.last_week,
-                    this_week: n.summary,
+                    this_week: thisWeekText,
                     next_week_watch: nextWatch,
                     context: n.context,
                   } as NarrativeForEmail
@@ -603,6 +617,7 @@ ${factsText}`,
                   text: s.text,
                   context: s.context,
                   structured_context: s.structured_context,
+                  source_url: s.source_url,
                 })),
                 briefs: (parsed.briefs ?? []).slice(0, 10) as BriefItem[],
                 stats: {
