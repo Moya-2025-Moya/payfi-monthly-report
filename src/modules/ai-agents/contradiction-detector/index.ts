@@ -243,7 +243,7 @@ export async function detectContradictions(factId: string): Promise<void> {
 }
 
 // 并行批量大小：B4 是纯检测（不创建状态），可以用更大并发
-const B4_CONCURRENCY = 10
+const B4_CONCURRENCY = 20
 
 export async function detectContradictionsBatch(
   factIds: string[],

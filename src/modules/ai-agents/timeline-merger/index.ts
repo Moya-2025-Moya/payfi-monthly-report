@@ -304,7 +304,7 @@ export async function mergeTimeline(
 }
 
 // 并行批量大小：B3 会创建新时间线，后续事实需看到新时间线，用小批量
-const B3_CONCURRENCY = 5
+const B3_CONCURRENCY = 15
 
 export async function mergeTimelinesBatch(
   factIds: string[],
