@@ -15,27 +15,42 @@ export async function POST(request: Request) {
   try {
     const errors: string[] = []
 
-    async function del(table: string) {
+    // Delete by id column
+    async function delById(table: string) {
       const { error } = await supabaseAdmin.from(table).delete().neq('id', DUMMY_UUID)
       if (error) errors.push(`${table}: ${error.message}`)
     }
 
-    // 1. Delete dependent junction tables first (FK CASCADE would handle it, but be explicit)
-    await del('fact_contradictions')
-    await del('timeline_facts')
-    await del('fact_entities')
-    await del('fact_sectors')
-    await del('entity_relationships')
+    // Delete by fact_id column (junction tables without id)
+    async function delByFactId(table: string) {
+      const { error } = await supabaseAdmin.from(table).delete().neq('fact_id', DUMMY_UUID)
+      if (error) errors.push(`${table}: ${error.message}`)
+    }
 
-    // 2. Delete main pipeline output tables
-    await del('reports')
-    await del('weekly_snapshots')
-    await del('narrative_threads')
-    await del('timelines')
-    await del('atomic_facts')
+    // Safe delete — try, ignore if table doesn't exist
+    async function delSafe(table: string, col: string) {
+      const { error } = await supabaseAdmin.from(table).delete().neq(col, DUMMY_UUID)
+      if (error && !error.message.includes('does not exist')) {
+        errors.push(`${table}: ${error.message}`)
+      }
+    }
+
+    // 1. Junction tables (composite PK, no id column)
+    await delByFactId('fact_contradictions')  // has id but fact_id works too
+    await delSafe('timeline_facts', 'fact_id')
+    await delByFactId('fact_entities')
+    await delSafe('fact_sectors', 'fact_id')
+    await delById('entity_relationships')
+
+    // 2. Main pipeline output tables
+    await delById('reports')
+    await delById('weekly_snapshots')
+    await delSafe('narrative_threads', 'id')
+    await delById('timelines')
+    await delById('atomic_facts')
 
     // 3. Clear pipeline run history
-    await del('pipeline_runs')
+    await delById('pipeline_runs')
 
     // 4. Reset `processed` flag on all raw tables so pipeline can re-process
     for (const table of RAW_TABLES) {

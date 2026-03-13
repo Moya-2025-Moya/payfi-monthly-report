@@ -324,12 +324,41 @@ function PipelineTab() {
   async function handleStep(step: typeof PIPELINE_STEPS[number]) {
     setRunningStep(step.key)
     setActiveStep(step.key)
-    const url = testMode && 'isStream' in step && step.isStream ? `${step.endpoint}?test=true` : step.endpoint
-    await run(url)
+
+    const isStream = 'isStream' in step && step.isStream
+    const url = testMode && isStream ? `${step.endpoint}?test=true` : step.endpoint
+
+    if (isStream) {
+      await run(url)
+    } else {
+      // Non-stream endpoint: regular fetch, show JSON result as log
+      setLogs([])
+      setRunning(true)
+      try {
+        const res = await adminFetch(url)
+        const data = await res.json().catch(() => ({}))
+        if (res.ok) {
+          const msg = data.message || data.status || '完成'
+          const details = data.results
+            ? Object.entries(data.results as Record<string, { count?: number; error?: string }>)
+                .map(([k, v]) => `  ${k}: ${v.count ?? 0} 条${v.error ? ` (错误: ${v.error})` : ''}`)
+                .join('\n')
+            : null
+          setLogs(details ? [msg, ...details.split('\n'), `耗时: ${data.duration_ms ?? '?'}ms`] : [msg])
+        } else {
+          setLogs([`[ERROR] ${data.message || res.statusText || '请求失败'}`])
+        }
+      } catch {
+        setLogs(['[ERROR] 网络错误'])
+      } finally {
+        setRunning(false)
+      }
+    }
+
     setRunningStep(null)
     // Refresh runs after completion
     try {
-      const res = await fetch('/api/pipeline/runs')
+      const res = await adminFetch('/api/pipeline/runs')
       if (res.ok) setStepRuns(await res.json())
     } catch { /* ignore */ }
   }
