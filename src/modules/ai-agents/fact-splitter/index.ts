@@ -375,8 +375,8 @@ export async function splitFacts(
 
 // ─── 批量处理: 获取未处理的原始数据并拆解 ───
 
-const BATCH_SIZE = 5 // 每批并发条数（每条 2 次 AI 调用，共 10 并发）
-const BATCH_DELAY_MS = 2_000 // 批间等待 2 秒
+const BATCH_SIZE = 10 // 每批并发条数（每条 2 次 AI 调用，共 20 并发）
+const BATCH_DELAY_MS = 500 // 批间等待 0.5 秒
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
