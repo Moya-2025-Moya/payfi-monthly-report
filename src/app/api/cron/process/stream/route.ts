@@ -16,7 +16,7 @@ import { validateTemporalConsistency } from '@/modules/ai-agents/validators/temp
 import { adjudicate } from '@/modules/ai-agents/validators/adjudicator'
 import { getVerifiersForFact } from '@/config/verification-strategy'
 
-import { createPipelineLogger, PipelineCancelledError } from '@/lib/pipeline-logger'
+import { createPipelineLogger, PipelineCancelledError, PipelineTimeoutError } from '@/lib/pipeline-logger'
 import { verifyAdminToken } from '@/lib/admin-auth'
 import type { AtomicFact } from '@/lib/types'
 
@@ -41,10 +41,18 @@ export async function GET(request: Request) {
   const RAW_LIMIT = isTest ? 3 : 200
   const VERIFY_LIMIT = isTest ? 5 : Infinity
 
+  const TIMEOUT_SAFETY_MS = 700_000 // 700s — leave 100s buffer before 800s hard limit
+  const pipelineStart = Date.now()
+
   const stream = new ReadableStream({
     async start(controller) {
       function send(data: Record<string, unknown>) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      /** Returns true if we're approaching the Vercel timeout */
+      function isApproachingTimeout(): boolean {
+        return Date.now() - pipelineStart > TIMEOUT_SAFETY_MS
       }
 
       const logger = await createPipelineLogger('process', send)
@@ -112,17 +120,22 @@ export async function GET(request: Request) {
           logger.progress('阶段1/6', '事实拆分 (B1) — 从原始数据提取原子事实')
 
           for (const table of RAW_TABLES) {
+            if (isApproachingTimeout()) throw new PipelineTimeoutError(1)
             const tableName = RAW_TABLE_NAMES[table] ?? table
             logger.log(`  处理表: ${tableName} (${table})...`, 'info')
             try {
               const result = await processUnprocessedRaw(table, weekNumber, RAW_LIMIT, (current, total) => {
                 logger.log(`  ${tableName}: ${current}/${total}`, 'progress')
-              }, () => logger.checkCancelled())
+              }, async () => {
+                await logger.checkCancelled()
+                if (isApproachingTimeout()) throw new PipelineTimeoutError(1)
+              })
               totalRaw += result.total
               totalFacts += result.factIds.length
               logger.log(`  ${tableName}: 处理 ${result.total} 条，提取 ${result.factIds.length} 条事实，丢弃 ${result.dropped}`, 'success')
             } catch (err) {
               if (err instanceof PipelineCancelledError) throw err
+              if (err instanceof PipelineTimeoutError) throw err
               logger.log(`  ${tableName}: 处理失败 — ${err instanceof Error ? err.message : String(err)}`, 'error')
             }
           }
@@ -132,6 +145,7 @@ export async function GET(request: Request) {
         }
 
         await logger.checkCancelled()
+        if (isApproachingTimeout()) throw new PipelineTimeoutError(2)
 
         // ── Stage 2: Validation ──
         if (fromStage <= 2) {
@@ -148,6 +162,7 @@ export async function GET(request: Request) {
 
           const BATCH = 20
           for (let i = 0; i < facts.length; i += BATCH) {
+            if (isApproachingTimeout()) throw new PipelineTimeoutError(2)
             const batch = facts.slice(i, i + BATCH)
             logger.log(`  验证: ${Math.min(i + BATCH, facts.length)}/${facts.length}`, 'progress')
 
@@ -245,6 +260,7 @@ export async function GET(request: Request) {
 
         logger.log(`增量: B2 待处理 ${b2TodoIds.length}/${verifiedFactIds.length}, B3 待处理 ${b3TodoIds.length}/${verifiedFactIds.length}, B4 待处理 ${b4TodoIds.length}`, 'info')
 
+        if (isApproachingTimeout()) throw new PipelineTimeoutError(3)
         // ── Stage 3: Entity resolution ──
         if (fromStage <= 3) {
           if (b2TodoIds.length > 0) {
@@ -269,6 +285,7 @@ export async function GET(request: Request) {
 
         await logger.checkCancelled()
 
+        if (isApproachingTimeout()) throw new PipelineTimeoutError(4)
         // ── Stage 4: Timeline merging ──
         if (fromStage <= 4) {
           if (b3TodoIds.length > 0) {
@@ -296,6 +313,7 @@ export async function GET(request: Request) {
 
         await logger.checkCancelled()
 
+        if (isApproachingTimeout()) throw new PipelineTimeoutError(5)
         // ── Stage 5: Contradiction detection ──
         if (fromStage <= 5) {
           if (b4TodoIds.length > 0) {
@@ -320,6 +338,7 @@ export async function GET(request: Request) {
 
         await logger.checkCancelled()
 
+        if (isApproachingTimeout()) throw new PipelineTimeoutError(6)
         // ── Stage 6: Translation ──
         if (fromStage <= 6) {
           logger.progress('阶段6/6', '翻译 (B5) — 双语补全')
@@ -347,7 +366,13 @@ export async function GET(request: Request) {
         logger.log(`  后处理: ${verifiedFactIds.length} 条事实`, 'info')
         await logger.done({ message: 'AI 处理流水线全部完成' })
       } catch (err) {
-        if (err instanceof PipelineCancelledError) {
+        if (err instanceof PipelineTimeoutError) {
+          const elapsed = Math.round((Date.now() - pipelineStart) / 1000)
+          logger.log(`⏱ 已运行 ${elapsed}s，接近超时限制，暂停处理`, 'info')
+          logger.log(`将从阶段 ${err.resumeFromStage} 自动续跑...`, 'info')
+          send({ type: 'timeout_continue', fromStage: err.resumeFromStage, isTest })
+          await logger.done({ message: `超时暂停，将从阶段 ${err.resumeFromStage} 续跑`, partial: true, resumeFromStage: err.resumeFromStage })
+        } else if (err instanceof PipelineCancelledError) {
           logger.log('流水线已被用户取消', 'error')
           await logger.cancel()
         } else {

@@ -25,6 +25,15 @@ export class PipelineCancelledError extends Error {
   constructor() { super('Pipeline cancelled by user') }
 }
 
+export class PipelineTimeoutError extends Error {
+  /** The stage to resume from on the next run */
+  resumeFromStage: number
+  constructor(resumeFromStage: number) {
+    super(`Pipeline approaching timeout, will resume from stage ${resumeFromStage}`)
+    this.resumeFromStage = resumeFromStage
+  }
+}
+
 /**
  * Create a pipeline logger that writes to both SSE and DB.
  * Usage in stream endpoints:

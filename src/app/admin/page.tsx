@@ -23,6 +23,8 @@ interface StreamEvent {
   step?: string
   message?: string
   level?: string
+  fromStage?: number
+  isTest?: boolean
 }
 
 /* ── DB log entry (from pipeline_runs.logs) ── */
@@ -87,15 +89,21 @@ function useSSEStream() {
   const [runId, setRunId] = useState<string | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // Stores pending auto-continue info when a timeout_continue event is received
+  const continueRef = useRef<{ fromStage: number; isTest: boolean } | null>(null)
 
   useEffect(() => {
     if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
-  const run = useCallback(async (url: string) => {
+  const runRef = useRef<(url: string, isContinuation?: boolean) => Promise<void>>(undefined)
+
+  const run = useCallback(async (url: string, isContinuation = false) => {
     setRunning(true)
-    setLogs([])
-    setRunId(null)
+    if (!isContinuation) {
+      setLogs([])
+      setRunId(null)
+    }
 
     // Create AbortController so we can kill the connection
     const controller = new AbortController()
@@ -127,6 +135,9 @@ function useSSEStream() {
               setLogs(prev => [...prev, event.message!])
             } else if (event.type === 'progress' && event.step && event.message) {
               setLogs(prev => [...prev, `[${event.step}] ${event.message}`])
+            } else if (event.type === 'timeout_continue') {
+              continueRef.current = { fromStage: event.fromStage as number, isTest: !!event.isTest }
+              setLogs(prev => [...prev, `⏱ 接近超时限制，将从阶段 ${event.fromStage} 自动续跑...`])
             } else if (event.type === 'done') {
               setLogs(prev => [...prev, '--- 完成 ---'])
             } else if (event.type === 'error' && event.message) {
@@ -143,9 +154,20 @@ function useSSEStream() {
       }
     } finally {
       abortRef.current = null
+      // Check if we need to auto-continue from a timeout
+      const cont = continueRef.current
+      if (cont) {
+        continueRef.current = null
+        setLogs(prev => [...prev, '', '━━━ 自动续跑 ━━━', ''])
+        const contUrl = `/api/cron/process/stream?from=${cont.fromStage}${cont.isTest ? '&test=true' : ''}`
+        runRef.current?.(contUrl, true)
+        return
+      }
       setRunning(false)
     }
   }, [])
+
+  runRef.current = run
 
   // Abort the SSE connection directly
   const abort = useCallback(() => {
