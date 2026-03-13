@@ -1,628 +1,341 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 
-type ButtonState = 'idle' | 'loading' | 'success' | 'error'
+type Tab = 'generate' | 'preview' | 'subscribers'
 
-interface LogEntry {
-  time: string
-  message: string
-  type: 'info' | 'success' | 'error' | 'progress'
+/* ── Stream event types ── */
+interface StreamEvent {
+  type: string
+  runId?: string
+  step?: string
+  message?: string
+  level?: string
 }
 
-const ENDPOINT_TO_TYPE: Record<string, string> = {
-  '/api/trigger/collect': 'collect',
-  '/api/cron/process': 'process',
-  '/api/cron/twitter': 'twitter',
-  '/api/cron/snapshot': 'snapshot',
-  '/api/cron/narrative': 'narrative',
+/* ── Report data ── */
+interface ReportData {
+  id: string
+  date: string
+  subject: string | null
+  content: string
+  created_at: string
 }
 
-function PipelineTrigger({
-  label,
-  description,
-  endpoint,
-  method = 'POST',
-  initialLogs,
-  initialState,
-  initialRunId,
-  testEndpoint,
-}: {
-  label: string
-  description: string
-  endpoint: string
-  method?: string
-  initialLogs?: LogEntry[]
-  initialState?: ButtonState
-  initialRunId?: string
-  testEndpoint?: string
-}) {
-  const [state, setState] = useState<ButtonState>(initialState ?? 'idle')
-  const [logs, setLogs] = useState<LogEntry[]>(initialLogs ?? [])
-  const [runId, setRunId] = useState<string | null>(initialRunId ?? null)
-  const logRef = useRef<HTMLDivElement>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+/* ── Subscriber ── */
+interface Subscriber {
+  id: string
+  email: string
+  status: string
+  created_at: string
+}
 
-  const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
-    const time = new Date().toLocaleTimeString('zh-CN')
-    setLogs(prev => [...prev, { time, message, type }])
-  }, [])
+/* ──────────────────────────────────────────
+   Tab 1: Generate Weekly Report
+   ────────────────────────────────────────── */
+function GenerateTab() {
+  const [generating, setGenerating] = useState(false)
+  const [logs, setLogs] = useState<string[]>([])
+  const logsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [logs])
 
-  useEffect(() => {
-    if (state !== 'loading' || !runId) return
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/pipeline/runs?id=${runId}`)
-        if (!res.ok) return
-
-        const run = await res.json()
-        if (!run || !run.logs) return
-
-        const dbLogs: LogEntry[] = run.logs.map((l: { time: string; message: string; level: string }) => ({
-          time: new Date(l.time).toLocaleTimeString('zh-CN'),
-          message: l.message,
-          type: l.level as LogEntry['type'],
-        }))
-        setLogs(dbLogs)
-
-        if (run.status === 'completed') {
-          setState('success')
-          if (pollRef.current) clearInterval(pollRef.current)
-        } else if (run.status === 'failed' || run.status === 'cancelled') {
-          setState('error')
-          if (pollRef.current) clearInterval(pollRef.current)
-        }
-      } catch {
-        // Ignore polling errors
-      }
-    }, 3000)
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
-  }, [state, runId])
-
-  async function handleCancel() {
-    if (!runId) return
-    addLog('正在取消...', 'info')
-    try {
-      await fetch('/api/pipeline/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runId }),
-      })
-      addLog('已发送取消请求，等待当前批次完成后停止', 'info')
-    } catch {
-      addLog('取消请求失败', 'error')
-    }
-  }
-
-  async function handleClick(useTestEndpoint = false) {
-    const activeEndpoint = useTestEndpoint && testEndpoint ? testEndpoint : endpoint
-    setState('loading')
+  async function handleGenerate() {
+    setGenerating(true)
     setLogs([])
-    setRunId(null)
-    addLog(`开始执行: ${label}${useTestEndpoint ? ' [测试模式]' : ''}`, 'info')
-
-    // Build SSE URL: /api/cron/process?test=true → /api/cron/process/stream?test=true
-    const sseUrl = activeEndpoint.includes('?')
-      ? activeEndpoint.replace('?', '/stream?')
-      : activeEndpoint + '/stream'
 
     try {
-      const evtSource = new EventSource(sseUrl)
-      let gotMessage = false
-
-      const timeout = setTimeout(() => {
-        if (!gotMessage) {
-          evtSource.close()
-          fallbackFetch()
-        }
-      }, 3000)
-
-      evtSource.onmessage = (event) => {
-        gotMessage = true
-        clearTimeout(timeout)
-        try {
-          const data = JSON.parse(event.data)
-
-          if (data.type === 'init' && data.runId) {
-            setRunId(data.runId)
-          } else if (data.type === 'log') {
-            addLog(data.message, data.level ?? 'info')
-          } else if (data.type === 'progress') {
-            addLog(`[${data.step}] ${data.message}`, 'progress')
-          } else if (data.type === 'done') {
-            addLog('执行完成', 'success')
-            setState('success')
-            evtSource.close()
-          } else if (data.type === 'error') {
-            addLog(`错误: ${data.message}`, 'error')
-            setState('error')
-            evtSource.close()
-          }
-        } catch {
-          addLog(event.data, 'info')
-        }
+      const res = await fetch('/api/cron/snapshot/stream')
+      if (!res.ok || !res.body) {
+        setLogs(prev => [...prev, '[ERROR] 请求失败'])
+        setGenerating(false)
+        return
       }
 
-      evtSource.onerror = () => {
-        clearTimeout(timeout)
-        if (!gotMessage) {
-          evtSource.close()
-          fallbackFetch()
-        } else {
-          evtSource.close()
-          if (runId) {
-            addLog('SSE 连接断开，切换到轮询模式...', 'info')
-          } else if (state === 'loading') {
-            addLog('连接断开', 'error')
-            setState('error')
-          }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const event: StreamEvent = JSON.parse(line.slice(6))
+            if (event.type === 'log' && event.message) {
+              setLogs(prev => [...prev, event.message!])
+            } else if (event.type === 'progress' && event.step && event.message) {
+              setLogs(prev => [...prev, `[${event.step}] ${event.message}`])
+            } else if (event.type === 'done') {
+              setLogs(prev => [...prev, '--- 生成完成 ---'])
+            } else if (event.type === 'error' && event.message) {
+              setLogs(prev => [...prev, `[ERROR] ${event.message}`])
+            }
+          } catch { /* ignore parse errors */ }
         }
       }
     } catch {
-      fallbackFetch()
+      setLogs(prev => [...prev, '[ERROR] 网络错误'])
+    } finally {
+      setGenerating(false)
     }
-
-    async function fallbackFetch() {
-      addLog('使用普通请求模式...', 'info')
-      try {
-        const res = await fetch(activeEndpoint, { method })
-        const json = await res.json().catch(() => ({}))
-        if (res.ok) {
-          if (json.results) {
-            for (const [name, status] of Object.entries(json.results)) {
-              addLog(`  ${name}: ${status === 'ok' ? '成功' : '失败'}`, status === 'ok' ? 'success' : 'error')
-            }
-          }
-          if (json.stats) {
-            const s = json.stats
-            if (s.raw_items_processed !== undefined) addLog(`  原始数据处理: ${s.raw_items_processed} 条`, 'info')
-            if (s.candidates_extracted !== undefined) addLog(`  候选事实提取: ${s.candidates_extracted} 条`, 'info')
-            if (s.verified_high !== undefined) addLog(`  高可信验证: ${s.verified_high} 条`, 'success')
-            if (s.verified_medium !== undefined) addLog(`  中可信验证: ${s.verified_medium} 条`, 'info')
-            if (s.rejected !== undefined) addLog(`  拒绝: ${s.rejected} 条`, 'error')
-          }
-          if (json.duration_ms) addLog(`  耗时: ${(json.duration_ms / 1000).toFixed(1)}s`, 'info')
-          addLog(json.message ?? '执行完成', 'success')
-          setState('success')
-        } else {
-          addLog(`错误: ${json.error ?? json.message ?? `HTTP ${res.status}`}`, 'error')
-          setState('error')
-        }
-      } catch (e: unknown) {
-        addLog(`请求失败: ${e instanceof Error ? e.message : '未知错误'}`, 'error')
-        setState('error')
-      }
-    }
-  }
-
-  const logColors: Record<LogEntry['type'], string> = {
-    info: 'var(--fg-muted)',
-    success: 'var(--success)',
-    error: 'var(--danger)',
-    progress: 'var(--info)',
   }
 
   return (
-    <Card>
-      <div className="flex items-start justify-between gap-4 mb-3">
-        <div>
-          <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>{label}</p>
-          <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{description}</p>
+    <div className="space-y-4">
+      <Card>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[14px] font-semibold" style={{ color: 'var(--fg-title)' }}>生成本周周报</p>
+            <p className="text-[12px] mt-1" style={{ color: 'var(--fg-muted)' }}>
+              统计事实 → 矛盾检测 → AI 选题+分类 → 生成摘要 → 邮件报告
+            </p>
+          </div>
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="px-6 py-2.5 rounded-md text-[13px] font-semibold transition-colors"
+            style={{
+              background: generating ? 'var(--surface-alt)' : 'var(--accent)',
+              color: generating ? 'var(--fg-muted)' : 'var(--accent-fg)',
+              opacity: generating ? 0.7 : 1,
+            }}>
+            {generating ? '生成中...' : '生成本周周报'}
+          </button>
         </div>
-        <div className="flex gap-2 shrink-0">
-          {state === 'loading' && runId ? (
-            <button
-              onClick={handleCancel}
-              className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
-              style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}
-            >
-              停止
-            </button>
-          ) : (
-            <>
-              {testEndpoint && (
-                <button
-                  onClick={() => handleClick(true)}
-                  disabled={state === 'loading'}
-                  className="rounded-md px-3 py-2 text-[11px] font-medium border transition-colors"
-                  style={{ borderColor: 'var(--info-muted)', color: 'var(--info)', opacity: state === 'loading' ? 0.5 : 1 }}
-                >
-                  测试
-                </button>
-              )}
-              <button
-                onClick={() => handleClick(false)}
-                disabled={state === 'loading'}
-                className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
-                style={
-                  state === 'success'
-                    ? { borderColor: 'var(--success)', color: 'var(--success)' }
-                    : state === 'error'
-                    ? { borderColor: 'var(--danger)', color: 'var(--danger)' }
-                    : { borderColor: 'var(--border)', color: 'var(--fg-secondary)' }
-                }
-              >
-                {state === 'success' ? '已完成' : state === 'error' ? '失败' : '执行'}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      </Card>
 
       {logs.length > 0 && (
-        <div
-          ref={logRef}
-          className="mt-3 rounded-md border p-3 max-h-60 overflow-y-auto font-mono text-[11px] space-y-0.5"
-          style={{ background: 'var(--surface-alt)', borderColor: 'var(--border)' }}
-        >
-          {logs.map((log, i) => (
-            <div key={i} className="flex gap-2">
-              <span className="shrink-0 opacity-50" style={{ color: 'var(--fg-muted)' }}>{log.time}</span>
-              <span style={{ color: logColors[log.type] }}>{log.message}</span>
-            </div>
-          ))}
-          {state === 'loading' && (
-            <div className="flex items-center gap-1 mt-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--info)' }} />
-              <span style={{ color: 'var(--fg-muted)' }}>处理中...</span>
-            </div>
-          )}
-        </div>
-      )}
-    </Card>
-  )
-}
-
-function DevResetButton({
-  label,
-  description,
-  mode,
-}: {
-  label: string
-  description: string
-  mode: 'processed' | 'all'
-}) {
-  const [state, setState] = useState<ButtonState>('idle')
-  const [result, setResult] = useState<string | null>(null)
-  const [confirming, setConfirming] = useState(false)
-
-  async function handleReset() {
-    if (!confirming) {
-      setConfirming(true)
-      return
-    }
-
-    setConfirming(false)
-    setState('loading')
-    setResult(null)
-
-    try {
-      const res = await fetch('/api/dev/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      })
-      const json = await res.json()
-      if (res.ok) {
-        const hasErrors = json.results?.some((r: { status: string }) => r.status === 'error')
-        setResult(json.message)
-        setState(hasErrors ? 'error' : 'success')
-      } else {
-        setResult(`错误: ${json.error ?? `HTTP ${res.status}`}`)
-        setState('error')
-      }
-    } catch (e: unknown) {
-      setResult(`请求失败: ${e instanceof Error ? e.message : '未知错误'}`)
-      setState('error')
-    }
-  }
-
-  function handleCancel() {
-    setConfirming(false)
-  }
-
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="flex-1">
-        <p className="text-[11px] font-medium" style={{ color: 'var(--fg)' }}>{label}</p>
-        <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{description}</p>
-        {result && (
-          <p className="text-[11px] mt-1" style={{ color: state === 'success' ? 'var(--success)' : 'var(--danger)' }}>
-            {result}
+        <Card>
+          <p className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
+            生成日志
           </p>
-        )}
-      </div>
-      <div className="flex gap-2 shrink-0">
-        {confirming && (
-          <button
-            onClick={handleCancel}
-            className="rounded-md px-3 py-1.5 text-[11px] border"
-            style={{ borderColor: 'var(--border)', color: 'var(--fg-muted)' }}
-          >
-            取消
-          </button>
-        )}
-        <button
-          onClick={handleReset}
-          disabled={state === 'loading'}
-          className="rounded-md px-3 py-1.5 text-[11px] font-medium border transition-colors"
-          style={
-            confirming
-              ? { borderColor: 'var(--danger)', color: 'var(--danger)', background: 'rgba(239,68,68,0.08)' }
-              : state === 'loading'
-              ? { borderColor: 'var(--border)', color: 'var(--fg-muted)', opacity: 0.7 }
-              : { borderColor: 'var(--danger)', color: 'var(--danger)' }
-          }
-        >
-          {state === 'loading' ? '执行中...' : confirming ? '确认重置' : '重置'}
-        </button>
-      </div>
+          <div
+            className="font-mono text-[11px] leading-relaxed rounded-md p-3 overflow-auto"
+            style={{ background: 'var(--surface-alt)', color: 'var(--fg-secondary)', maxHeight: '400px' }}>
+            {logs.map((log, i) => (
+              <div key={i} style={{ color: log.includes('[ERROR]') ? 'var(--danger)' : log.includes('完成') ? 'var(--success)' : undefined }}>
+                {log}
+              </div>
+            ))}
+            <div ref={logsEndRef} />
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
 
-type HealthData = { status: string; db: string; timestamp: string }
-type PipelineData = {
-  id?: string; status?: string; started_at?: string; completed_at?: string
-  facts_collected?: number; stats?: Record<string, unknown>; message?: string
-}
-
-interface RestoredState {
-  logs: LogEntry[]
-  state: ButtonState
-  runId?: string
-}
-
-export default function AdminPage() {
-  const [health, setHealth] = useState<HealthData | null>(null)
-  const [healthError, setHealthError] = useState<string | null>(null)
-  const [pipeline, setPipeline] = useState<PipelineData | null>(null)
-  const [pipelineError, setPipelineError] = useState<string | null>(null)
-  const [restored, setRestored] = useState<Record<string, RestoredState>>({})
+/* ──────────────────────────────────────────
+   Tab 2: Email Preview
+   ────────────────────────────────────────── */
+function PreviewTab() {
+  const [reports, setReports] = useState<ReportData[]>([])
+  const [selected, setSelected] = useState<ReportData | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/health')
+    fetch('/api/reports')
       .then(r => r.json())
-      .then(setHealth)
-      .catch(e => setHealthError(e.message))
-
-    fetch('/api/pipeline')
-      .then(r => r.json())
-      .then(setPipeline)
-      .catch(e => setPipelineError(e.message))
-
-    fetch('/api/pipeline/runs')
-      .then(r => r.json())
-      .then((runs: Record<string, { id: string; status: string; logs: { time: string; message: string; level: string }[] } | null>) => {
-        const restoredState: Record<string, RestoredState> = {}
-
-        for (const [type, run] of Object.entries(runs)) {
-          if (!run || !run.logs || run.logs.length === 0) continue
-
-          const logs: LogEntry[] = run.logs.map(l => ({
-            time: new Date(l.time).toLocaleTimeString('zh-CN'),
-            message: l.message,
-            type: l.level as LogEntry['type'],
-          }))
-
-          const state: ButtonState =
-            run.status === 'running' ? 'loading' :
-            run.status === 'completed' ? 'success' :
-            (run.status === 'failed' || run.status === 'cancelled') ? 'error' : 'idle'
-
-          restoredState[type] = { logs, state, runId: run.id }
-        }
-
-        setRestored(restoredState)
+      .then((data: ReportData[]) => {
+        setReports(data)
+        if (data.length > 0) setSelected(data[0])
       })
       .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
-  function getRestored(endpoint: string): RestoredState | undefined {
-    const type = ENDPOINT_TO_TYPE[endpoint]
-    return type ? restored[type] : undefined
+  if (loading) return <p className="text-[12px] py-8 text-center" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
+  if (reports.length === 0) return <p className="text-[12px] py-8 text-center" style={{ color: 'var(--fg-muted)' }}>还没有生成过邮件报告。</p>
+
+  return (
+    <div className="flex gap-4">
+      <div className="w-48 shrink-0 space-y-1">
+        {reports.map(r => (
+          <button key={r.id} onClick={() => setSelected(r)}
+            className="w-full text-left px-3 py-2 rounded-md text-[12px] transition-colors"
+            style={{
+              background: selected?.id === r.id ? 'var(--accent-soft)' : 'transparent',
+              color: selected?.id === r.id ? 'var(--accent)' : 'var(--fg-secondary)',
+              border: `1px solid ${selected?.id === r.id ? 'var(--accent-muted)' : 'var(--border)'}`,
+            }}>
+            <p className="font-medium">{r.date}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{r.subject ?? 'No subject'}</p>
+          </button>
+        ))}
+      </div>
+      {selected && (
+        <div className="flex-1 border rounded-lg overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)' }}>
+            <div>
+              <p className="text-[12px] font-medium" style={{ color: 'var(--fg-title)' }}>{selected.subject ?? `StablePulse Weekly | ${selected.date}`}</p>
+              <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>From: StablePulse &lt;noreply@stablepulse.com&gt;</p>
+            </div>
+            <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{new Date(selected.created_at).toLocaleString('zh-CN')}</p>
+          </div>
+          <iframe srcDoc={selected.content} className="w-full border-0" style={{ height: '80vh', background: '#f0f0f0' }} title="Email preview" sandbox="allow-same-origin" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ──────────────────────────────────────────
+   Tab 3: Subscribers
+   ────────────────────────────────────────── */
+function SubscribersTab() {
+  const [subscribers, setSubscribers] = useState<Subscriber[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newEmail, setNewEmail] = useState('')
+  const [adding, setAdding] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/subscribers')
+      if (res.ok) {
+        const data = await res.json()
+        setSubscribers(Array.isArray(data) ? data : data.data ?? [])
+      }
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleAdd() {
+    const email = newEmail.trim()
+    if (!email || adding) return
+    setAdding(true)
+    try {
+      const res = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      if (res.ok) { setNewEmail(''); load() }
+    } catch { /* ignore */ }
+    finally { setAdding(false) }
   }
+
+  async function handleToggle(id: string, currentStatus: string) {
+    const newStatus = currentStatus === 'active' ? 'unsubscribed' : 'active'
+    try {
+      await fetch('/api/subscribers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: newStatus }),
+      })
+      load()
+    } catch { /* ignore */ }
+  }
+
+  const active = subscribers.filter(s => s.status === 'active')
+  const inactive = subscribers.filter(s => s.status !== 'active')
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <Card>
+        <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>添加订阅者</p>
+        <div className="flex gap-2">
+          <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="email@example.com"
+            className="flex-1 px-3 py-2 rounded-md border text-[13px] outline-none"
+            style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
+          <button onClick={handleAdd} disabled={adding || !newEmail.trim()}
+            className="px-4 py-2 rounded-md text-[12px] font-medium"
+            style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: adding ? 0.7 : 1 }}>
+            {adding ? '添加中...' : '添加'}
+          </button>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>订阅者列表</p>
+          <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>{active.length} 活跃 · {inactive.length} 已退订</span>
+        </div>
+        {loading ? (
+          <p className="text-[12px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
+        ) : subscribers.length === 0 ? (
+          <p className="text-[12px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>暂无订阅者</p>
+        ) : (
+          <div className="space-y-1">
+            {subscribers.map(s => (
+              <div key={s.id} className="flex items-center justify-between py-2 px-3 rounded-md"
+                style={{ background: s.status === 'active' ? 'transparent' : 'var(--surface-alt)' }}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full"
+                    style={{ background: s.status === 'active' ? 'var(--success)' : 'var(--fg-muted)', opacity: s.status === 'active' ? 1 : 0.4 }} />
+                  <span className="text-[13px]"
+                    style={{ color: s.status === 'active' ? 'var(--fg-body)' : 'var(--fg-muted)', textDecoration: s.status !== 'active' ? 'line-through' : 'none' }}>
+                    {s.email}
+                  </span>
+                </div>
+                <button onClick={() => handleToggle(s.id, s.status)}
+                  className="text-[11px] px-2 py-1 rounded border transition-colors"
+                  style={{
+                    borderColor: s.status === 'active' ? 'var(--danger)' : 'var(--success)',
+                    color: s.status === 'active' ? 'var(--danger)' : 'var(--success)',
+                  }}>
+                  {s.status === 'active' ? '退订' : '恢复'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  )
+}
+
+/* ──────────────────────────────────────────
+   Main Admin Page: 3 Tabs
+   ────────────────────────────────────────── */
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'generate', label: '运行周报' },
+  { key: 'preview', label: '预览邮件' },
+  { key: 'subscribers', label: '订阅者' },
+]
+
+export default function AdminPage() {
+  const [tab, setTab] = useState<Tab>('generate')
 
   return (
     <div>
-      <PageHeader title="管理后台" />
-
-      <div className="space-y-6 max-w-2xl">
-        {/* System Health */}
-        <section>
-          <h2 className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>系统状态</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <Card>
-              <p className="text-[11px] mb-2" style={{ color: 'var(--fg-muted)' }}>系统健康</p>
-              {healthError ? (
-                <p className="text-[11px]" style={{ color: 'var(--danger)' }}>加载失败: {healthError}</p>
-              ) : health === null ? (
-                <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>检查中...</p>
-              ) : (
-                <div className="space-y-1 text-[11px]">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full"
-                      style={{ background: health.status === 'ok' ? 'var(--success)' : 'var(--danger)' }} />
-                    <span style={{ color: 'var(--fg)' }}>API: {health.status === 'ok' ? '正常' : health.status}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full"
-                      style={{ background: health.db === 'connected' ? 'var(--success)' : 'var(--danger)' }} />
-                    <span style={{ color: 'var(--fg)' }}>数据库: {health.db === 'connected' ? '已连接' : health.db}</span>
-                  </div>
-                  <p style={{ color: 'var(--fg-muted)' }}>{new Date(health.timestamp).toLocaleTimeString('zh-CN')}</p>
-                </div>
-              )}
-            </Card>
-
-            <Card>
-              <p className="text-[11px] mb-2" style={{ color: 'var(--fg-muted)' }}>最近流水线</p>
-              {pipelineError ? (
-                <p className="text-[11px]" style={{ color: 'var(--danger)' }}>加载失败: {pipelineError}</p>
-              ) : pipeline === null ? (
-                <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
-              ) : pipeline.message ? (
-                <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{pipeline.message}</p>
-              ) : (
-                <div className="space-y-1 text-[11px]">
-                  {pipeline.status && (
-                    <div className="flex items-center gap-2">
-                      <span className="inline-block w-2 h-2 rounded-full"
-                        style={{ background: pipeline.status === 'completed' ? 'var(--success)' : pipeline.status === 'running' ? 'var(--info)' : 'var(--warning)' }} />
-                      <span style={{ color: 'var(--fg)' }}>
-                        {pipeline.status === 'completed' ? '已完成' : pipeline.status === 'running' ? '运行中' : pipeline.status === 'failed' ? '失败' : pipeline.status}
-                      </span>
-                    </div>
-                  )}
-                  {pipeline.started_at && (
-                    <p style={{ color: 'var(--fg-muted)' }}>{new Date(pipeline.started_at).toLocaleString('zh-CN')}</p>
-                  )}
-                  {pipeline.facts_collected !== undefined && (
-                    <p style={{ color: 'var(--fg)' }}>事实数: {pipeline.facts_collected}</p>
-                  )}
-                </div>
-              )}
-            </Card>
-          </div>
-        </section>
-
-        {/* Pipeline Triggers */}
-        <section>
-          <h2 className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>流水线操作</h2>
-          <div className="space-y-3">
-            <PipelineTrigger
-              label="数据采集"
-              description="从 DeFiLlama、新闻源、SEC、GitHub 等采集最新数据"
-              endpoint="/api/trigger/collect"
-              method="POST"
-              initialLogs={getRestored('/api/trigger/collect')?.logs}
-              initialState={getRestored('/api/trigger/collect')?.state}
-              initialRunId={getRestored('/api/trigger/collect')?.runId}
-            />
-            <PipelineTrigger
-              label="推特采集"
-              description="从 twitterapi.io 拉取监控账号的推文"
-              endpoint="/api/cron/twitter"
-              method="GET"
-              initialLogs={getRestored('/api/cron/twitter')?.logs}
-              initialState={getRestored('/api/cron/twitter')?.state}
-              initialRunId={getRestored('/api/cron/twitter')?.runId}
-            />
-            <PipelineTrigger
-              label="AI 处理"
-              description="事实拆分 → 六层验证 → 实体识别 → 时间线归并 → 矛盾检测"
-              endpoint="/api/cron/process"
-              method="GET"
-              initialLogs={getRestored('/api/cron/process')?.logs}
-              initialState={getRestored('/api/cron/process')?.state}
-              initialRunId={getRestored('/api/cron/process')?.runId}
-              testEndpoint="/api/cron/process?test=true"
-            />
-            <PipelineTrigger
-              label="生成周报快照"
-              description="生成本周快照 + AI 摘要 + 邮件报告写入 reports 表"
-              endpoint="/api/cron/snapshot"
-              method="GET"
-              initialLogs={getRestored('/api/cron/snapshot')?.logs}
-              initialState={getRestored('/api/cron/snapshot')?.state}
-              initialRunId={getRestored('/api/cron/snapshot')?.runId}
-            />
-            <PipelineTrigger
-              label="生成叙事时间线"
-              description="发现 Top 3 叙事主题，生成时间线 + 预测节点"
-              endpoint="/api/cron/narrative"
-              method="GET"
-              initialLogs={getRestored('/api/cron/narrative')?.logs}
-              initialState={getRestored('/api/cron/narrative')?.state}
-              initialRunId={getRestored('/api/cron/narrative')?.runId}
-            />
-          </div>
-        </section>
-
-        {/* Editorial & Email */}
-        <section>
-          <h2 className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>邮件分发</h2>
-          <div className="space-y-3">
-            <Card>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>编辑台</p>
-                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>审核 → 选稿 → 排版 → 预览 → 发布</p>
-                </div>
-                <a href="/admin/editorial"
-                  className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
-                  style={{ borderColor: 'var(--accent-muted)', color: 'var(--accent)' }}>
-                  进入 →
-                </a>
-              </div>
-            </Card>
-            <Card>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>邮件预览</p>
-                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>预览已生成的周报邮件 HTML</p>
-                </div>
-                <a href="/admin/email-preview"
-                  className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
-                  style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)' }}>
-                  查看 →
-                </a>
-              </div>
-            </Card>
-            <Card>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>订阅者管理</p>
-                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>管理邮件订阅者列表</p>
-                </div>
-                <a href="/admin/subscribers"
-                  className="rounded-md px-4 py-2 text-[11px] font-medium border transition-colors"
-                  style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)' }}>
-                  管理 →
-                </a>
-              </div>
-            </Card>
-          </div>
-        </section>
-
-        {/* Dev Reset */}
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-[13px] font-semibold" style={{ color: 'var(--danger)' }}>开发模式</h2>
-            <span className="text-[11px] px-1.5 py-0.5 rounded font-medium"
-              style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--danger)' }}>
-              DEV
-            </span>
-          </div>
-          <Card>
-            <div className="space-y-4">
-              <DevResetButton
-                label="重置处理数据"
-                description="清空 AI 处理结果，保留原始采集数据并标记为未处理"
-                mode="processed"
-              />
-              <div className="border-t" style={{ borderColor: 'var(--border)' }} />
-              <DevResetButton
-                label="全部清空"
-                description="清空所有数据（包括原始采集），恢复到空白状态"
-                mode="all"
-              />
-            </div>
-          </Card>
-        </section>
+      <div className="mb-6">
+        <h1 className="text-[18px] font-bold" style={{ color: 'var(--fg-title)' }}>管理后台</h1>
       </div>
+
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 mb-6 border-b" style={{ borderColor: 'var(--border)' }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className="px-4 py-2 text-[13px] font-medium transition-colors"
+            style={{
+              color: tab === t.key ? 'var(--accent)' : 'var(--fg-muted)',
+              borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
+              marginBottom: '-1px',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {tab === 'generate' && <GenerateTab />}
+      {tab === 'preview' && <PreviewTab />}
+      {tab === 'subscribers' && <SubscribersTab />}
     </div>
   )
 }

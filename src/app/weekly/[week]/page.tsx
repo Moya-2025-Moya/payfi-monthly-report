@@ -1,11 +1,10 @@
-import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
-import { FeedClient } from '@/app/FeedClient'
+import { getCurrentWeekNumber } from '@/db/client'
 import { redirect } from 'next/navigation'
 import { getWeeklyPageData } from '@/lib/weekly-data'
-import type { AtomicFact } from '@/lib/types'
+import { WeeklyMirror } from './WeeklyMirror'
 import type { Metadata } from 'next'
 
-function parseWeekDateRange(week: string): { monday: Date; sunday: Date; display: string } | null {
+function parseWeekDateRange(week: string): { display: string } | null {
   const m = week.match(/^(\d{4})-W(\d{2})$/)
   if (!m) return null
   const year = parseInt(m[1], 10)
@@ -17,7 +16,7 @@ function parseWeekDateRange(week: string): { monday: Date; sunday: Date; display
   const sunday = new Date(monday)
   sunday.setUTCDate(monday.getUTCDate() + 6)
   const fmt = (d: Date) => `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
-  return { monday, sunday, display: `${fmt(monday)} - ${fmt(sunday)}` }
+  return { display: `${fmt(monday)} - ${fmt(sunday)}` }
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ week: string }> }): Promise<Metadata> {
@@ -29,55 +28,33 @@ export async function generateMetadata({ params }: { params: Promise<{ week: str
   }
 }
 
+function shiftWeek(week: string, delta: number): string {
+  const [yearStr, wPart] = week.split('-W')
+  const year = Number(yearStr)
+  const num = Number(wPart) + delta
+  if (num < 1) return `${year - 1}-W${String(52 + num).padStart(2, '0')}`
+  if (num > 52) return `${year + 1}-W${String(num - 52).padStart(2, '0')}`
+  return `${year}-W${String(num).padStart(2, '0')}`
+}
+
 export default async function WeeklyReportPage({ params }: { params: Promise<{ week: string }> }) {
   const { week } = await params
 
-  // Validate week format
   if (!/^\d{4}-W\d{2}$/.test(week)) {
     redirect(`/weekly/${getCurrentWeekNumber()}`)
   }
 
   const range = parseWeekDateRange(week)
-
-  // Fetch snapshot + facts + metrics in parallel
-  const [{ data: factsData }, { data: metricsData }, pageData] = await Promise.all([
-    supabaseAdmin
-      .from('atomic_facts')
-      .select('*')
-      .in('verification_status', ['verified', 'partially_verified'])
-      .eq('week_number', week)
-      .order('fact_date', { ascending: false })
-      .limit(200),
-    supabaseAdmin
-      .from('raw_onchain_metrics')
-      .select('coin_symbol, metric_name, metric_value, metric_unit, fetched_at')
-      .in('coin_symbol', ['USDT', 'USDC', 'DAI'])
-      .eq('metric_name', 'market_cap')
-      .order('fetched_at', { ascending: false })
-      .limit(9),
-    getWeeklyPageData(week),
-  ])
-
-  const facts = (factsData ?? []) as AtomicFact[]
-
-  // Deduplicate metrics
-  const latestMetrics: typeof metricsData = []
-  const seen = new Set<string>()
-  for (const m of (metricsData ?? [])) {
-    const key = `${m.coin_symbol}-${m.metric_name}`
-    if (!seen.has(key)) { seen.add(key); latestMetrics.push(m) }
-  }
-
-  // Previous/next week links
-  const prevWeek = shiftWeek(week, -1)
-  const nextWeek = shiftWeek(week, 1)
+  const pageData = await getWeeklyPageData(week)
   const currentWeek = getCurrentWeekNumber()
   const isCurrentWeek = week === currentWeek
   const isFutureWeek = week > currentWeek
+  const prevWeek = shiftWeek(week, -1)
+  const nextWeek = shiftWeek(week, 1)
 
   return (
     <div>
-      {/* Weekly report header with nav */}
+      {/* Header with nav */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <h1 className="text-[18px] font-bold" style={{ color: 'var(--fg-title)' }}>
@@ -107,33 +84,21 @@ export default async function WeeklyReportPage({ params }: { params: Promise<{ w
         </p>
       </div>
 
-      {facts.length === 0 && !pageData.summarySimple ? (
+      {!pageData.summaryDetailed ? (
         <div className="text-center py-16">
           <p className="text-[14px]" style={{ color: 'var(--fg-muted)' }}>该周暂无数据</p>
-          <a href={`/weekly/${currentWeek}`} className="text-[13px] mt-2 inline-block hover:underline" style={{ color: 'var(--accent)' }}>
-            查看本周周报 →
-          </a>
+          {!isCurrentWeek && (
+            <a href={`/weekly/${currentWeek}`} className="text-[13px] mt-2 inline-block hover:underline" style={{ color: 'var(--accent)' }}>
+              查看本周周报 →
+            </a>
+          )}
         </div>
       ) : (
-        <FeedClient
-          facts={facts}
-          currentWeek={week}
-          stats={pageData.stats}
-          narratives={pageData.narratives}
-          summarySimple={pageData.summarySimple}
+        <WeeklyMirror
           summaryDetailed={pageData.summaryDetailed}
-          marketMetrics={latestMetrics}
+          stats={pageData.stats}
         />
       )}
     </div>
   )
-}
-
-function shiftWeek(week: string, delta: number): string {
-  const [yearStr, wPart] = week.split('-W')
-  const year = Number(yearStr)
-  const num = Number(wPart) + delta
-  if (num < 1) return `${year - 1}-W${String(52 + num).padStart(2, '0')}`
-  if (num > 52) return `${year + 1}-W${String(num - 52).padStart(2, '0')}`
-  return `${year}-W${String(num).padStart(2, '0')}`
 }
