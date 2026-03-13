@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 
 type Depth = 0 | 1 | 2 | 3
 
@@ -39,7 +39,6 @@ export function DepthProvider({ children }: { children: ReactNode }) {
   // Keyboard shortcuts: 1/2/3/4 → depth 0/1/2/3
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      // Don't capture when typing in inputs
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
       if (e.metaKey || e.ctrlKey || e.altKey) return
@@ -53,8 +52,10 @@ export function DepthProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [setDepth])
 
+  const value = useMemo(() => ({ depth, setDepth }), [depth, setDepth])
+
   return (
-    <DepthContext.Provider value={{ depth, setDepth }}>
+    <DepthContext.Provider value={value}>
       {children}
     </DepthContext.Provider>
   )

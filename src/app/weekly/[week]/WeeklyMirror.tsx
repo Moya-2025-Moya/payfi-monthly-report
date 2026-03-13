@@ -213,8 +213,8 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData, k
                     {CATEGORY_LABELS[cat]}:
                   </p>
                   <div className="space-y-1.5">
-                    {grouped[cat]!.map((s, i) => (
-                      <div key={i}>
+                    {grouped[cat]!.map((s, si) => (
+                      <div key={`${cat}-${si}`}>
                         <p className="text-[14px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
                           · {s.text}
                           {s.source_url && (
@@ -259,7 +259,9 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData, k
 
           {/* Search + tag filter */}
           <div className="flex gap-2 mb-3 flex-wrap">
+            <label htmlFor="fact-search" className="sr-only">搜索事实</label>
             <input
+              id="fact-search"
               type="text"
               value={factSearch}
               onChange={e => setFactSearch(e.target.value)}

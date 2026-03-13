@@ -81,19 +81,21 @@ export function TrustSpine({ v1, v2, v3, v4, v5, onOpenEvidence }: TrustSpinePro
   ]
 
   return (
-    <div
-      className="flex flex-col items-center gap-[3px] shrink-0 cursor-pointer relative"
+    <button
+      type="button"
+      className="flex flex-col items-center gap-[3px] shrink-0 cursor-pointer relative bg-transparent border-0 p-0"
       style={{ width: '14px', paddingTop: '2px' }}
       onClick={onOpenEvidence}
+      aria-label="查看验证证据链"
     >
       {dots.map((dot, i) => (
         <div
-          key={i}
+          key={dot.label}
           className="relative"
           onMouseEnter={() => setHoveredIdx(i)}
           onMouseLeave={() => setHoveredIdx(null)}
         >
-          <svg width="6" height="6" viewBox="0 0 6 6">
+          <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden="true">
             {dot.status === 'na' ? (
               <circle cx="3" cy="3" r="2.5" fill="none" stroke={getDotColor(dot.status)} strokeWidth="1" />
             ) : (
@@ -103,6 +105,7 @@ export function TrustSpine({ v1, v2, v3, v4, v5, onOpenEvidence }: TrustSpinePro
           {/* Hover tooltip */}
           {hoveredIdx === i && (
             <div
+              role="tooltip"
               className="absolute left-5 top-1/2 -translate-y-1/2 whitespace-nowrap z-50 px-2 py-1 rounded text-[11px] shadow-md"
               style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--fg-secondary)' }}
             >
@@ -111,6 +114,6 @@ export function TrustSpine({ v1, v2, v3, v4, v5, onOpenEvidence }: TrustSpinePro
           )}
         </div>
       ))}
-    </div>
+    </button>
   )
 }

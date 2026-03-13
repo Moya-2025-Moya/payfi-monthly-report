@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 
 interface ConsoleContextType {
   isOpen: boolean
@@ -39,8 +39,10 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [])
 
+  const value = useMemo(() => ({ isOpen, open, close, toggle }), [isOpen, open, close, toggle])
+
   return (
-    <ConsoleContext.Provider value={{ isOpen, open, close, toggle }}>
+    <ConsoleContext.Provider value={value}>
       {children}
     </ConsoleContext.Provider>
   )

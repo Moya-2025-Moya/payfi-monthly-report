@@ -21,12 +21,12 @@ export function FactPulse({ facts, compact }: FactPulseProps) {
   const barHeight = compact ? { high: 10, medium: 7, low: 5 } : { high: 16, medium: 12, low: 8 }
 
   return (
-    <div className="flex items-end gap-[2px]" style={{ height: compact ? '14px' : '20px' }}>
-      {facts.slice(0, maxBars).map((f, i) => {
+    <div className="flex items-end gap-[2px]" role="img" aria-label={`事实脉搏: ${facts.length} 条事实`} style={{ height: compact ? '14px' : '20px' }}>
+      {facts.slice(0, maxBars).map((f) => {
         const color = getSectorColor(f.tags)
         const h = f.confidence === 'high' ? barHeight.high : f.confidence === 'medium' ? barHeight.medium : barHeight.low
         return (
-          <div key={i} style={{
+          <div key={f.id} style={{
             width: compact ? '2px' : '3px',
             height: `${h}px`,
             borderRadius: '1px',

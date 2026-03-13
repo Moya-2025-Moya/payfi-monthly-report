@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 
 interface FocusLensContextType {
   focusedEntity: string | null
@@ -47,8 +47,13 @@ export function FocusLensProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [focusedEntity])
 
+  const value = useMemo(
+    () => ({ focusedEntity, focusedEntityFacts, setFocus, clearFocus }),
+    [focusedEntity, focusedEntityFacts, setFocus, clearFocus]
+  )
+
   return (
-    <FocusLensContext.Provider value={{ focusedEntity, focusedEntityFacts, setFocus, clearFocus }}>
+    <FocusLensContext.Provider value={value}>
       {children}
     </FocusLensContext.Provider>
   )

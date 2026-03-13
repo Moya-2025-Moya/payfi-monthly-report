@@ -48,11 +48,6 @@ function NavLink({ href, label, pathname }: { href: string; label: string; pathn
   )
 }
 
-// Keep for layout compatibility
-export function getActiveGroup(_pathname: string): string {
-  return 'browse'
-}
-
 export function TopBar() {
   const pathname = usePathname()
 

@@ -22,6 +22,10 @@ interface EntityProfileProps {
   factsByWeek: Record<string, AtomicFact[]>
 }
 
+function safeHostname(url: string): string {
+  try { return new URL(url).hostname } catch { return url }
+}
+
 export function EntityProfile({ entity, facts, factsByWeek }: EntityProfileProps) {
   const weeks = Object.keys(factsByWeek).sort().reverse()
 
@@ -47,7 +51,7 @@ export function EntityProfile({ entity, facts, factsByWeek }: EntityProfileProps
           {entity.website && (
             <a href={entity.website} target="_blank" rel="noopener noreferrer"
               className="text-[12px] hover:underline" style={{ color: 'var(--info)' }}>
-              {new URL(entity.website).hostname}
+              {safeHostname(entity.website)}
             </a>
           )}
         </div>
