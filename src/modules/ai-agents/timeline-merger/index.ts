@@ -303,33 +303,43 @@ export async function mergeTimeline(
   return { action: aiResult.action, timelineId: resolvedTimelineId }
 }
 
+// 并行批量大小：B3 会创建新时间线，后续事实需看到新时间线，用小批量
+const B3_CONCURRENCY = 5
+
 export async function mergeTimelinesBatch(
   factIds: string[],
   onCancelCheck?: () => Promise<void>,
   onProgress?: (current: number, total: number) => void
 ): Promise<{ assigned: number; created: number; standalone: number; failed: number }> {
-  console.log(`[B3] Starting batch timeline merge for ${factIds.length} fact(s)`)
+  console.log(`[B3] Starting batch timeline merge for ${factIds.length} fact(s) (concurrency=${B3_CONCURRENCY})`)
 
   let assigned = 0
   let created = 0
   let standalone = 0
   let failed = 0
 
-  for (let i = 0; i < factIds.length; i++) {
-    if (onCancelCheck && i > 0 && i % 5 === 0) await onCancelCheck()
-    if (onProgress && i % 5 === 0) onProgress(i, factIds.length)
-    try {
-      const result = await mergeTimeline(factIds[i])
-      if (result.action === 'assign') assigned++
-      else if (result.action === 'create_new') created++
-      else standalone++
-    } catch (err) {
-      failed++
-      console.error(`[B3] Error processing fact ${factIds[i]}:`, err)
+  for (let i = 0; i < factIds.length; i += B3_CONCURRENCY) {
+    if (onCancelCheck && i > 0) await onCancelCheck()
+    if (onProgress) onProgress(i, factIds.length)
+
+    const batch = factIds.slice(i, i + B3_CONCURRENCY)
+    const results = await Promise.allSettled(
+      batch.map(id => mergeTimeline(id))
+    )
+
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        if (r.value.action === 'assign') assigned++
+        else if (r.value.action === 'create_new') created++
+        else standalone++
+      } else {
+        failed++
+        console.error(`[B3] Error:`, r.reason instanceof Error ? r.reason.message : String(r.reason))
+      }
     }
   }
-  if (onProgress) onProgress(factIds.length, factIds.length)
 
+  if (onProgress) onProgress(factIds.length, factIds.length)
   console.log(`[B3] Batch complete — assigned: ${assigned}, created: ${created}, standalone: ${standalone}, failed: ${failed}`)
   return { assigned, created, standalone, failed }
 }

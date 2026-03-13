@@ -213,42 +213,42 @@ export async function resolveEntities(factId: string): Promise<void> {
 
 // ─── Batch version: resolves entities for multiple facts with per-fact error isolation ───
 
+// 并行批量大小：B2 会创建新实体，后续批次需看到新实体，所以用小批量
+const B2_CONCURRENCY = 5
+
 export async function resolveEntitiesBatch(
   factIds: string[],
   onCancelCheck?: () => Promise<void>,
   onProgress?: (current: number, total: number) => void
 ): Promise<{ succeeded: number; failed: number }> {
-  console.log(`[B2] Starting batch entity resolution for ${factIds.length} fact(s)`)
+  console.log(`[B2] Starting batch entity resolution for ${factIds.length} fact(s) (concurrency=${B2_CONCURRENCY})`)
 
-  // Pre-fetch known entities once (instead of per-fact)
   let knownEntities = await fetchKnownEntities()
-
   let succeeded = 0
   let failed = 0
 
-  for (let i = 0; i < factIds.length; i++) {
-    if (onCancelCheck && i > 0 && i % 5 === 0) await onCancelCheck()
+  for (let i = 0; i < factIds.length; i += B2_CONCURRENCY) {
+    if (onCancelCheck && i > 0) await onCancelCheck()
+    if (onProgress) onProgress(i, factIds.length)
 
-    // Report progress every 5 facts
-    if (onProgress && i % 5 === 0) onProgress(i, factIds.length)
+    const batch = factIds.slice(i, i + B2_CONCURRENCY)
+    const results = await Promise.allSettled(
+      batch.map(id => resolveEntitiesWithCache(id, knownEntities))
+    )
 
-    try {
-      await resolveEntitiesWithCache(factIds[i], knownEntities)
-      succeeded++
-    } catch (err) {
-      failed++
-      console.log(`[B2] Failed to resolve entities for fact ${factIds[i]}: ${err instanceof Error ? err.message : String(err)}`)
+    for (const r of results) {
+      if (r.status === 'fulfilled') succeeded++
+      else {
+        failed++
+        console.log(`[B2] Failed:`, r.reason instanceof Error ? r.reason.message : String(r.reason))
+      }
     }
 
-    // Refresh entity cache every 10 facts (picks up newly created entities)
-    if ((i + 1) % 10 === 0) {
-      knownEntities = await fetchKnownEntities()
-    }
+    // 每批后刷新实体缓存（新创建的实体对后续批次可见）
+    knownEntities = await fetchKnownEntities()
   }
 
-  // Final progress
   if (onProgress) onProgress(factIds.length, factIds.length)
-
   console.log(`[B2] Batch complete — succeeded: ${succeeded}, failed: ${failed}`)
   return { succeeded, failed }
 }

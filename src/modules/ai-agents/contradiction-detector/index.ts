@@ -242,29 +242,38 @@ export async function detectContradictions(factId: string): Promise<void> {
   console.log(`[B4] Done for fact: ${factId}`)
 }
 
+// 并行批量大小：B4 是纯检测（不创建状态），可以用更大并发
+const B4_CONCURRENCY = 10
+
 export async function detectContradictionsBatch(
   factIds: string[],
   onCancelCheck?: () => Promise<void>,
   onProgress?: (current: number, total: number) => void
 ): Promise<{ checked: number; failed: number }> {
-  console.log(`[B4] Batch detecting contradictions for ${factIds.length} facts`)
+  console.log(`[B4] Batch detecting contradictions for ${factIds.length} facts (concurrency=${B4_CONCURRENCY})`)
 
   let checked = 0
   let failed = 0
 
-  for (let i = 0; i < factIds.length; i++) {
-    if (onCancelCheck && i > 0 && i % 5 === 0) await onCancelCheck()
-    if (onProgress && i % 5 === 0) onProgress(i, factIds.length)
-    try {
-      await detectContradictions(factIds[i])
-      checked++
-    } catch (err) {
-      failed++
-      console.error(`[B4] Error processing fact ${factIds[i]}:`, err)
+  for (let i = 0; i < factIds.length; i += B4_CONCURRENCY) {
+    if (onCancelCheck && i > 0) await onCancelCheck()
+    if (onProgress) onProgress(i, factIds.length)
+
+    const batch = factIds.slice(i, i + B4_CONCURRENCY)
+    const results = await Promise.allSettled(
+      batch.map(id => detectContradictions(id))
+    )
+
+    for (const r of results) {
+      if (r.status === 'fulfilled') checked++
+      else {
+        failed++
+        console.error(`[B4] Error:`, r.reason instanceof Error ? r.reason.message : String(r.reason))
+      }
     }
   }
-  if (onProgress) onProgress(factIds.length, factIds.length)
 
+  if (onProgress) onProgress(factIds.length, factIds.length)
   console.log(`[B4] Batch complete — checked: ${checked}, failed: ${failed}`)
   return { checked, failed }
 }
