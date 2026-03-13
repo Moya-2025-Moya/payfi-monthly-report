@@ -38,6 +38,8 @@
   --input-bg: #f5f5f5;
   --input-border: #e0e0e0;
   --selection: rgba(37, 99, 235, 0.15);
+  /* context block (historical comparison) */
+  --context-bg: #f0f7ff;
 }
 
 /* ─── Dark Mode ─── */
@@ -77,6 +79,8 @@
   --input-bg: #1e1e1e;
   --input-border: #333333;
   --selection: rgba(59, 130, 246, 0.25);
+  /* context block (historical comparison) */
+  --context-bg: #1a2332;
 }
 
 
@@ -159,11 +163,11 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* ─── Mobile: Depth Control at bottom ─── */
+/* ─── Mobile: Depth Control at bottom (Console only) ─── */
 @media (max-width: 768px) {
   .depth-control-sticky {
     position: fixed;
-    bottom: 52px; /* above MobileNav */
+    bottom: 0;
     left: 0;
     right: 0;
     top: auto !important;

@@ -329,14 +329,22 @@ ${factsText}`,
                   fact_date: factDate,
                 })
 
+                // Map structured comparisons to NarrativeContext objects
+                const contextItems = ctxResult.comparisons.length > 0
+                  ? ctxResult.comparisons.map(c => ({
+                      event: c.reference_event,
+                      detail: `${c.metric_label} ${c.metric_value} (${c.date_range})`,
+                    }))
+                  : undefined
+
                 narrativesWithContext.push({
                   topic: n.topic,
                   weekCount: n.week_count,
                   origin: n.origin,
                   last_week: n.last_week,
                   this_week: n.this_week,
-                  timeline: n.timeline,
-                  context: ctxResult.context_lines.length > 0 ? ctxResult.context_lines : undefined,
+                  next_week_watch: n.timeline,
+                  context: contextItems,
                 })
 
                 if (ctxResult.context_lines.length > 0) {
@@ -486,7 +494,7 @@ ${factsText}`,
             if (weeklySummaryDetailed) {
               const parsed = JSON.parse(weeklySummaryDetailed)
               const emailData: EmailData = {
-                weekDate: weekToDateRange(weekNumber),
+                weekLabel: weekToDateRange(weekNumber),
                 marketLine: parsed.marketLine,
                 oneLiner: parsed.oneLiner ?? '',
                 narratives: (parsed.narratives ?? []).slice(0, 3).map((n: NarrativeForEmail) => ({
@@ -495,7 +503,7 @@ ${factsText}`,
                   origin: n.origin,
                   last_week: n.last_week,
                   this_week: n.this_week,
-                  timeline: n.timeline,
+                  next_week_watch: n.next_week_watch,
                   context: n.context,
                 })),
                 signals: (parsed.signals ?? []).slice(0, 8).map((s: SignalItem) => ({
@@ -503,6 +511,11 @@ ${factsText}`,
                   text: s.text,
                   context: s.context,
                 })),
+                stats: {
+                  factCount: totalFacts,
+                  verifiedCount: highCount + mediumCount,
+                  sourceCount: parsed.sourceCount ?? 10,
+                },
               }
 
               const emailHTML = generateEmailHTML(emailData)

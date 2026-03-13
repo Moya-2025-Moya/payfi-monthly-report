@@ -27,9 +27,10 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => setIsOpen(false), [])
   const toggle = useCallback(() => setIsOpen(v => !v), [])
 
-  // Cmd+K global shortcut
+  // Cmd+K shortcut — only active on /console pages
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if (!window.location.pathname.startsWith('/console')) return
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         setIsOpen(v => !v)

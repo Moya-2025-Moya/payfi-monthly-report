@@ -439,7 +439,7 @@ CREATE TABLE weekly_snapshots (
 CREATE TABLE pipeline_runs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   pipeline_type TEXT NOT NULL CHECK (pipeline_type IN ('daily', 'weekly')),
-  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
+  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
   started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   completed_at TIMESTAMPTZ,
   stats JSONB,

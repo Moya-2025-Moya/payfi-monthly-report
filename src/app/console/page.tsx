@@ -1,6 +1,6 @@
 import { getCurrentWeekNumber } from '@/db/client'
 import { redirect } from 'next/navigation'
 
-export default function HomePage() {
-  redirect(`/weekly/${getCurrentWeekNumber()}`)
+export default function ConsolePage() {
+  redirect(`/console/${getCurrentWeekNumber()}`)
 }

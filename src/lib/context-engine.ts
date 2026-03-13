@@ -1,4 +1,4 @@
-// Context Engine V12 — 结构化输出 + 模板组装
+// Context Engine V13 — 结构化输出 + 模板组装 + Gate 3 Insight 校验
 // AI 只填 JSON 字段（日期、数字、实体名），代码组装句子
 // 这彻底消除了 AI 注入主观意见的可能性
 
@@ -14,8 +14,17 @@ import {
 
 // ── Types ──
 
+export interface ContextComparison {
+  reference_event: string   // e.g. "Coinbase IPO"
+  metric_label: string      // e.g. "S-1 提交到上市"
+  metric_value: string      // e.g. "118 天"
+  date_range: string        // e.g. "2020.12→2021.04"
+  used_candidate_index: number
+}
+
 export interface ContextResult {
-  context_lines: string[]  // 2-3 条模板组装的上下文句
+  context_lines: string[]        // 2-3 条模板组装的上下文句
+  comparisons: ContextComparison[] // V13: structured output for email
   event_type: EventPattern | null
   used_reference_ids: string[]
   confidence: 'high' | 'medium' | 'low'
@@ -186,49 +195,19 @@ async function retrieveCandidates(
   return candidates
 }
 
-// ── Stage 3: AI 结构化提取 + 模板组装 ──
-
-// AI 返回的结构化字段 — 每个字段都是可验证的事实片段
-interface StructuredContextItem {
-  comparison_type: 'timeline' | 'metric' | 'precedent'
-  entity: string           // 被比较的实体
-  historical_event: string // 历史事件描述 (纯事实)
-  date: string             // 历史事件日期
-  metric_value?: string    // 相关数值 (如 "$52B", "3年")
-  source_index: number     // 候选材料编号
-}
-
-// 模板: 根据 comparison_type 组装句子
-function assembleContextLine(item: StructuredContextItem): string {
-  switch (item.comparison_type) {
-    case 'timeline':
-      // "Coinbase 于 2021-04-14 通过直接上市登陆纳斯达克"
-      return `${item.entity} 于 ${item.date} ${item.historical_event}`
-    case 'metric':
-      // "USDC 市值在 2023-03-11 为 $36.2B"
-      if (item.metric_value) {
-        return `${item.entity} ${item.historical_event}，${item.date} 为 ${item.metric_value}`
-      }
-      return `${item.entity} 于 ${item.date} ${item.historical_event}`
-    case 'precedent':
-      // "2023年 Circle S-1 首次提交后 SEC 曾退回要求修改"
-      return `${item.date} ${item.entity} ${item.historical_event}`
-    default:
-      return `${item.entity} 于 ${item.date} ${item.historical_event}`
-  }
-}
+// ── Stage 3: AI 结构化提取 (V13 格式) ──
 
 async function generateStructuredContext(
   fact: FactInput,
   eventType: EventPattern | null,
   candidates: CandidateContext[],
-): Promise<{ items: StructuredContextItem[]; confidence: 'high' | 'medium' | 'low'; usedRefs: string[] }> {
+): Promise<{ comparisons: ContextComparison[]; confidence: 'high' | 'medium' | 'low'; usedRefs: string[] }> {
   const candidatesText = candidates
     .map((c, i) => `[${i}] ${c.content}`)
     .join('\n')
 
   const result = await callHaikuJSON<{
-    items: StructuredContextItem[]
+    comparisons: ContextComparison[]
     confidence: 'high' | 'medium' | 'low'
   }>(
     `你是结构化数据提取工具。从候选材料中提取可与当前事实对比的历史数据点。
@@ -243,50 +222,99 @@ ${candidatesText}
 
 提取 1-3 个对比数据点。每个数据点必须是以下结构:
 {
-  "comparison_type": "timeline" | "metric" | "precedent",
-  "entity": "实体名",
-  "historical_event": "纯事实动作（如'通过直接上市登陆纳斯达克'、'市值突破 $50B'）",
-  "date": "YYYY-MM-DD 或 YYYY年",
-  "metric_value": "相关数值（如'$52B'、'3年'），没有则省略",
-  "source_index": 候选材料编号
+  "reference_event": "被比较的历史事件名 (如 'Coinbase IPO')",
+  "metric_label": "对比维度 (如 'S-1 提交到上市')",
+  "metric_value": "数值 (如 '118 天'、'$85.8B')",
+  "date_range": "时间范围 (如 '2020.12→2021.04' 或 '2023.01')",
+  "used_candidate_index": 候选材料编号
 }
 
 绝对规则:
 1. 只能使用上面的候选材料，禁止使用外部知识
-2. historical_event 只写客观动作，不加评价词（禁止"重大""关键""值得"）
-3. date 必须填具体日期或年份
-4. 如果候选材料不足以形成对比，返回空数组
+2. reference_event 用简短事件名，不加评价词
+3. metric_label 只写客观维度名 (禁止"重大""关键""值得")
+4. metric_value 必须包含数字
+5. date_range 必须包含年份
+6. 如果候选材料不足以形成有意义的对比，返回空数组
 
 输出严格 JSON:
 {
-  "items": [...],
+  "comparisons": [...],
   "confidence": "high" | "medium" | "low"
 }`,
     { system: '结构化数据提取工具。输出严格 JSON。只提取事实字段。', maxTokens: 800 }
   )
 
-  const usedRefs = (result.items ?? [])
-    .filter(item => item.source_index >= 0 && item.source_index < candidates.length && candidates[item.source_index].reference_id)
-    .map(item => candidates[item.source_index].reference_id!)
+  const comparisons = result.comparisons ?? []
+  const usedRefs = comparisons
+    .filter(c => c.used_candidate_index >= 0 && c.used_candidate_index < candidates.length && candidates[c.used_candidate_index].reference_id)
+    .map(c => candidates[c.used_candidate_index].reference_id!)
 
   return {
-    items: result.items ?? [],
+    comparisons,
     confidence: result.confidence ?? 'medium',
     usedRefs: [...new Set(usedRefs)],
   }
 }
 
-// ── Stage 4: 验证 (确定性) ──
+// ── Template assembly: structured fields → context line ──
+
+function assembleContextLine(comp: ContextComparison): string {
+  // "Coinbase IPO: S-1 提交到上市 118 天 (2020.12→2021.04)"
+  return `${comp.reference_event}: ${comp.metric_label} ${comp.metric_value} (${comp.date_range})`
+}
+
+// ── Quality Gate 2: Schema 校验 ──
 
 const OPINION_WORDS = /可能|或许|预计|看好|利空|建议|值得|关注|重大|利好|趋势|前景|有望|显著/
 
-function validateContextLines(lines: string[]): string[] {
-  return lines.filter(line => {
-    if (!/\d/.test(line)) return false
-    if (OPINION_WORDS.test(line)) return false
-    if (line.length < 5 || line.length > 80) return false
-    return true
-  })
+function validateComparison(comp: ContextComparison, candidateCount: number): boolean {
+  // used_candidate_index must point to a real candidate
+  if (comp.used_candidate_index < 0 || comp.used_candidate_index >= candidateCount) return false
+  // metric_value must contain a number
+  if (!/\d/.test(comp.metric_value ?? '')) return false
+  // date_range must contain a year
+  if (!/\d{4}/.test(comp.date_range ?? '')) return false
+  // No opinion words in any field
+  const allText = `${comp.reference_event} ${comp.metric_label} ${comp.metric_value}`
+  if (OPINION_WORDS.test(allText)) return false
+  // Assembled line length check
+  const line = assembleContextLine(comp)
+  if (line.length < 5 || line.length > 100) return false
+  return true
+}
+
+// ── Quality Gate 3: Insight 校验 (V13 新增) ──
+// Schema 通过不等于有洞察。过滤无价值的对比。
+
+function validateInsight(comp: ContextComparison, fact: FactInput): boolean {
+  // Rule 1: 不能是相邻周的同指标数据
+  // If date_range only covers ~1 week from fact_date, it's just week-over-week change
+  const dateMatch = comp.date_range.match(/(\d{4})\.?(\d{2})?/)
+  if (dateMatch) {
+    const factYear = parseInt(fact.fact_date.slice(0, 4))
+    const factMonth = parseInt(fact.fact_date.slice(5, 7))
+    const refYear = parseInt(dateMatch[1])
+    const refMonth = dateMatch[2] ? parseInt(dateMatch[2]) : 0
+    // Same year + adjacent month = likely too recent
+    if (refYear === factYear && refMonth > 0 && Math.abs(refMonth - factMonth) <= 1) {
+      // Allow if it's a different entity comparison
+      if (!comp.reference_event || comp.reference_event.toLowerCase().includes(fact.entity?.toLowerCase() ?? '___none___')) {
+        return false
+      }
+    }
+  }
+
+  // Rule 2: delta must be meaningful — we can't fully validate numerically, but check for trivial patterns
+  // "0%", "0.0%", "+0.1%" are trivial
+  const trivialDelta = /[+-]?0\.?\d?%/.test(comp.metric_value)
+  if (trivialDelta && !/[1-9]\d/.test(comp.metric_value)) return false
+
+  // Rule 3: reference_event must have a concrete outcome (heuristic: must have a metric or date)
+  // If metric_label is too vague (e.g., just "情况"), reject
+  if (comp.metric_label.length < 2) return false
+
+  return true
 }
 
 // ── 主入口 ──
@@ -295,29 +323,37 @@ export async function generateFactContext(fact: FactInput): Promise<ContextResul
   const eventType = classifyEvent(fact)
   const candidates = await retrieveCandidates(fact, eventType)
 
+  // Gate 1: 候选充分性
   if (candidates.length === 0) {
-    return { context_lines: [], event_type: eventType, used_reference_ids: [], confidence: 'low' }
+    return { context_lines: [], comparisons: [], event_type: eventType, used_reference_ids: [], confidence: 'low' }
   }
 
   try {
-    const { items, confidence, usedRefs } = await generateStructuredContext(fact, eventType, candidates)
+    const { comparisons, confidence, usedRefs } = await generateStructuredContext(fact, eventType, candidates)
 
-    // 模板组装: AI 的结构化字段 → 代码模板 → 最终句子
-    const assembledLines = items.map(assembleContextLine)
-    const validatedLines = validateContextLines(assembledLines)
+    // Gate 2: Schema 校验
+    const schemaValid = comparisons.filter(c => validateComparison(c, candidates.length))
 
-    if (confidence === 'low' && validatedLines.length === 0) {
-      return { context_lines: [], event_type: eventType, used_reference_ids: [], confidence: 'low' }
+    // Gate 3: Insight 校验
+    const insightValid = schemaValid.filter(c => validateInsight(c, fact))
+
+    if (confidence === 'low' && insightValid.length === 0) {
+      return { context_lines: [], comparisons: [], event_type: eventType, used_reference_ids: [], confidence: 'low' }
     }
 
+    // Template assembly
+    const finalComparisons = insightValid.slice(0, 3)
+    const contextLines = finalComparisons.map(assembleContextLine)
+
     return {
-      context_lines: validatedLines.slice(0, 3),
+      context_lines: contextLines,
+      comparisons: finalComparisons,
       event_type: eventType,
       used_reference_ids: usedRefs,
       confidence,
     }
   } catch {
-    return { context_lines: [], event_type: eventType, used_reference_ids: [], confidence: 'low' }
+    return { context_lines: [], comparisons: [], event_type: eventType, used_reference_ids: [], confidence: 'low' }
   }
 }
 
