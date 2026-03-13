@@ -27,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
           <TopBar />
-          <main className="pt-[var(--topbar-h)] p-4 pb-16 md:p-8 md:pb-8 mx-auto max-w-[1200px]">
+          <main className="pt-[var(--topbar-h)] px-4 pb-16 md:px-8 md:pb-8 mx-auto max-w-[1200px]">
             {children}
           </main>
           <MobileNav />

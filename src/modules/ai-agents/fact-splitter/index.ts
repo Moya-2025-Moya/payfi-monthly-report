@@ -97,10 +97,21 @@ function mergeToCandidates(facts: ExtractedFact[], verdicts: VerifyVerdict[]): C
   })
 }
 
-// ─── 过滤: unsupported 丢弃 ───
+// ─── 合法 fact_type 白名单 ───
+
+const VALID_FACT_TYPES: Set<string> = new Set(['event', 'metric', 'quote', 'relationship', 'status_change'])
+
+// ─── 过滤: unsupported 丢弃 + fact_type 校验 ───
 
 function filterCandidates(candidates: CandidateFact[]): CandidateFact[] {
-  return candidates.filter(c => c.self_check !== 'unsupported')
+  return candidates.filter(c => {
+    if (c.self_check === 'unsupported') return false
+    if (!VALID_FACT_TYPES.has(c.fact_type)) {
+      console.warn(`[fact-splitter] Invalid fact_type "${c.fact_type}", dropping: "${c.content.slice(0, 50)}..."`)
+      return false
+    }
+    return true
+  })
 }
 
 // ─── 语义查重: trigram Jaccard 相似度 ───

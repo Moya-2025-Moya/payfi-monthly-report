@@ -328,7 +328,7 @@ ${batchInput}`,
                 .in('status', ['active', 'dormant'])
                 .order('last_updated_week', { ascending: false })
                 .limit(10)
-              const threadTopics = (activeThreads ?? []).map(t => t.topic)
+              const threadTopics = (activeThreads ?? []).map(t => t.topic.replace(/[#\n\r`]/g, ' ').slice(0, 200))
 
               const factsText = topFacts
                 .map((f: { id: string; content_zh: string; content_en: string; fact_type: string; tags: string[]; fact_date: string; source_url: string | null }, i: number) =>

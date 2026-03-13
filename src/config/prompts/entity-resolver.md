@@ -88,7 +88,7 @@
 注意：
 - `name` 必须与已知列表中的名称完全一致（如果是已知实体）
 - `category` 只有 `is_new: true` 时才填写，可选值: `stablecoin_issuer`, `b2c_product`, `b2b_infra`, `tradfi`, `public_company`, `defi`, `regulator`
-- 如果事实中没有可识别的实体（极少见），返回空数组
+- 如果事实中没有可识别的实体（极少见），返回 `{ "entities": [] }`
 
 # 输入
 

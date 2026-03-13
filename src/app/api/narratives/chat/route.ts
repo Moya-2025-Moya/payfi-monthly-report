@@ -32,6 +32,9 @@ export async function POST(request: Request) {
     const body = await request.json() as ChatRequest
     const { messages, context_fact_ids, narrative_query } = body
 
+    // Sanitize user input to prevent prompt injection
+    const sanitizedQuery = (narrative_query ?? '').replace(/[#\n\r`]/g, ' ').slice(0, 200).trim()
+
     if (!messages || messages.length === 0) {
       return NextResponse.json(
         { error: 'Missing messages' },
@@ -70,7 +73,7 @@ export async function POST(request: Request) {
     const contextString = contextLines.join('\n')
 
     // Step 3: Build system prompt
-    const system = `你是稳定币行业分析助手。用户正在查看关于「${narrative_query}」的时间线。
+    const system = `你是稳定币行业分析助手。用户正在查看关于「${sanitizedQuery}」的时间线。
 
 # 核心规则
 1. 只基于下方事实回答，不引入事实列表以外的任何信息

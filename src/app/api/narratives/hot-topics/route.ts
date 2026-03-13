@@ -53,9 +53,9 @@ export async function GET() {
     return `[${i}] ${content.slice(0, 200)} | tags: ${tags}`
   }).join('\n')
 
-  const prompt = `你是稳定币行业分析师。根据以下 ${facts.length} 条最近的已验证事实，识别 5-8 个热门叙事主线。
+  const prompt = `你是稳定币行业分析师。根据以下 ${facts.length} 条最近的已验证事实，识别 3-8 个热门叙事主线。
 
-每个叙事应该是一个可以展开成时间线的主题（如"Circle IPO 进展"、"欧盟 MiCA 实施"、"稳定币支付扩张"等）。
+每个叙事应该是一个可以展开成时间线的主题（如 "Circle IPO 进展"、"欧盟 MiCA 实施"、"稳定币支付扩张" 等）。
 
 ## 事实列表
 ${factsText}
@@ -63,7 +63,7 @@ ${factsText}
 ## 输出格式（严格 JSON 数组）
 [
   {
-    "label": "叙事标题（中文）",
+    "label": "叙事标题（中文，中英文之间加空格）",
     "description": "一句话描述（中文）",
     "suggested_query": "推荐的搜索词（可中可英，用于检索相关事实）",
     "fact_count": 相关事实数量估计,
@@ -71,7 +71,10 @@ ${factsText}
   }
 ]
 
-优先选择事实密度高、涉及多个实体、有时间跨度的叙事。`
+规则：
+- 输出 3-8 个叙事，按事实密度排序。事实不足时宁可输出 3 个而非硬凑
+- 优先选择事实密度高、涉及多个实体、有时间跨度的叙事
+- 中英文之间加空格（如 "Circle IPO 进展"）`
 
   try {
     const topics = await callHaikuJSON<HotTopic[]>(prompt)

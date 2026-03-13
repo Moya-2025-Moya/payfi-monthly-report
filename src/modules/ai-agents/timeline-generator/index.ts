@@ -98,11 +98,13 @@ async function getFactsByNarrative(query: string): Promise<AtomicFact[]> {
     .order('fact_date', { ascending: true })
     .limit(50)
 
+  // Sanitize query to prevent Supabase filter injection
+  const safeQuery = query.replace(/[%_,.()\n\r]/g, ' ').trim()
   const { data: byContent } = await supabaseAdmin
     .from('atomic_facts')
     .select('*')
     .in('verification_status', ['verified', 'partially_verified'])
-    .or(`content_en.ilike.%${query}%,content_zh.ilike.%${query}%`)
+    .or(`content_en.ilike.%${safeQuery}%,content_zh.ilike.%${safeQuery}%`)
     .order('fact_date', { ascending: true })
     .limit(50)
 

@@ -94,11 +94,12 @@ async function getFactsByQuery(query: string, keywords: string[]): Promise<Atomi
     }
   }
 
-  // Content search
+  // Content search — sanitize query to prevent Supabase filter injection
+  const safeQuery = query.replace(/[%_,.()\n\r]/g, ' ').trim()
   const { data: contentSearch } = await supabaseAdmin
     .from('atomic_facts').select('*')
     .in('verification_status', ['verified', 'partially_verified'])
-    .or(`content_zh.ilike.%${query}%,content_en.ilike.%${query}%`)
+    .or(`content_zh.ilike.%${safeQuery}%,content_en.ilike.%${safeQuery}%`)
     .order('fact_date', { ascending: true }).limit(30)
   for (const f of (contentSearch ?? []) as AtomicFact[]) {
     if (!seen.has(f.id)) { seen.add(f.id); allFacts.push(f) }
@@ -205,10 +206,10 @@ ${activeThreads.map(t => `- 「${t.topic}」(已追踪 ${t.total_weeks} 周，ID
 ${activeThreadsSection}## 本周事实列表（共 ${facts.length} 条）
 ${factsText}
 
-任务：选择 3 个本周最重要的叙事。
+任务：选择本周最重要的 2-3 个叙事。
 
 要求：
-1. 恰好 3 个，按重要性排序
+1. 输出 2-3 个叙事，按重要性排序（事实密度不足 3 条时，宁可输出 2 个而非硬凑）
 2. 每个叙事要有足够的事实密度（至少 3 条相关事实）
 3. 优先选择：监管进展、重大融资/IPO、产品发布、行业格局变化
 4. 叙事之间不要重叠
@@ -216,7 +217,7 @@ ${continuityInstruction}
 
 输出严格 JSON 数组:
 ${jsonExample}`,
-    { system: '输出严格 JSON 数组，恰好 3 个元素。' }
+    { system: '输出严格 JSON 数组，2-3 个元素。' }
   )
 
   // Enrich topics with previous summary for continued threads
@@ -251,12 +252,19 @@ interface AITimelineResult {
   gap_queries: string[] // queries to fill timeline gaps
 }
 
+// Sanitize user-facing strings before interpolation into prompts
+function sanitizeForPrompt(input: string, maxLen = 200): string {
+  return input.replace(/[#\n\r`]/g, ' ').slice(0, maxLen).trim()
+}
+
 async function generateTimeline(topic: NarrativeTopic, facts: AtomicFact[]): Promise<AITimelineResult> {
   const factsText = facts.map((f, i) => {
     const date = String(f.fact_date).split('T')[0]
     const content = f.content_zh || f.content_en
     return `[${i}] ${date} | ${content} | tags: ${f.tags.join(', ')}`
   }).join('\n')
+
+  const safeLabel = sanitizeForPrompt(topic.label)
 
   const previousContext = topic.previous_summary
     ? `## 上期叙事摘要（延续线索）
@@ -269,10 +277,10 @@ ${topic.previous_summary}
     : ''
 
   return callHaikuJSON<AITimelineResult>(
-    `你是稳定币行业叙事分析师。为「${topic.label}」生成结构化时间线。
+    `你是稳定币行业叙事分析师。为「${safeLabel}」生成结构化时间线。
 
 ${previousContext}## 相关性铁律（最重要）
-只保留与「${topic.label}」**直接相关**的事实：
+只保留与「${safeLabel}」**直接相关**的事实：
 - ✅ 直接提到该主题/实体/政策
 - ✅ 是该主题因果链上的事件
 - ❌ 仅仅因为在同一行业就算相关
@@ -283,7 +291,7 @@ ${previousContext}## 相关性铁律（最重要）
 ${factsText}
 
 ## 输出要求
-1. summary: 2-3 句概括（中文）${topic.previous_summary ? '。注意：要体现与上期的衔接和进展' : ''}
+1. summary: 2-3 句概括（中文）${topic.previous_summary ? '，注意体现与上期的衔接和进展' : ''}
 2. branches: 2-3 条分支（按实体/阵营分），每条: id, label, side (left/right), color
 3. events: 按实际相关事实数量输出节点（不要硬凑），每个:
    - date (ISO), title (中文简短), description (中文1-2句)
@@ -349,8 +357,9 @@ async function enrichWithExternal(
 
   const branchIds = branches.map(b => b.id)
 
+  const safeLabel = sanitizeForPrompt(topic.label)
   return callHaikuJSON<ExternalAndPredictions>(
-    `你是稳定币行业分析师。以下是关于「${topic.label}」的外部搜索结果。
+    `你是稳定币行业分析师。以下是关于「${safeLabel}」的外部搜索结果。
 
 ## 已有时间线分支
 ${branches.map(b => `- ${b.id}: ${b.label}`).join('\n')}
@@ -359,7 +368,7 @@ ${branches.map(b => `- ${b.id}: ${b.label}`).join('\n')}
 ${externalText}
 
 ## 任务
-1. 从搜索结果中选出 3-6 条与「${topic.label}」直接相关的事件，作为 external_events
+1. 从搜索结果中选出 3-6 条与「${safeLabel}」直接相关的事件，作为 external_events
 2. 基于整条时间线（fact base + 外部），生成 2-3 个**可证伪的具体预测**作为 predictions
 
 ## predictions 要求（重要）
@@ -513,7 +522,7 @@ export async function GET() {
 
           // External search enrichment
           logger.log(`  搜索外部补充信息...`, 'info')
-          const gapQueries = timeline.gap_queries ?? []
+          const gapQueries = (timeline.gap_queries ?? []).filter(q => typeof q === 'string' && q.trim().length > 0)
           if (gapQueries.length > 0) {
             try {
               const enrichment = await enrichWithExternal(topic, gapQueries, existingTitles, timelineBranches)
