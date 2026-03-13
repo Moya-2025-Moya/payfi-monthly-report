@@ -15,9 +15,9 @@ export const SOURCES = {
     },
   },
 
-  // ── 新闻 RSS 源（全免费，14 个源） ──
+  // ── 新闻 RSS 源（全免费，16 个源） ──
   rssFeeds: [
-    // 英文主流 (12 个)
+    // ── 加密媒体 (11 个) ──
     { name: 'The Block', url: 'https://www.theblock.co/rss.xml' },
     { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
     { name: 'Decrypt', url: 'https://decrypt.co/feed' },
@@ -28,9 +28,13 @@ export const SOURCES = {
     { name: 'Crypto Briefing', url: 'https://cryptobriefing.com/feed/' },
     { name: 'Unchained', url: 'https://unchainedcrypto.com/feed/' },
     { name: 'CryptoSlate', url: 'https://cryptoslate.com/feed/' },
-    { name: 'BeInCrypto', url: 'https://beincrypto.com/feed/' },
     { name: 'Protos', url: 'https://protos.com/feed/' },
-    // 中文 (2 个)
+    // BeInCrypto 已移除（403 Forbidden）
+    // ── 支付行业媒体 (3 个) — 覆盖 TradFi 支付动态 ──
+    { name: 'PYMNTS', url: 'https://www.pymnts.com/feed/' },
+    { name: 'Finextra', url: 'https://www.finextra.com/rss/headlines.aspx' },
+    { name: 'PaymentsDive', url: 'https://www.paymentsdive.com/feeds/news/' },
+    // ── 中文 (2 个) ──
     { name: 'Cointelegraph 中文', url: 'https://cn.cointelegraph.com/rss' },
     { name: '吴说区块链', url: 'https://wublock.substack.com/feed' },
   ],

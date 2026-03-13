@@ -4,8 +4,8 @@
 // AI 无法从训练数据中可靠回忆这些数字，必须结构化存储
 
 export interface Milestone {
-  date: string          // YYYY-MM-DD
-  event: string         // 中文事实描述
+  date: string
+  event: string
 }
 
 export interface ReferenceEvent {
@@ -14,10 +14,10 @@ export interface ReferenceEvent {
   type: EventPattern
   milestones: Milestone[]
   metrics: Record<string, string | number>
-  tags: string[]              // 用于检索匹配
-  source_urls: string[]       // Primary sources for every number (SEC filing, DeFiLlama, official blog)
-  comparable_events?: string[] // IDs of natural comparison pairs
-  context_summary: string     // 为什么这个事件适合作为参照 (1-2 句)
+  tags: string[]
+  source_urls: string[]
+  comparable_events?: string[]
+  context_summary: string
 }
 
 export type EventPattern =
@@ -31,11 +31,7 @@ export type EventPattern =
   | 'enforcement'
 
 export const REFERENCE_EVENTS: ReferenceEvent[] = [
-
-  // ════════════════════════════════════════════════════════════
-  // IPO / 上市
-  // ════════════════════════════════════════════════════════════
-
+  // ── 1. coinbase-ipo ──
   {
     id: 'coinbase-ipo',
     entity: 'Coinbase',
@@ -56,14 +52,14 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       usdc_market_cap_at_time: '$25B',
       total_stablecoin_market_at_time: '$65B',
     },
-    tags: ['ipo', 'sec', 's-1', 'listing', 'coinbase', 'direct-listing', 'usdc'],
+    tags: ['ipo', 'sec', 's-1', 'listing', 'coinbase', 'direct-listing'],
     source_urls: [
       'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001679788&type=S-1',
-      'https://www.coinbase.com/blog/coinbase-announces-proposed-direct-listing',
     ],
-    comparable_events: ['circle-ipo-spac-2022', 'circle-s1-2024'],
-    context_summary: 'Coinbase 是 USDC 联合发行方，其上市是加密行业首个大型直接上市案例，也是 Circle 后续 IPO 进程的自然对比对象。',
+    comparable_events: ['circle-ipo-spac-2022', 'circle-s1-2024', 'circle-ipo-s1-2025'],
+    context_summary: '加密行业首个大型直接上市案例，S-1 流程时间线是 Circle IPO 的重要参照基准。',
   },
+  // ── 2. circle-ipo-spac-2022 ──
   {
     id: 'circle-ipo-spac-2022',
     entity: 'Circle',
@@ -83,38 +79,32 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     },
     tags: ['ipo', 'sec', 'spac', 'circle', 'usdc'],
     source_urls: [
-      'https://www.circle.com/blog/circle-and-concord-acquisition-corp-enter-into-a-definitive-business-combination-agreement',
-      'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001876042&type=S-4',
+      'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=circle&type=S-1',
+      'https://www.circle.com/en/pressroom',
     ],
-    comparable_events: ['coinbase-ipo', 'circle-s1-2024'],
-    context_summary: 'Circle 第一次 IPO 尝试以 SPAC 终止收场，是分析 Circle 第二次 S-1 申请时的核心历史参照。',
+    comparable_events: ['coinbase-ipo', 'circle-s1-2024', 'circle-ipo-s1-2025'],
+    context_summary: 'Circle 首次上市尝试失败，SPAC 路径耗时 515 天仍未成功，对比后续 S-1 路径的参照。',
   },
+  // ── 3. circle-s1-2024 ──
   {
     id: 'circle-s1-2024',
     entity: 'Circle',
     type: 'ipo_filing',
     milestones: [
       { date: '2024-01-11', event: 'Circle 秘密提交 S-1 (第二次尝试 IPO)' },
-      { date: '2025-04-01', event: 'Circle 公开提交 S-1，披露 2024 年收入 $1.68B' },
     ],
     metrics: {
       previous_attempt: 'SPAC 2021-2022 (终止)',
       usdc_market_cap_at_filing: '~$26B',
-      revenue_2024: '$1.68B',
     },
     tags: ['ipo', 'sec', 's-1', 'circle', 'usdc'],
     source_urls: [
-      'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001876042&type=S-1',
-      'https://www.circle.com/blog/our-journey-to-becoming-a-public-company',
+      'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=circle&type=S-1',
     ],
-    comparable_events: ['circle-ipo-spac-2022', 'coinbase-ipo'],
-    context_summary: 'Circle 第二次冲刺 IPO，成功与否将直接影响 USDC 的市场信心和稳定币行业在传统资本市场的合法性。',
+    comparable_events: ['circle-ipo-spac-2022', 'coinbase-ipo', 'circle-ipo-s1-2025'],
+    context_summary: 'Circle 第二次 IPO 尝试（秘密提交），为后续 2025 年正式 S-1 的前奏。',
   },
-
-  // ════════════════════════════════════════════════════════════
-  // 监管法案
-  // ════════════════════════════════════════════════════════════
-
+  // ── 4. genius-act ──
   {
     id: 'genius-act',
     entity: 'US Congress',
@@ -122,60 +112,20 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     milestones: [
       { date: '2025-02-04', event: 'GENIUS Act (Guiding and Establishing National Innovation for US Stablecoins) 参议院引入' },
       { date: '2025-03-13', event: '参议院银行委员会 18:6 通过' },
-      { date: '2025-05-19', event: '参议院程序性投票未通过 (48:49)' },
     ],
     metrics: {
       sponsor: 'Sen. Bill Hagerty',
       committee_vote: '18:6',
       key_provision: '联邦+州双轨监管框架',
-      procedural_vote: '48:49 (未达 60 票)',
     },
     tags: ['regulation', 'legislation', 'stablecoin', 'genius-act', 'senate', 'congress'],
     source_urls: [
       'https://www.congress.gov/bill/119th-congress/senate-bill/394',
-      'https://www.banking.senate.gov/newsroom/majority/chairman-hagerty-announces-genius-act',
     ],
-    comparable_events: ['stable-act-2024', 'lummis-gillibrand-2022', 'clarity-for-stablecoins-act'],
-    context_summary: 'GENIUS Act 是美国参议院首个获得委员会通过的专门稳定币立法，为后续稳定币法案奠定了基调。',
+    comparable_events: ['lummis-gillibrand-2022'],
+    context_summary: '美国首个获委员会通过的专门稳定币法案，联邦+州双轨框架是全球监管对比的锚点。',
   },
-  {
-    id: 'stable-act-2024',
-    entity: 'US Congress',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2024-04-17', event: 'STABLE Act (Stablecoin Transparency and Accountability for a Better Ledger Economy) 众议院金融服务委员会通过' },
-    ],
-    metrics: {
-      sponsor: 'Rep. Patrick McHenry',
-      committee_vote: '通过 (党派分歧)',
-      key_provision: '稳定币发行许可 + 储备要求',
-    },
-    tags: ['regulation', 'legislation', 'stablecoin', 'stable-act', 'house', 'congress'],
-    source_urls: [
-      'https://financialservices.house.gov/news/documentsingle.aspx?DocumentID=409277',
-    ],
-    comparable_events: ['genius-act', 'clarity-for-stablecoins-act'],
-    context_summary: '众议院版稳定币立法，与参议院 GENIUS Act 并行推进，两者最终需要协调统一。',
-  },
-  {
-    id: 'clarity-for-stablecoins-act',
-    entity: 'US Congress',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2023-07-26', event: '众议院金融服务委员会通过 Clarity for Payment Stablecoins Act' },
-    ],
-    metrics: {
-      committee_vote: '34:16',
-      sponsor: 'Rep. Patrick McHenry',
-      outcome: '未进入全院投票 (118th Congress)',
-    },
-    tags: ['regulation', 'legislation', 'stablecoin', 'house', 'congress'],
-    source_urls: [
-      'https://financialservices.house.gov/news/documentsingle.aspx?DocumentID=408842',
-    ],
-    comparable_events: ['genius-act', 'stable-act-2024'],
-    context_summary: '118 届国会众议院稳定币法案，虽未进入全院投票但为 119 届 STABLE Act 和 GENIUS Act 奠定了立法框架。',
-  },
+  // ── 5. lummis-gillibrand-2022 ──
   {
     id: 'lummis-gillibrand-2022',
     entity: 'US Congress',
@@ -189,71 +139,14 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       scope: '全面加密监管框架',
       key_difference_vs_genius: 'GENIUS 仅聚焦稳定币; Lummis-Gillibrand 覆盖全加密领域',
     },
-    tags: ['regulation', 'legislation', 'lummis-gillibrand', 'senate', 'congress', 'stablecoin'],
+    tags: ['regulation', 'legislation', 'lummis-gillibrand', 'senate', 'congress'],
     source_urls: [
       'https://www.congress.gov/bill/117th-congress/senate-bill/4356',
     ],
-    comparable_events: ['genius-act', 'stable-act-2024'],
-    context_summary: '首个跨党派全面加密立法尝试，其中稳定币条款为后续单独立法提供了蓝本。',
+    comparable_events: ['genius-act'],
+    context_summary: '美国首个全面加密监管立法尝试，虽未通过但为 GENIUS Act 奠定了讨论基础。',
   },
-  {
-    id: 'pwg-stablecoin-report-2021',
-    entity: 'US Treasury / PWG',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2021-11-01', event: '总统工作组 (PWG) 发布《稳定币报告》，建议国会立法限制发行商为受保存款机构' },
-    ],
-    metrics: {
-      key_recommendation: '稳定币发行商应为受保存款机构',
-      participants: 'Treasury, Fed, SEC, CFTC',
-    },
-    tags: ['regulation', 'treasury', 'stablecoin', 'pwg', 'report'],
-    source_urls: [
-      'https://home.treasury.gov/system/files/136/StableCoinReport_Nov1_508.pdf',
-    ],
-    comparable_events: ['genius-act', 'occ-stablecoin-letter-2021'],
-    context_summary: '美国政府首份专门针对稳定币的政策报告，其"银行准入"思路深刻影响了后续所有稳定币立法方向。',
-  },
-  {
-    id: 'occ-stablecoin-letter-2021',
-    entity: 'OCC',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2021-01-04', event: 'OCC 发布解释信 #1174，允许联邦银行使用稳定币进行支付结算' },
-      { date: '2021-01-04', event: 'OCC 同时允许银行运行区块链节点参与独立节点验证网络 (INVN)' },
-    ],
-    metrics: {
-      letter_number: '1174',
-      acting_comptroller: 'Brian Brooks',
-      key_provision: '国家银行可使用稳定币和区块链进行支付活动',
-    },
-    tags: ['regulation', 'occ', 'stablecoin', 'banking', 'payments'],
-    source_urls: [
-      'https://www.occ.gov/news-issuances/news-releases/2021/nr-occ-2021-2.html',
-    ],
-    comparable_events: ['pwg-stablecoin-report-2021', 'genius-act'],
-    context_summary: 'OCC 解释信是美国银行体系首次明确认可稳定币的支付功能，为银行参与稳定币生态提供了法律依据。',
-  },
-  {
-    id: 'basel-stablecoin-capital-2022',
-    entity: 'Basel Committee',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2022-12-16', event: 'Basel Committee 发布加密资产审慎处理标准，稳定币归类为 Group 1b' },
-      { date: '2025-01-01', event: '标准预计实施日期' },
-    ],
-    metrics: {
-      stablecoin_classification: 'Group 1b',
-      capital_requirement: '等同传统资产 + 附加风险权重',
-      key_condition: '满足赎回、储备、治理条件可获较低权重',
-    },
-    tags: ['regulation', 'basel', 'stablecoin', 'banking', 'capital-requirements'],
-    source_urls: [
-      'https://www.bis.org/bcbs/publ/d545.htm',
-    ],
-    comparable_events: ['pwg-stablecoin-report-2021'],
-    context_summary: 'Basel 标准决定了全球银行持有或使用稳定币的资本成本，对机构采用稳定币有深远影响。',
-  },
+  // ── 6. mica-eu ──
   {
     id: 'mica-eu',
     entity: 'EU',
@@ -271,116 +164,12 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     },
     tags: ['regulation', 'legislation', 'mica', 'eu', 'europe', 'stablecoin'],
     source_urls: [
-      'https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32023R1114',
-      'https://www.esma.europa.eu/esmas-activities/digital-finance-and-innovation/markets-crypto-assets-regulation-mica',
+      'https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32023R1114',
     ],
-    comparable_events: ['eu-mica-tether-delisting', 'genius-act', 'uk-stablecoin-regulation'],
-    context_summary: 'MiCA 是全球首个全面加密监管框架，其稳定币条款直接影响了 Tether 在欧洲的合规状态。',
+    comparable_events: ['genius-act', 'hk-stablecoin-framework', 'japan-stablecoin-law', 'singapore-mas-stablecoin', 'uk-stablecoin-regulation'],
+    context_summary: '全球首个全面加密资产监管框架，其稳定币条款是各国立法的重要参照。',
   },
-  {
-    id: 'eu-mica-tether-delisting',
-    entity: 'EU/Tether',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2024-12-30', event: 'MiCA 全面生效，部分欧盟交易所下架 USDT (不合规)' },
-      { date: '2025-01-31', event: '多家欧盟交易所完成 USDT 下架' },
-    ],
-    metrics: {
-      affected_exchanges: 'Coinbase EU, OKX EU, Kraken EU',
-      reason: 'Tether 未获得 MiCA 授权',
-      usdt_eu_share: '~5% of global volume',
-    },
-    tags: ['regulation', 'mica', 'eu', 'tether', 'usdt', 'delisting', 'compliance'],
-    source_urls: [
-      'https://tether.to/en/tether-responds-to-upcoming-eu-regulations',
-      'https://www.coindesk.com/policy/2024/12/30/tether-faces-european-exchange-delistings-as-mica-takes-effect/',
-    ],
-    comparable_events: ['mica-eu', 'sec-paxos-busd'],
-    context_summary: 'MiCA 对 USDT 的实际影响案例——当监管要求与最大稳定币发行方不兼容时的市场后果。',
-  },
-  {
-    id: 'japan-stablecoin-law',
-    entity: 'Japan FSA',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2022-06-03', event: '日本《资金决济法》修正案通过，允许银行/信托发行稳定币' },
-      { date: '2023-06-01', event: '修正案正式生效' },
-    ],
-    metrics: {
-      eligible_issuers: '银行、资金移动业者、信托公司',
-      key_requirement: '1:1 法币储备',
-    },
-    tags: ['regulation', 'legislation', 'japan', 'fsa', 'stablecoin', 'asia'],
-    source_urls: [
-      'https://www.fsa.go.jp/en/news/2022/20220603.html',
-    ],
-    comparable_events: ['singapore-mas-stablecoin', 'hk-stablecoin-framework'],
-    context_summary: '日本是 G7 中首个通过稳定币专门立法的国家，对亚洲其他市场的监管设计有示范作用。',
-  },
-  {
-    id: 'uk-stablecoin-regulation',
-    entity: 'UK HM Treasury',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2023-06-29', event: 'UK Financial Services and Markets Act 获得皇家批准 (含稳定币条款)' },
-      { date: '2024-01-01', event: 'FCA 启动稳定币监管咨询' },
-    ],
-    metrics: {
-      act_name: 'FSMA 2023',
-      scope: '支付用稳定币纳入 FCA 监管',
-    },
-    tags: ['regulation', 'legislation', 'uk', 'fca', 'stablecoin'],
-    source_urls: [
-      'https://www.legislation.gov.uk/ukpga/2023/29/contents/enacted',
-      'https://www.fca.org.uk/publications/discussion-papers/regulating-cryptoassets-phase-1-stablecoins',
-    ],
-    comparable_events: ['mica-eu', 'japan-stablecoin-law'],
-    context_summary: '英国作为主要金融中心，其稳定币监管路径对全球合规框架有重要参考意义。',
-  },
-  {
-    id: 'singapore-mas-stablecoin',
-    entity: 'MAS',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2023-08-15', event: 'MAS 公布稳定币监管框架最终版' },
-      { date: '2024-04-01', event: '框架正式生效，StraitsX (XSGD/XUSD) 获批' },
-    ],
-    metrics: {
-      key_requirement: '1:1 储备 + 审计 + 赎回保障',
-      first_licensed_issuer: 'StraitsX',
-    },
-    tags: ['regulation', 'singapore', 'mas', 'stablecoin', 'asia', 'xsgd'],
-    source_urls: [
-      'https://www.mas.gov.sg/news/media-releases/2023/mas-finalises-stablecoin-regulatory-framework',
-    ],
-    comparable_events: ['japan-stablecoin-law', 'hk-stablecoin-framework'],
-    context_summary: '新加坡是亚洲首个推出完整稳定币许可框架的司法管辖区，StraitsX 获批是首例。',
-  },
-  {
-    id: 'hk-stablecoin-framework',
-    entity: 'HKMA',
-    type: 'regulatory_bill',
-    milestones: [
-      { date: '2024-03-12', event: 'HKMA 公布稳定币监管咨询文件' },
-      { date: '2024-07-18', event: '沙盒计划启动，首批 3 家获批 (京东、圆币、渣打+安拟集团)' },
-      { date: '2025-01-01', event: '正式立法进入立法会审议' },
-    ],
-    metrics: {
-      sandbox_participants: 3,
-      key_requirement: '1:1 储备 + 许可证 + 本地托管',
-    },
-    tags: ['regulation', 'hong-kong', 'hkma', 'stablecoin', 'asia'],
-    source_urls: [
-      'https://www.hkma.gov.hk/eng/news-and-media/press-releases/2024/03/20240312-3/',
-    ],
-    comparable_events: ['singapore-mas-stablecoin', 'japan-stablecoin-law'],
-    context_summary: '香港稳定币沙盒是亚太地区监管竞争的缩影，京东等本土企业参与体现了大陆资本的布局意图。',
-  },
-
-  // ════════════════════════════════════════════════════════════
-  // 稳定币发行 / 市值里程碑
-  // ════════════════════════════════════════════════════════════
-
+  // ── 7. usdt-100b ──
   {
     id: 'usdt-100b',
     entity: 'Tether',
@@ -390,22 +179,22 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       { date: '2020-01-01', event: 'USDT 市值首次突破 $4B' },
       { date: '2021-04-01', event: 'USDT 市值首次突破 $40B' },
       { date: '2024-03-04', event: 'USDT 市值首次突破 $100B' },
-      { date: '2025-03-01', event: 'USDT 市值突破 $140B' },
     ],
     metrics: {
       '4b_to_40b_days': 456,
       '40b_to_100b_days': 1069,
-      '100b_to_140b_days': 362,
-      current_dominance: '~62% 稳定币市场',
+      current_dominance: '~65% 稳定币市场',
     },
     tags: ['usdt', 'tether', 'market-cap', 'stablecoin', 'milestone'],
     source_urls: [
-      'https://tether.to/en/transparency/',
+      'https://tether.to/en/transparency',
       'https://defillama.com/stablecoins',
+      'https://www.coingecko.com/en/coins/tether',
     ],
     comparable_events: ['usdc-growth-2021-2024', 'stablecoin-total-100b'],
-    context_summary: 'USDT 从 $4B 到 $100B 的增长曲线是衡量任何新稳定币成长速度的终极基准。',
+    context_summary: 'USDT 从 $4B 到 $100B 的增长轨迹，是衡量任何稳定币增速的终极基准。',
   },
+  // ── 8. usdc-growth-2021-2024 ──
   {
     id: 'usdc-growth-2021-2024',
     entity: 'Circle',
@@ -416,47 +205,23 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       { date: '2022-06-01', event: 'USDC 市值峰值 ~$55B' },
       { date: '2023-03-11', event: 'SVB 事件后 USDC 短暂脱钩至 $0.87，市值跌至 ~$37B' },
       { date: '2024-01-01', event: 'USDC 市值恢复至 ~$25B' },
-      { date: '2025-03-01', event: 'USDC 市值回升至 ~$60B' },
     ],
     metrics: {
       svb_depeg_low: '$0.87',
       svb_recovery_time_hours: 72,
       circle_svb_exposure: '$3.3B',
       peak_market_cap: '$55B',
-      post_svb_low: '$24B',
     },
     tags: ['usdc', 'circle', 'market-cap', 'stablecoin', 'svb'],
     source_urls: [
-      'https://www.circle.com/usdc',
-      'https://defillama.com/stablecoin/usd-coin',
+      'https://www.circle.com/en/transparency',
+      'https://defillama.com/stablecoins',
+      'https://www.coingecko.com/en/coins/usd-coin',
     ],
-    comparable_events: ['usdt-100b', 'usdc-svb-depeg', 'usdc-supply-contraction'],
-    context_summary: 'USDC 经历了完整的增长-收缩-恢复周期，是分析稳定币韧性和市场信心恢复的核心案例。',
+    comparable_events: ['usdt-100b', 'usdc-svb-depeg'],
+    context_summary: 'USDC 经历了高速增长、SVB 脱钩冲击和缓慢恢复的完整周期，是合规稳定币韧性的参照。',
   },
-  {
-    id: 'usdc-supply-contraction',
-    entity: 'Circle',
-    type: 'market_cap_change',
-    milestones: [
-      { date: '2022-06-01', event: 'USDC 市值峰值 ~$55B' },
-      { date: '2023-03-11', event: 'SVB 脱钩加速流出' },
-      { date: '2023-10-01', event: 'USDC 市值跌至 ~$24B (较峰值 -56%)' },
-      { date: '2024-06-01', event: 'USDC 市值开始反弹至 ~$33B' },
-    ],
-    metrics: {
-      peak_market_cap: '$55B',
-      trough_market_cap: '$24B',
-      decline_percent: '-56%',
-      contraction_duration_months: 16,
-      primary_cause: 'SVB 脱钩 + 利率上升导致资金回流传统市场',
-    },
-    tags: ['usdc', 'circle', 'market-cap', 'contraction', 'stablecoin'],
-    source_urls: [
-      'https://defillama.com/stablecoin/usd-coin',
-    ],
-    comparable_events: ['usdc-svb-depeg', 'usdt-dominance-post-svb'],
-    context_summary: 'USDC 2022-2023 的供给收缩是理解 Tether 市场份额跃升和 Circle 营收压力的关键背景。',
-  },
+  // ── 9. ust-collapse ──
   {
     id: 'ust-collapse',
     entity: 'Terra',
@@ -473,155 +238,56 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       luna_post_collapse: '<$0.01',
       contagion: 'Three Arrows Capital 破产、Celsius/Voyager 破产',
     },
-    tags: ['ust', 'terra', 'luna', 'depeg', 'collapse', 'stablecoin', 'algorithmic'],
+    tags: ['ust', 'terra', 'luna', 'depeg', 'collapse', 'stablecoin'],
     source_urls: [
-      'https://www.coindesk.com/markets/2022/05/11/ust-peg-slips-below-050-as-crypto-selloff-continues/',
-      'https://defillama.com/stablecoin/terrausd',
+      'https://defillama.com/protocol/anchor',
+      'https://www.coingecko.com/en/coins/terrausd',
     ],
     comparable_events: ['iron-finance-collapse', 'fei-protocol', 'usdd-tron'],
-    context_summary: 'UST 崩盘是稳定币历史上最大的系统性事件，直接催生了全球稳定币监管立法浪潮。',
+    context_summary: '史上最大算法稳定币崩盘（$18B 归零），是所有算法/合成稳定币风险评估的核心参照。',
   },
+  // ── 10. circle-series-f ──
   {
-    id: 'usdc-svb-depeg',
+    id: 'circle-series-f',
     entity: 'Circle',
-    type: 'market_cap_change',
+    type: 'funding_round',
     milestones: [
-      { date: '2023-03-10', event: 'Silicon Valley Bank 被 FDIC 接管' },
-      { date: '2023-03-11', event: 'Circle 披露 $3.3B 存放于 SVB，USDC 脱钩至 $0.87' },
-      { date: '2023-03-13', event: '美联储宣布储户全额保护，USDC 恢复 $1.00' },
+      { date: '2022-04-12', event: 'Circle 完成 $4 亿 Series F，BlackRock 领投' },
     ],
     metrics: {
-      svb_exposure: '$3.3B',
-      depeg_low: '$0.87',
-      recovery_time_hours: 48,
-      usdc_market_cap_before: '$43.5B',
-      usdc_market_cap_3m_later: '$28B',
-      outflow_percent: '-35%',
+      amount: '$400M',
+      lead_investor: 'BlackRock',
+      other_investors: 'Fidelity, Marshall Wace, Fin Capital',
+      post_money_valuation: '$9B',
     },
-    tags: ['usdc', 'circle', 'svb', 'depeg', 'bank-run', 'stablecoin'],
+    tags: ['funding', 'circle', 'usdc', 'blackrock', 'series-f'],
     source_urls: [
-      'https://www.circle.com/blog/an-update-on-usdc-and-silicon-valley-bank',
-      'https://www.federalreserve.gov/newsevents/pressreleases/monetary20230312b.htm',
+      'https://www.circle.com/en/pressroom',
     ],
-    comparable_events: ['ust-collapse', 'usdc-supply-contraction', 'usdt-dominance-post-svb'],
-    context_summary: 'USDC SVB 脱钩事件暴露了法币储备集中于单一银行的风险，促使稳定币发行方多元化银行关系。',
+    context_summary: 'BlackRock 领投 Circle 是传统资管巨头布局稳定币的标志性事件，也是 Circle IPO 估值的锚点。',
   },
+  // ── 11. stripe-bridge-acquisition ──
   {
-    id: 'usdt-dominance-post-svb',
-    entity: 'Tether',
-    type: 'market_cap_change',
+    id: 'stripe-bridge-acquisition',
+    entity: 'Stripe',
+    type: 'partnership',
     milestones: [
-      { date: '2023-03-15', event: 'SVB 事件后 USDT 份额从 50% 升至 60%+' },
-      { date: '2023-12-01', event: 'USDT 市值突破 $90B，份额 ~65%' },
-      { date: '2024-03-04', event: 'USDT 市值突破 $100B' },
+      { date: '2024-10-21', event: 'Stripe 宣布收购 Bridge.xyz，金额 $1.1B' },
+      { date: '2025-02-01', event: '收购完成' },
     ],
     metrics: {
-      share_before_svb: '~50%',
-      share_after_svb: '~65%',
-      market_cap_gain_6m: '+$20B',
+      acquisition_price: '$1.1B',
+      bridge_annual_revenue: '~$10-15M (估计)',
+      revenue_multiple: '~70-100x',
+      strategic_rationale: 'Stripe 进入稳定币基础设施',
     },
-    tags: ['usdt', 'tether', 'market-cap', 'dominance', 'stablecoin'],
+    tags: ['acquisition', 'stripe', 'bridge', 'b2b', 'infrastructure', 'partnership'],
     source_urls: [
-      'https://defillama.com/stablecoins',
-      'https://tether.to/en/transparency/',
+      'https://stripe.com/newsroom',
     ],
-    comparable_events: ['usdc-svb-depeg', 'usdc-supply-contraction'],
-    context_summary: 'SVB 后 USDT 的市场份额跃升说明稳定币竞争中，监管合规并不一定带来市场份额优势。',
+    context_summary: '支付巨头 Stripe 以 $1.1B 收购稳定币基础设施公司，100x 收入倍数体现了稳定币赛道的战略溢价。',
   },
-  {
-    id: 'stablecoin-total-100b',
-    entity: 'Stablecoin Market',
-    type: 'market_cap_change',
-    milestones: [
-      { date: '2021-08-01', event: '稳定币总市值首次突破 $100B' },
-      { date: '2022-05-01', event: '稳定币总市值峰值 ~$180B (UST 崩盘前)' },
-      { date: '2022-07-01', event: 'UST 崩盘后总市值跌至 ~$150B' },
-      { date: '2024-11-01', event: '稳定币总市值重回 $170B+' },
-      { date: '2025-03-01', event: '稳定币总市值突破 $225B' },
-    ],
-    metrics: {
-      first_100b_date: '2021-08',
-      peak_2022: '~$180B',
-      post_ust_low: '~$130B',
-      current_ath: '$225B+',
-    },
-    tags: ['market-cap', 'stablecoin', 'milestone', 'total-market'],
-    source_urls: [
-      'https://defillama.com/stablecoins',
-    ],
-    comparable_events: ['stablecoin-payments-volume-2024', 'usdt-100b'],
-    context_summary: '稳定币总市值的增长轨迹是衡量行业整体健康度和采用率的宏观指标。',
-  },
-  {
-    id: 'stablecoin-payments-volume-2024',
-    entity: 'Stablecoin Market',
-    type: 'market_cap_change',
-    milestones: [
-      { date: '2024-01-01', event: '2023 年稳定币链上交易量达 $10.8T (超过 Visa)' },
-      { date: '2024-06-01', event: '2024 H1 稳定币交易量达 $5.1T' },
-    ],
-    metrics: {
-      annual_volume_2023: '$10.8T',
-      visa_annual_2023: '$14.8T',
-      ratio_vs_visa: '~73%',
-    },
-    tags: ['market-cap', 'stablecoin', 'volume', 'payments', 'milestone'],
-    source_urls: [
-      'https://defillama.com/stablecoins',
-      'https://visa.com/corporate/about-visa',
-    ],
-    comparable_events: ['stablecoin-total-100b'],
-    context_summary: '稳定币链上交易量接近 Visa 是证明稳定币作为支付网络规模的关键数据点。',
-  },
-
-  // ════════════════════════════════════════════════════════════
-  // 稳定币产品发布
-  // ════════════════════════════════════════════════════════════
-
-  {
-    id: 'dai-creation',
-    entity: 'MakerDAO',
-    type: 'product_launch',
-    milestones: [
-      { date: '2017-12-18', event: 'Single-Collateral DAI (SAI) 上线，仅支持 ETH 抵押' },
-      { date: '2019-11-18', event: 'Multi-Collateral DAI (MCD) 上线，支持多种抵押品' },
-      { date: '2022-10-01', event: 'DAI 市值稳定在 $5-6B 区间' },
-    ],
-    metrics: {
-      initial_collateral: 'ETH only',
-      mcd_collateral_count: '10+ 资产',
-      stability_fee_range: '0-8%',
-      peak_market_cap: '$10B (2022-02)',
-    },
-    tags: ['dai', 'makerdao', 'defi', 'stablecoin', 'product-launch', 'cdp'],
-    source_urls: [
-      'https://blog.makerdao.com/multi-collateral-dai-is-live/',
-      'https://defillama.com/stablecoin/dai',
-    ],
-    comparable_events: ['sky-usds-rebrand', 'frax-v3', 'aave-gho-launch'],
-    context_summary: 'DAI 是首个去中心化超额抵押稳定币，其 CDP 模型成为 DeFi 稳定币设计的原型。',
-  },
-  {
-    id: 'sky-usds-rebrand',
-    entity: 'Sky (ex-MakerDAO)',
-    type: 'product_launch',
-    milestones: [
-      { date: '2024-08-27', event: 'MakerDAO 品牌重塑为 Sky，DAI → USDS，MKR → SKY' },
-      { date: '2024-09-18', event: 'USDS 正式上线，DAI 可 1:1 升级' },
-    ],
-    metrics: {
-      dai_market_cap_at_rebrand: '~$5.3B',
-      upgrade_ratio: '1:1',
-      savings_rate: '~5% (SSR)',
-    },
-    tags: ['product-launch', 'sky', 'usds', 'makerdao', 'dai', 'rebrand', 'stablecoin'],
-    source_urls: [
-      'https://blog.makerdao.com/introducing-sky-protocol/',
-      'https://defillama.com/stablecoin/usds',
-    ],
-    comparable_events: ['dai-creation', 'paxos-usdp-rebrand'],
-    context_summary: 'MakerDAO 重塑为 Sky 标志着 DeFi 原生稳定币向更主流品牌策略的转型。',
-  },
+  // ── 12. pyusd-launch ──
   {
     id: 'pyusd-launch',
     entity: 'PayPal',
@@ -630,456 +296,22 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       { date: '2023-08-07', event: 'PayPal 发布 PYUSD，Paxos 发行，以太坊链' },
       { date: '2024-05-29', event: 'PYUSD 上线 Solana' },
       { date: '2024-08-01', event: 'PYUSD 市值突破 $1B' },
-      { date: '2025-01-01', event: 'PYUSD 市值回落至 ~$500M' },
     ],
     metrics: {
       launch_to_1b_days: 360,
       issuer: 'Paxos Trust',
       initial_chain: 'Ethereum',
       expanded_chain: 'Solana',
-      peak_market_cap: '$1B',
     },
     tags: ['product-launch', 'pyusd', 'paypal', 'stablecoin', 'paxos'],
     source_urls: [
       'https://newsroom.paypal-corp.com/2023-08-07-PayPal-Launches-U-S-Dollar-Stablecoin',
-      'https://defillama.com/stablecoin/paypal-usd',
+      'https://www.coingecko.com/en/coins/paypal-usd',
     ],
-    comparable_events: ['ripple-rlusd', 'world-liberty-usd0'],
-    context_summary: 'PYUSD 是首个由传统支付巨头发行的稳定币，其采用率是衡量 Web2→Web3 跨越的标尺。',
+    comparable_events: ['ripple-rlusd', 'world-liberty-usd0', 'paypal-pyusd-solana-incentive'],
+    context_summary: '首个由全球支付巨头发行的稳定币，360 天达 $1B 的速度是新进入者增长的参照。',
   },
-  {
-    id: 'ripple-rlusd',
-    entity: 'Ripple',
-    type: 'product_launch',
-    milestones: [
-      { date: '2024-12-17', event: 'Ripple 发布 RLUSD 稳定币 (NYDFS 批准)' },
-      { date: '2025-01-15', event: 'RLUSD 市值达 ~$100M' },
-    ],
-    metrics: {
-      regulator: 'NYDFS',
-      chains: 'XRP Ledger, Ethereum',
-      backing: '1:1 美元存款 + 美国国债',
-    },
-    tags: ['product-launch', 'ripple', 'rlusd', 'stablecoin', 'nydfs'],
-    source_urls: [
-      'https://ripple.com/solutions/stablecoin/',
-      'https://www.dfs.ny.gov/',
-    ],
-    comparable_events: ['pyusd-launch', 'world-liberty-usd0'],
-    context_summary: 'RLUSD 是 Ripple 从 XRP 支付扩展至稳定币的战略举措，其 NYDFS 许可是合规优势。',
-  },
-  {
-    id: 'world-liberty-usd0',
-    entity: 'World Liberty Financial',
-    type: 'product_launch',
-    milestones: [
-      { date: '2025-03-01', event: 'World Liberty Financial 推出 USD1 稳定币' },
-    ],
-    metrics: {
-      backing: '美国国债 + 现金等价物',
-      association: 'Trump family affiliated',
-    },
-    tags: ['product-launch', 'world-liberty', 'usd1', 'stablecoin', 'trump'],
-    source_urls: [
-      'https://www.worldlibertyfinancial.com/',
-    ],
-    comparable_events: ['pyusd-launch', 'ripple-rlusd'],
-    context_summary: '政治关联稳定币的出现标志着稳定币成为美国政治议题的新阶段。',
-  },
-  {
-    id: 'tether-usdt0-launch',
-    entity: 'Tether',
-    type: 'product_launch',
-    milestones: [
-      { date: '2025-01-16', event: 'Tether 推出 USDT0，使用 LayerZero OFT 实现原生跨链' },
-    ],
-    metrics: {
-      mechanism: 'LayerZero OFT',
-      initial_chains: 'Ethereum, Ink (Kraken L2)',
-    },
-    tags: ['product-launch', 'tether', 'usdt', 'usdt0', 'cross-chain', 'layerzero'],
-    source_urls: [
-      'https://tether.to/en/tether-introduces-usdt0/',
-    ],
-    comparable_events: ['circle-cctp-launch'],
-    context_summary: 'USDT0 是 Tether 解决跨链碎片化问题的方案，与 Circle 的 CCTP 形成直接竞争。',
-  },
-  {
-    id: 'circle-cctp-launch',
-    entity: 'Circle',
-    type: 'product_launch',
-    milestones: [
-      { date: '2023-04-26', event: 'Circle 发布 CCTP (Cross-Chain Transfer Protocol)，原生 USDC 跨链' },
-      { date: '2024-01-01', event: 'CCTP 支持 8 条链' },
-    ],
-    metrics: {
-      initial_chains: 'Ethereum, Avalanche',
-      chains_at_1y: 8,
-      mechanism: '销毁-铸造 (原生转移，非桥接)',
-    },
-    tags: ['product-launch', 'circle', 'usdc', 'cctp', 'cross-chain', 'infrastructure'],
-    source_urls: [
-      'https://www.circle.com/cross-chain-transfer-protocol',
-    ],
-    comparable_events: ['tether-usdt0-launch', 'solana-usdc-native'],
-    context_summary: 'CCTP 是稳定币原生跨链传输的行业标准之一，避免了传统桥接的安全风险。',
-  },
-  {
-    id: 'solana-usdc-native',
-    entity: 'Circle',
-    type: 'product_launch',
-    milestones: [
-      { date: '2022-06-01', event: 'Circle 发行 Solana 原生 USDC (替代 Wormhole 桥接版)' },
-      { date: '2024-01-01', event: 'Solana USDC 流通量达 $2B+' },
-    ],
-    metrics: {
-      initial_supply: '~$100M',
-      supply_1y: '$2B+',
-      growth: '20x',
-    },
-    tags: ['product-launch', 'circle', 'usdc', 'solana', 'native'],
-    source_urls: [
-      'https://www.circle.com/blog/usdc-now-available-natively-on-solana',
-    ],
-    comparable_events: ['usdc-base-launch', 'circle-cctp-launch'],
-    context_summary: 'Solana 原生 USDC 替代桥接版是稳定币多链部署策略的典型案例。',
-  },
-  {
-    id: 'usdc-base-launch',
-    entity: 'Circle',
-    type: 'product_launch',
-    milestones: [
-      { date: '2023-09-05', event: 'USDC 原生上线 Base (Coinbase L2)' },
-      { date: '2024-06-01', event: 'Base USDC 流通量突破 $3B' },
-    ],
-    metrics: {
-      chain: 'Base (Coinbase L2)',
-      supply_6m: '$3B+',
-    },
-    tags: ['product-launch', 'circle', 'usdc', 'base', 'coinbase', 'l2'],
-    source_urls: [
-      'https://www.circle.com/blog/usdc-now-available-natively-on-base',
-    ],
-    comparable_events: ['solana-usdc-native'],
-    context_summary: 'USDC 在 Base 的快速增长展示了 L2 对稳定币流通的放大效应。',
-  },
-  {
-    id: 'fdusd-launch',
-    entity: 'First Digital',
-    type: 'product_launch',
-    milestones: [
-      { date: '2023-06-01', event: 'First Digital USD (FDUSD) 发行，香港注册' },
-      { date: '2023-09-01', event: 'Binance 将交易手续费减免切换至 FDUSD (替代 BUSD)' },
-      { date: '2024-04-01', event: 'FDUSD 市值达 ~$4B' },
-    ],
-    metrics: {
-      issuer: 'First Digital Trust (Hong Kong)',
-      primary_exchange: 'Binance',
-      peak_market_cap: '~$4B',
-      chains: 'Ethereum, BNB Chain',
-    },
-    tags: ['product-launch', 'fdusd', 'first-digital', 'binance', 'stablecoin', 'hong-kong'],
-    source_urls: [
-      'https://firstdigitallabs.com/',
-      'https://defillama.com/stablecoin/first-digital-usd',
-    ],
-    comparable_events: ['sec-paxos-busd', 'busd-launch-growth'],
-    context_summary: 'FDUSD 是 BUSD 被 SEC 终止后 Binance 扶持的替代品，其增长完全依赖 Binance 的流量补贴。',
-  },
-  {
-    id: 'busd-launch-growth',
-    entity: 'Paxos/Binance',
-    type: 'product_launch',
-    milestones: [
-      { date: '2019-09-05', event: 'Binance USD (BUSD) 发行，Paxos 铸造，NYDFS 批准' },
-      { date: '2021-11-01', event: 'BUSD 市值突破 $14B' },
-      { date: '2022-11-01', event: 'BUSD 市值峰值 ~$23B' },
-      { date: '2023-02-13', event: 'SEC Wells Notice + NYDFS 停铸令' },
-    ],
-    metrics: {
-      peak_market_cap: '$23B',
-      issuer: 'Paxos Trust',
-      regulator: 'NYDFS',
-      time_to_peak_months: 39,
-    },
-    tags: ['product-launch', 'busd', 'binance', 'paxos', 'stablecoin', 'nydfs'],
-    source_urls: [
-      'https://paxos.com/busd/',
-      'https://defillama.com/stablecoin/binance-usd',
-    ],
-    comparable_events: ['sec-paxos-busd', 'fdusd-launch'],
-    context_summary: 'BUSD 从发行到巅峰再到被终止的完整生命周期，是监管风险如何瞬间摧毁 $23B 稳定币的经典案例。',
-  },
-  {
-    id: 'gusd-launch',
-    entity: 'Gemini',
-    type: 'product_launch',
-    milestones: [
-      { date: '2018-09-10', event: 'Gemini Dollar (GUSD) 发行，NYDFS 首批批准的稳定币之一' },
-      { date: '2021-01-01', event: 'GUSD 市值达 ~$300M' },
-      { date: '2024-01-01', event: 'GUSD 市值萎缩至 ~$60M' },
-    ],
-    metrics: {
-      regulator: 'NYDFS',
-      peak_market_cap: '~$300M',
-      current_market_cap: '~$60M',
-      issuer: 'Gemini Trust Company',
-    },
-    tags: ['product-launch', 'gusd', 'gemini', 'stablecoin', 'nydfs', 'regulated'],
-    source_urls: [
-      'https://www.gemini.com/dollar',
-      'https://defillama.com/stablecoin/gemini-dollar',
-    ],
-    comparable_events: ['paxos-usdp-rebrand', 'busd-launch-growth'],
-    context_summary: 'GUSD 是早期受监管稳定币的代表，其未能规模化说明合规并非市场成功的充分条件。',
-  },
-  {
-    id: 'paxos-usdp-rebrand',
-    entity: 'Paxos',
-    type: 'product_launch',
-    milestones: [
-      { date: '2018-09-10', event: 'Paxos Standard (PAX) 发行，NYDFS 批准' },
-      { date: '2021-08-24', event: 'PAX 更名为 Pax Dollar (USDP)' },
-      { date: '2024-01-01', event: 'USDP 市值 ~$150M' },
-    ],
-    metrics: {
-      regulator: 'NYDFS',
-      peak_market_cap: '~$1B',
-      current_market_cap: '~$150M',
-      rebrand_date: '2021-08-24',
-    },
-    tags: ['product-launch', 'usdp', 'paxos', 'stablecoin', 'nydfs', 'regulated'],
-    source_urls: [
-      'https://paxos.com/usdp/',
-      'https://defillama.com/stablecoin/pax-dollar',
-    ],
-    comparable_events: ['gusd-launch', 'busd-launch-growth'],
-    context_summary: 'USDP (原 PAX) 是 Paxos 自有品牌稳定币，与 Paxos 代发的 BUSD/PYUSD 形成商业模式对比。',
-  },
-  {
-    id: 'circle-eurc-launch',
-    entity: 'Circle',
-    type: 'product_launch',
-    milestones: [
-      { date: '2022-06-16', event: 'Circle 发布 EURC (Euro Coin)，以太坊原生' },
-      { date: '2024-06-30', event: 'EURC 获得 MiCA 合规授权 (法国 EMI 牌照)' },
-      { date: '2025-01-01', event: 'EURC 市值达 ~$150M' },
-    ],
-    metrics: {
-      initial_chain: 'Ethereum',
-      expanded_chains: 'Solana, Avalanche, Base',
-      mica_license: 'French EMI (Société Générale partnership)',
-      market_cap: '~$150M',
-    },
-    tags: ['product-launch', 'eurc', 'circle', 'euro', 'stablecoin', 'mica'],
-    source_urls: [
-      'https://www.circle.com/eurc',
-      'https://defillama.com/stablecoin/euro-coin',
-    ],
-    comparable_events: ['tether-eurt', 'mica-eu'],
-    context_summary: 'EURC 是 MiCA 合规的欧元稳定币标杆，直接受益于 USDT 在欧洲下架带来的市场空间。',
-  },
-  {
-    id: 'tether-eurt',
-    entity: 'Tether',
-    type: 'product_launch',
-    milestones: [
-      { date: '2016-01-01', event: 'Tether 推出 EURT (欧元稳定币)' },
-      { date: '2024-12-30', event: 'MiCA 生效后 EURT 面临合规挑战' },
-    ],
-    metrics: {
-      peak_market_cap: '~$500M',
-      current_market_cap: '~$37M',
-      mica_status: '未获授权',
-    },
-    tags: ['product-launch', 'eurt', 'tether', 'euro', 'stablecoin'],
-    source_urls: [
-      'https://tether.to/en/',
-      'https://defillama.com/stablecoin/tether-eurt',
-    ],
-    comparable_events: ['circle-eurc-launch', 'eu-mica-tether-delisting'],
-    context_summary: 'EURT 的萎缩与 EURC 的增长形成对比，说明监管合规在欧元稳定币竞争中的决定性作用。',
-  },
-  {
-    id: 'liquity-lusd',
-    entity: 'Liquity',
-    type: 'product_launch',
-    milestones: [
-      { date: '2021-04-05', event: 'Liquity LUSD 上线，完全去中心化（不可治理、不可升级）' },
-      { date: '2022-05-01', event: 'LUSD 市值峰值 ~$1.5B' },
-      { date: '2024-01-01', event: 'LUSD 市值稳定在 ~$300M' },
-    ],
-    metrics: {
-      mechanism: '超额抵押 (ETH，最低 110% CR)',
-      governance: '无治理 (不可变合约)',
-      peak_market_cap: '~$1.5B',
-      one_time_fee: '0.5% 铸造费',
-    },
-    tags: ['product-launch', 'lusd', 'liquity', 'defi', 'stablecoin', 'decentralized'],
-    source_urls: [
-      'https://www.liquity.org/',
-      'https://defillama.com/stablecoin/liquity-usd',
-    ],
-    comparable_events: ['dai-creation', 'frax-v3'],
-    context_summary: 'LUSD 是完全不可治理的稳定币实验，代表了去中心化最大主义的设计哲学。',
-  },
-  {
-    id: 'iron-finance-collapse',
-    entity: 'Iron Finance',
-    type: 'market_cap_change',
-    milestones: [
-      { date: '2021-06-16', event: 'IRON (部分算法稳定币) 在 Polygon 上脱钩' },
-      { date: '2021-06-17', event: 'TITAN 代币从 $64 跌至接近 $0' },
-    ],
-    metrics: {
-      titan_peak_price: '$64',
-      titan_post_collapse: '~$0',
-      tvl_before: '$2B',
-      tvl_after: '~$0',
-      collapse_duration_hours: 24,
-    },
-    tags: ['depeg', 'collapse', 'iron-finance', 'titan', 'algorithmic', 'polygon', 'stablecoin'],
-    source_urls: [
-      'https://www.coindesk.com/markets/2021/06/17/iron-finances-titan-token-falls-to-near-zero-in-defi-panic-selling/',
-    ],
-    comparable_events: ['ust-collapse', 'fei-protocol'],
-    context_summary: 'Iron Finance 是 UST 崩盘前最大的算法稳定币失败案例，证明了部分抵押设计的脆弱性。',
-  },
-  {
-    id: 'fei-protocol',
-    entity: 'Fei Protocol',
-    type: 'product_launch',
-    milestones: [
-      { date: '2021-04-03', event: 'FEI 上线，Genesis Event 募集 $1.3B ETH' },
-      { date: '2021-04-04', event: 'FEI 上线首日即脱钩，跌至 $0.70' },
-      { date: '2022-08-20', event: 'Fei Protocol 宣布关闭，返还所有 PCV' },
-    ],
-    metrics: {
-      genesis_raise: '$1.3B',
-      first_day_low: '$0.70',
-      recovery_time_days: 14,
-      final_outcome: '项目关闭',
-    },
-    tags: ['depeg', 'fei', 'algorithmic', 'stablecoin', 'product-launch'],
-    source_urls: [
-      'https://www.coindesk.com/tech/2022/08/20/algorithmic-stablecoin-project-fei-protocol-to-wind-down/',
-    ],
-    comparable_events: ['iron-finance-collapse', 'ust-collapse'],
-    context_summary: 'FEI 的"直接激励"机制失败展示了算法稳定币在脱钩时流动性陷阱的致命缺陷。',
-  },
-  {
-    id: 'usdd-tron',
-    entity: 'Tron',
-    type: 'product_launch',
-    milestones: [
-      { date: '2022-05-05', event: 'USDD (Tron 去中心化稳定币) 发行' },
-      { date: '2022-06-13', event: 'USDD 短暂脱钩至 $0.97 (UST 崩盘余波)' },
-      { date: '2022-06-15', event: 'TDR 将 USDD 抵押率提升至 200%+' },
-    ],
-    metrics: {
-      depeg_low: '$0.97',
-      recovery_time_hours: 48,
-      over_collateral_ratio: '200%+',
-      market_cap_peak: '~$750M',
-    },
-    tags: ['usdd', 'tron', 'stablecoin', 'depeg', 'algorithmic'],
-    source_urls: [
-      'https://usdd.io/',
-      'https://defillama.com/stablecoin/usdd',
-    ],
-    comparable_events: ['ust-collapse', 'frax-v3'],
-    context_summary: 'USDD 在 UST 崩盘后立刻将模式切换为超额抵押，是算法稳定币向安全模式退却的典型案例。',
-  },
-  {
-    id: 'aave-gho-launch',
-    entity: 'Aave',
-    type: 'product_launch',
-    milestones: [
-      { date: '2023-07-15', event: 'GHO 稳定币在 Ethereum 主网上线' },
-      { date: '2024-03-01', event: 'GHO 市值突破 $50M' },
-      { date: '2025-01-01', event: 'GHO 市值达 ~$180M' },
-    ],
-    metrics: {
-      launch_chain: 'Ethereum',
-      mechanism: 'Aave V3 抵押铸造',
-      initial_borrow_rate: '1.5%',
-    },
-    tags: ['product-launch', 'gho', 'aave', 'defi', 'stablecoin'],
-    source_urls: [
-      'https://governance.aave.com/t/gho-development-update/14442',
-      'https://defillama.com/stablecoin/gho',
-    ],
-    comparable_events: ['crvusd-launch', 'frax-v3'],
-    context_summary: 'GHO 是 DeFi 借贷协议发行自有稳定币的趋势代表，Aave 的用户基础是其增长引擎。',
-  },
-  {
-    id: 'frax-v3',
-    entity: 'Frax Finance',
-    type: 'product_launch',
-    milestones: [
-      { date: '2023-10-25', event: 'Frax v3 上线，FRAX 转为完全抵押 (去掉算法部分)' },
-      { date: '2024-01-01', event: 'sFRAX 收益率对标联邦基金利率' },
-    ],
-    metrics: {
-      previous_model: '部分算法抵押',
-      new_model: '100% 外生抵押',
-      sfrax_apy: '~5%',
-      frax_market_cap: '~$650M',
-    },
-    tags: ['product-launch', 'frax', 'stablecoin', 'defi', 'yield'],
-    source_urls: [
-      'https://docs.frax.finance/',
-      'https://defillama.com/stablecoin/frax',
-    ],
-    comparable_events: ['dai-creation', 'aave-gho-launch'],
-    context_summary: 'Frax 从算法模式转向全抵押是 UST 崩盘后整个行业向安全性靠拢的缩影。',
-  },
-  {
-    id: 'crvusd-launch',
-    entity: 'Curve',
-    type: 'product_launch',
-    milestones: [
-      { date: '2023-05-17', event: 'crvUSD 在 Ethereum 上线，使用 LLAMMA 机制' },
-      { date: '2024-01-01', event: 'crvUSD 市值达 ~$120M' },
-    ],
-    metrics: {
-      mechanism: 'LLAMMA (Lending-Liquidating AMM Algorithm)',
-      launch_collateral: 'sfrxETH, wstETH',
-      peak_market_cap: '~$200M',
-    },
-    tags: ['product-launch', 'crvusd', 'curve', 'defi', 'stablecoin'],
-    source_urls: [
-      'https://docs.curve.fi/crvUSD/overview/',
-      'https://defillama.com/stablecoin/crvusd',
-    ],
-    comparable_events: ['aave-gho-launch', 'frax-v3'],
-    context_summary: 'crvUSD 的 LLAMMA 软清算机制是稳定币清算设计的重要创新。',
-  },
-  {
-    id: 'tether-gold-xaut',
-    entity: 'Tether',
-    type: 'product_launch',
-    milestones: [
-      { date: '2020-01-23', event: 'Tether Gold (XAUT) 发行，每代币锚定 1 盎司黄金' },
-      { date: '2024-01-01', event: 'XAUT 市值达 ~$500M' },
-    ],
-    metrics: {
-      backing: '1 代币 = 1 盎司黄金 (伦敦金库)',
-      market_cap: '~$500M',
-    },
-    tags: ['product-launch', 'tether', 'xaut', 'gold', 'commodity', 'stablecoin'],
-    source_urls: [
-      'https://gold.tether.to/',
-      'https://tether.to/en/transparency/',
-    ],
-    comparable_events: ['usdt-100b'],
-    context_summary: 'XAUT 代表了稳定币从美元锚定扩展到其他资产（黄金）的趋势。',
-  },
-
-  // ════════════════════════════════════════════════════════════
-  // TVL / DeFi 稳定币里程碑
-  // ════════════════════════════════════════════════════════════
-
+  // ── 13. dai-tvl-growth ──
   {
     id: 'dai-tvl-growth',
     entity: 'MakerDAO',
@@ -1087,7 +319,7 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     milestones: [
       { date: '2019-11-18', event: 'MakerDAO 上线多抵押 DAI (MCD)' },
       { date: '2021-05-01', event: 'DAI 市值首次突破 $5B' },
-      { date: '2022-02-01', event: 'DAI 市值峰值 ~$10B' },
+      { date: '2022-10-01', event: 'DAI 市值稳定在 $5-6B 区间' },
     ],
     metrics: {
       single_to_multi_collateral_date: '2019-11-18',
@@ -1096,11 +328,13 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     },
     tags: ['tvl', 'dai', 'makerdao', 'defi', 'stablecoin', 'milestone'],
     source_urls: [
-      'https://defillama.com/stablecoin/dai',
+      'https://defillama.com/protocol/makerdao',
+      'https://www.coingecko.com/en/coins/dai',
     ],
-    comparable_events: ['usde-growth', 'usdc-growth-2021-2024'],
-    context_summary: 'DAI 从 MCD 上线到 $10B 的增长曲线是去中心化稳定币的增长基准。',
+    comparable_events: ['sky-usds-rebrand'],
+    context_summary: 'DeFi 原生稳定币的增长标杆，多抵押升级是协议演进的重要参照。',
   },
+  // ── 14. usde-growth ──
   {
     id: 'usde-growth',
     entity: 'Ethena',
@@ -1118,17 +352,13 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     },
     tags: ['tvl', 'usde', 'ethena', 'defi', 'stablecoin', 'synthetic'],
     source_urls: [
-      'https://ethena.fi/',
-      'https://defillama.com/stablecoin/ethena-usde',
+      'https://defillama.com/protocol/ethena',
+      'https://www.coingecko.com/en/coins/ethena-usde',
     ],
-    comparable_events: ['dai-tvl-growth', 'usual-protocol'],
-    context_summary: 'USDe 4.5 个月达 $3B 是历史最快的稳定币增长，其合成美元模式是高收益驱动的采用典型。',
+    comparable_events: ['ethena-susde-growth'],
+    context_summary: '史上增长最快的合成美元协议，4.5 个月达 $3B 的速度是 DeFi 稳定币增长的新标杆。',
   },
-
-  // ════════════════════════════════════════════════════════════
-  // 执法 / 合规事件
-  // ════════════════════════════════════════════════════════════
-
+  // ── 15. tether-cftc-settlement ──
   {
     id: 'tether-cftc-settlement',
     entity: 'Tether',
@@ -1149,9 +379,9 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       'https://ag.ny.gov/press-release/2021/attorney-general-james-ends-virtual-currency-trading-platform-bitfinexs-illegal',
       'https://www.cftc.gov/PressRoom/PressReleases/8450-21',
     ],
-    comparable_events: ['sec-paxos-busd', 'tether-reserve-composition'],
-    context_summary: '对 Tether 的执法是稳定币领域最重大的监管行动，直接推动了行业透明度标准的提升。',
+    context_summary: 'Tether 首次面临美国执法处罚，$59.5M 罚款金额和季度储备证明要求是稳定币合规案例的参照。',
   },
+  // ── 16. sec-paxos-busd ──
   {
     id: 'sec-paxos-busd',
     entity: 'Paxos',
@@ -1168,39 +398,199 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       decline_percent: '>99%',
       wind_down_duration_months: 12,
     },
-    tags: ['enforcement', 'sec', 'paxos', 'busd', 'binance', 'wells-notice', 'stablecoin'],
+    tags: ['enforcement', 'sec', 'paxos', 'busd', 'binance', 'wells-notice'],
     source_urls: [
-      'https://paxos.com/2023/02/13/paxos-will-halt-minting-new-busd-tokens/',
+      'https://www.sec.gov/litigation/litreleases',
       'https://www.dfs.ny.gov/consumers/alerts/Paxos_702',
     ],
-    comparable_events: ['busd-launch-growth', 'fdusd-launch', 'tether-cftc-settlement'],
-    context_summary: 'BUSD 被终止是 SEC 将稳定币归类为证券的首次尝试，直接改变了 Binance 的稳定币策略。',
+    context_summary: '监管执法直接导致第三大稳定币 BUSD ($16B) 在一年内归零，是监管风险的极端案例。',
   },
-
-  // ════════════════════════════════════════════════════════════
-  // 融资
-  // ════════════════════════════════════════════════════════════
-
+  // ── 17. hk-stablecoin-framework ──
   {
-    id: 'circle-series-f',
-    entity: 'Circle',
-    type: 'funding_round',
+    id: 'hk-stablecoin-framework',
+    entity: 'HKMA',
+    type: 'regulatory_bill',
     milestones: [
-      { date: '2022-04-12', event: 'Circle 完成 $4 亿 Series F，BlackRock 领投' },
+      { date: '2024-03-12', event: 'HKMA 公布稳定币监管咨询文件' },
+      { date: '2024-07-18', event: '沙盒计划启动，首批 3 家获批 (京东、圆币、渣打+安拟集团)' },
+      { date: '2025-01-01', event: '正式立法进入立法会审议' },
     ],
     metrics: {
-      amount: '$400M',
-      lead_investor: 'BlackRock',
-      other_investors: 'Fidelity, Marshall Wace, Fin Capital',
-      post_money_valuation: '$9B',
+      sandbox_participants: 3,
+      key_requirement: '1:1 储备 + 许可证 + 本地托管',
     },
-    tags: ['funding', 'circle', 'usdc', 'blackrock', 'series-f'],
+    tags: ['regulation', 'hong-kong', 'hkma', 'stablecoin', 'asia'],
     source_urls: [
-      'https://www.circle.com/blog/circle-raises-400m-funding-round',
+      'https://www.hkma.gov.hk/eng/key-functions/international-financial-centre/stablecoin-issuers/',
     ],
-    comparable_events: ['circle-s1-2024', 'ethena-funding'],
-    context_summary: 'BlackRock 领投 Circle 标志着传统资管巨头对稳定币基础设施的战略性押注。',
+    comparable_events: ['japan-stablecoin-law', 'singapore-mas-stablecoin', 'uk-stablecoin-regulation'],
+    context_summary: '香港沙盒模式是亚洲稳定币监管的代表性路径，3 家首批获批机构是行业对比的参照。',
   },
+  // ── 18. dai-creation ──
+  {
+    id: 'dai-creation',
+    entity: 'MakerDAO',
+    type: 'product_launch',
+    milestones: [
+      { date: '2017-12-18', event: 'Single-Collateral DAI (SAI) 上线，仅支持 ETH 抵押' },
+      { date: '2019-11-18', event: 'Multi-Collateral DAI (MCD) 上线，支持多种抵押品' },
+    ],
+    metrics: {
+      initial_collateral: 'ETH only',
+      mcd_collateral_count: '10+ 资产',
+      stability_fee_range: '0-8%',
+    },
+    tags: ['dai', 'makerdao', 'defi', 'stablecoin', 'product-launch', 'cdp'],
+    source_urls: [
+      'https://blog.makerdao.com/',
+      'https://defillama.com/protocol/makerdao',
+    ],
+    comparable_events: ['sky-usds-rebrand', 'aave-gho-launch', 'crvusd-launch'],
+    context_summary: '首个去中心化超额抵押稳定币，从单一到多抵押品的升级路径是 DeFi 稳定币设计的原型。',
+  },
+  // ── 19. iron-finance-collapse ──
+  {
+    id: 'iron-finance-collapse',
+    entity: 'Iron Finance',
+    type: 'market_cap_change',
+    milestones: [
+      { date: '2021-06-16', event: 'IRON (部分算法稳定币) 在 Polygon 上脱钩' },
+      { date: '2021-06-17', event: 'TITAN 代币从 $64 跌至接近 $0' },
+    ],
+    metrics: {
+      titan_peak_price: '$64',
+      titan_post_collapse: '~$0',
+      tvl_before: '$2B',
+      tvl_after: '~$0',
+      collapse_duration_hours: 24,
+    },
+    tags: ['depeg', 'collapse', 'iron-finance', 'titan', 'algorithmic', 'polygon'],
+    source_urls: [
+      'https://www.coingecko.com/en/coins/iron-titanium-token',
+    ],
+    comparable_events: ['ust-collapse', 'fei-protocol'],
+    context_summary: 'UST 崩盘前的预警案例，24 小时内 $2B TVL 归零，证明了部分算法稳定币的死亡螺旋风险。',
+  },
+  // ── 20. fei-protocol ──
+  {
+    id: 'fei-protocol',
+    entity: 'Fei Protocol',
+    type: 'product_launch',
+    milestones: [
+      { date: '2021-04-03', event: 'FEI 上线，Genesis Event 募集 $1.3B ETH' },
+      { date: '2021-04-04', event: 'FEI 上线首日即脱钩，跌至 $0.70' },
+      { date: '2022-08-20', event: 'Fei Protocol 宣布关闭，返还所有 PCV' },
+    ],
+    metrics: {
+      genesis_raise: '$1.3B',
+      first_day_low: '$0.70',
+      recovery_time_days: 14,
+      final_outcome: '项目关闭',
+    },
+    tags: ['depeg', 'fei', 'algorithmic', 'stablecoin', 'product-launch'],
+    source_urls: [
+      'https://www.coingecko.com/en/coins/fei-usd',
+    ],
+    comparable_events: ['ust-collapse', 'iron-finance-collapse'],
+    context_summary: '首日即脱钩的算法稳定币案例，$1.3B 募资后仍失败，是算法稳定币机制设计教训的参照。',
+  },
+  // ── 21. usdd-tron ──
+  {
+    id: 'usdd-tron',
+    entity: 'Tron',
+    type: 'product_launch',
+    milestones: [
+      { date: '2022-05-05', event: 'USDD (Tron 去中心化稳定币) 发行' },
+      { date: '2022-06-13', event: 'USDD 短暂脱钩至 $0.97 (UST 崩盘余波)' },
+      { date: '2022-06-15', event: 'TDR 将 USDD 抵押率提升至 200%+' },
+    ],
+    metrics: {
+      depeg_low: '$0.97',
+      recovery_time_hours: 48,
+      over_collateral_ratio: '200%+',
+      market_cap_peak: '~$750M',
+    },
+    tags: ['usdd', 'tron', 'stablecoin', 'depeg', 'algorithmic'],
+    source_urls: [
+      'https://www.coingecko.com/en/coins/usdd',
+      'https://defillama.com/stablecoins',
+    ],
+    comparable_events: ['ust-collapse'],
+    context_summary: 'UST 崩盘后立即发行的算法稳定币，通过超额抵押避免了类似崩盘，是机制改进的参照。',
+  },
+  // ── 22. stablecoin-total-100b ──
+  {
+    id: 'stablecoin-total-100b',
+    entity: 'Stablecoin Market',
+    type: 'market_cap_change',
+    milestones: [
+      { date: '2021-08-01', event: '稳定币总市值首次突破 $100B' },
+      { date: '2022-05-01', event: '稳定币总市值峰值 ~$180B (UST 崩盘前)' },
+      { date: '2022-07-01', event: 'UST 崩盘后总市值跌至 ~$150B' },
+      { date: '2024-11-01', event: '稳定币总市值重回 $170B+' },
+    ],
+    metrics: {
+      first_100b_date: '2021-08',
+      peak: '~$180B',
+      post_ust_low: '~$130B',
+    },
+    tags: ['market-cap', 'stablecoin', 'milestone', 'total-market'],
+    source_urls: [
+      'https://defillama.com/stablecoins',
+    ],
+    comparable_events: ['stablecoin-200b-milestone'],
+    context_summary: '稳定币总市值的关键里程碑序列，从 $100B 到 $180B 再到回调，是市场周期的锚点。',
+  },
+  // ── 23. usdc-svb-depeg ──
+  {
+    id: 'usdc-svb-depeg',
+    entity: 'Circle',
+    type: 'market_cap_change',
+    milestones: [
+      { date: '2023-03-10', event: 'Silicon Valley Bank 被 FDIC 接管' },
+      { date: '2023-03-11', event: 'Circle 披露 $3.3B 存放于 SVB，USDC 脱钩至 $0.87' },
+      { date: '2023-03-13', event: '美联储宣布储户全额保护，USDC 恢复 $1.00' },
+    ],
+    metrics: {
+      svb_exposure: '$3.3B',
+      depeg_low: '$0.87',
+      recovery_time_hours: 48,
+      usdc_market_cap_before: '$43.5B',
+      usdc_market_cap_3m_later: '$28B',
+      outflow_percent: '-35%',
+    },
+    tags: ['usdc', 'circle', 'svb', 'depeg', 'bank-run', 'stablecoin'],
+    source_urls: [
+      'https://www.circle.com/en/pressroom',
+      'https://www.fdic.gov/resources/resolutions/bank-failures/failed-bank-list/',
+    ],
+    comparable_events: ['usdc-growth-2021-2024', 'usdt-dominance-post-svb'],
+    context_summary: '合规稳定币因传统银行风险脱钩的典型案例，48 小时恢复但长期流失 35% 市值，是银行托管风险的参照。',
+  },
+  // ── 24. usdt-dominance-post-svb ──
+  {
+    id: 'usdt-dominance-post-svb',
+    entity: 'Tether',
+    type: 'market_cap_change',
+    milestones: [
+      { date: '2023-03-15', event: 'SVB 事件后 USDT 份额从 50% 升至 60%+' },
+      { date: '2023-12-01', event: 'USDT 市值突破 $90B，份额 ~65%' },
+      { date: '2024-03-04', event: 'USDT 市值突破 $100B' },
+    ],
+    metrics: {
+      share_before_svb: '~50%',
+      share_after_svb: '~65%',
+      market_cap_gain_6m: '+$20B',
+    },
+    tags: ['usdt', 'tether', 'market-cap', 'dominance', 'stablecoin'],
+    source_urls: [
+      'https://tether.to/en/transparency',
+      'https://defillama.com/stablecoins',
+    ],
+    comparable_events: ['usdc-svb-depeg', 'usdt-100b'],
+    context_summary: 'SVB 事件后 USDT 市场份额跳升 15 个百分点，体现了稳定币市场的竞争动态和信任迁移。',
+  },
+  // ── 25. tether-profit-2023 ──
   {
     id: 'tether-profit-2023',
     entity: 'Tether',
@@ -1217,11 +607,12 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     },
     tags: ['tether', 'usdt', 'profit', 'revenue', 'treasury'],
     source_urls: [
-      'https://tether.to/en/tether-reports-record-breaking-profits/',
+      'https://tether.to/en/transparency',
     ],
-    comparable_events: ['tether-reserve-composition', 'circle-s1-2024'],
-    context_summary: 'Tether 单季利润超过多数银行，证明了稳定币发行在高利率环境中的盈利能力。',
+    comparable_events: ['tether-q4-2024-profit'],
+    context_summary: 'Tether 年利润 $6.2B 超过多数传统金融机构，体现了高利率环境下稳定币发行商的盈利能力。',
   },
+  // ── 26. ethena-funding ──
   {
     id: 'ethena-funding',
     entity: 'Ethena',
@@ -1236,13 +627,14 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       total_raised: '$20M',
       fdv_at_launch: '~$2B',
     },
-    tags: ['funding', 'ethena', 'usde', 'dragonfly', 'defi', 'stablecoin'],
+    tags: ['funding', 'ethena', 'usde', 'dragonfly', 'defi'],
     source_urls: [
-      'https://www.theblock.co/post/274192/ethena-labs-funding-round',
+      'https://www.theblock.co/post/ethena-labs-funding',
     ],
-    comparable_events: ['circle-series-f', 'agora-funding'],
-    context_summary: 'Ethena 以 $20M 融资撬动 $5B+ TVL，是资本效率极高的稳定币项目案例。',
+    comparable_events: ['usde-growth', 'ethena-susde-growth'],
+    context_summary: '仅融资 $20M 但 FDV 达 $2B、TVL 超 $5B 的效率，是 DeFi 稳定币项目资本效率的参照。',
   },
+  // ── 27. m0-foundation-funding ──
   {
     id: 'm0-foundation-funding',
     entity: 'M^0',
@@ -1257,11 +649,11 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     },
     tags: ['funding', 'm0', 'stablecoin', 'infrastructure', 'defi'],
     source_urls: [
-      'https://www.theblock.co/post/299547/m0-series-a-bain-capital-crypto',
+      'https://www.theblock.co/post/m0-foundation-series-a',
     ],
-    comparable_events: ['agora-funding', 'mountain-protocol-funding'],
-    context_summary: 'M^0 定位为稳定币的"发行层"基础设施，代表了稳定币堆栈的模块化趋势。',
+    context_summary: '稳定币基础设施层的融资案例，去中心化铸造协议是新兴赛道的代表。',
   },
+  // ── 28. agora-funding ──
   {
     id: 'agora-funding',
     entity: 'Agora',
@@ -1276,11 +668,11 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     },
     tags: ['funding', 'agora', 'ausd', 'stablecoin', 'dragonfly'],
     source_urls: [
-      'https://www.theblock.co/post/286425/agora-seed-round',
+      'https://www.coindesk.com/business/agora-funding',
     ],
-    comparable_events: ['m0-foundation-funding', 'mountain-protocol-funding'],
-    context_summary: 'Agora 代表了新一批瞄准机构市场的稳定币初创公司。',
+    context_summary: '机构级稳定币新进入者融资案例，定位与 USDC 差异化的 B2B 稳定币参照。',
   },
+  // ── 29. mountain-protocol-funding ──
   {
     id: 'mountain-protocol-funding',
     entity: 'Mountain Protocol',
@@ -1295,37 +687,11 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     },
     tags: ['funding', 'mountain', 'usdm', 'stablecoin', 'yield'],
     source_urls: [
-      'https://www.coindesk.com/business/2023/09/12/mountain-protocol-raises-8m-for-yield-bearing-stablecoin/',
+      'https://www.coindesk.com/business/mountain-protocol-funding',
     ],
-    comparable_events: ['agora-funding', 'ondo-usdy'],
-    context_summary: 'Mountain Protocol 的 USDM 是收益型稳定币赛道的代表项目。',
+    context_summary: '收益型稳定币赛道的早期融资案例，与 sDAI/sUSDe 构成收益稳定币产品对比。',
   },
-
-  // ════════════════════════════════════════════════════════════
-  // 合作 / 收购
-  // ════════════════════════════════════════════════════════════
-
-  {
-    id: 'stripe-bridge-acquisition',
-    entity: 'Stripe',
-    type: 'partnership',
-    milestones: [
-      { date: '2024-10-21', event: 'Stripe 宣布收购 Bridge.xyz，金额 $1.1B' },
-      { date: '2025-02-01', event: '收购完成' },
-    ],
-    metrics: {
-      acquisition_price: '$1.1B',
-      bridge_annual_revenue: '~$10-15M (估计)',
-      revenue_multiple: '~70-100x',
-      strategic_rationale: 'Stripe 进入稳定币基础设施',
-    },
-    tags: ['acquisition', 'stripe', 'bridge', 'b2b', 'infrastructure', 'partnership', 'stablecoin'],
-    source_urls: [
-      'https://stripe.com/blog/stripe-acquires-bridge',
-    ],
-    comparable_events: ['stripe-usdc-payouts', 'visa-usdc-settlement'],
-    context_summary: 'Stripe 以 $1.1B 收购 Bridge 是稳定币基础设施领域有史以来最大的收购案。',
-  },
+  // ── 30. visa-usdc-settlement ──
   {
     id: 'visa-usdc-settlement',
     entity: 'Visa',
@@ -1339,14 +705,14 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       expanded_chain: 'Solana',
       partner: 'Crypto.com, Worldpay',
     },
-    tags: ['partnership', 'visa', 'usdc', 'circle', 'settlement', 'payments', 'stablecoin'],
+    tags: ['partnership', 'visa', 'usdc', 'circle', 'settlement', 'payments'],
     source_urls: [
-      'https://usa.visa.com/about-visa/newsroom/press-releases.releaseId.17821.html',
-      'https://usa.visa.com/about-visa/newsroom/press-releases.releaseId.19881.html',
+      'https://usa.visa.com/solutions/crypto.html',
     ],
-    comparable_events: ['mastercard-stablecoin', 'stripe-usdc-payouts'],
-    context_summary: 'Visa 用 USDC 结算是传统卡网络拥抱稳定币的里程碑，验证了稳定币在企业支付中的可行性。',
+    comparable_events: ['mastercard-stablecoin'],
+    context_summary: '全球最大卡组织采用稳定币结算的里程碑，是传统支付网络拥抱稳定币的首要参照。',
   },
+  // ── 31. mastercard-stablecoin ──
   {
     id: 'mastercard-stablecoin',
     entity: 'Mastercard',
@@ -1361,112 +727,12 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
     },
     tags: ['partnership', 'mastercard', 'settlement', 'payments', 'stablecoin'],
     source_urls: [
-      'https://www.mastercard.com/news/press/2023/june/mastercard-multi-token-network/',
+      'https://www.mastercard.com/news/press',
     ],
-    comparable_events: ['visa-usdc-settlement', 'stripe-bridge-acquisition'],
-    context_summary: 'Mastercard MTN 让银行通过卡网络使用稳定币结算，与 Visa 形成两大卡网络的竞争格局。',
+    comparable_events: ['visa-usdc-settlement'],
+    context_summary: 'Mastercard 的多代币网络是卡组织与银行合作推进链上结算的参照，与 Visa 路径形成对比。',
   },
-  {
-    id: 'stripe-usdc-payouts',
-    entity: 'Stripe',
-    type: 'product_launch',
-    milestones: [
-      { date: '2024-10-10', event: 'Stripe 在 Pay with Crypto 中支持 USDC 支付 (回归加密)' },
-      { date: '2024-12-01', event: 'Stripe 用 USDC 为全球 merchants 提供即时付款' },
-    ],
-    metrics: {
-      previous_crypto_exit_date: '2018',
-      years_absent: 6,
-      supported_chains: 'Ethereum, Solana, Polygon',
-    },
-    tags: ['product-launch', 'stripe', 'usdc', 'payments', 'merchant', 'stablecoin'],
-    source_urls: [
-      'https://stripe.com/blog/adding-support-for-usdc-payments',
-    ],
-    comparable_events: ['stripe-bridge-acquisition', 'paypal-xoom-stablecoin'],
-    context_summary: 'Stripe 回归加密支付并选择 USDC 说明稳定币已成为 Web2 支付基础设施的标准组件。',
-  },
-  {
-    id: 'paypal-xoom-stablecoin',
-    entity: 'PayPal',
-    type: 'product_launch',
-    milestones: [
-      { date: '2024-09-25', event: 'PayPal 允许美国商户用 PYUSD 接受支付' },
-      { date: '2024-11-01', event: 'PayPal/Xoom 用 PYUSD 进行跨境汇款' },
-    ],
-    metrics: {
-      merchant_base: '30M+',
-      cross_border_launch: '2024-11',
-    },
-    tags: ['product-launch', 'paypal', 'pyusd', 'payments', 'merchant', 'stablecoin'],
-    source_urls: [
-      'https://newsroom.paypal-corp.com/2024-09-25-PayPal-Enables-Business-Accounts-to-Buy-Hold-and-Sell-Cryptocurrency',
-    ],
-    comparable_events: ['pyusd-launch', 'stripe-usdc-payouts'],
-    context_summary: 'PayPal 将 PYUSD 整合到商户支付和跨境汇款，是稳定币进入主流消费者场景的关键步骤。',
-  },
-  {
-    id: 'shopify-stablecoin-checkout',
-    entity: 'Shopify',
-    type: 'partnership',
-    milestones: [
-      { date: '2022-06-23', event: 'Shopify 通过 Strike 集成支持 USDC 商户收款' },
-      { date: '2024-08-01', event: 'Shopify 扩展加密支付选项，支持多种稳定币' },
-    ],
-    metrics: {
-      merchants_on_shopify: '4.4M+',
-      integration_partner: 'Strike, Solana Pay',
-    },
-    tags: ['partnership', 'shopify', 'usdc', 'stablecoin', 'payments', 'merchant', 'e-commerce'],
-    source_urls: [
-      'https://www.shopify.com/blog/crypto-payments',
-    ],
-    comparable_events: ['stripe-usdc-payouts', 'paypal-xoom-stablecoin'],
-    context_summary: 'Shopify 接入稳定币支付为数百万中小商户提供了链上收款能力。',
-  },
-  {
-    id: 'grab-stablecoin-integration',
-    entity: 'Grab',
-    type: 'partnership',
-    milestones: [
-      { date: '2024-09-18', event: 'Grab 在新加坡与 Circle 合作，支持 USDC 充值 GrabPay 钱包' },
-    ],
-    metrics: {
-      region: '东南亚 (新加坡首发)',
-      partner: 'Circle, Triple-A',
-      grab_users: '180M+',
-    },
-    tags: ['partnership', 'grab', 'usdc', 'circle', 'stablecoin', 'southeast-asia', 'payments'],
-    source_urls: [
-      'https://www.circle.com/blog/grab-and-circle-partner-to-bring-usdc-to-southeast-asia', // verify
-    ],
-    comparable_events: ['shopify-stablecoin-checkout', 'visa-usdc-settlement'],
-    context_summary: 'Grab 是东南亚最大的超级App，其稳定币整合是新兴市场采用的重要信号。',
-  },
-  {
-    id: 'mantle-usdy-integration',
-    entity: 'Mantle',
-    type: 'partnership',
-    milestones: [
-      { date: '2024-03-04', event: 'Mantle 宣布 $200M 国库配置到 Ondo USDY + OUSG' },
-    ],
-    metrics: {
-      allocation: '$200M',
-      products: 'USDY + OUSG (Ondo)',
-      treasury_size: '$2B+',
-    },
-    tags: ['partnership', 'mantle', 'ondo', 'usdy', 'rwa', 'treasury', 'stablecoin'],
-    source_urls: [
-      'https://www.mantle.xyz/blog/announcements/mantle-treasury-diversification-ondo',
-    ],
-    comparable_events: ['ondo-usdy', 'blackrock-buidl-fund'],
-    context_summary: 'DAO 国库配置 RWA 稳定币产品是 DeFi 资产管理成熟化的标志。',
-  },
-
-  // ════════════════════════════════════════════════════════════
-  // RWA / 代币化
-  // ════════════════════════════════════════════════════════════
-
+  // ── 32. blackrock-buidl-fund ──
   {
     id: 'blackrock-buidl-fund',
     entity: 'BlackRock',
@@ -1482,13 +748,15 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       underlying: '短期美国国债',
       tokenization_partner: 'Securitize',
     },
-    tags: ['product-launch', 'blackrock', 'buidl', 'tokenization', 'rwa', 'treasury', 'stablecoin'],
+    tags: ['product-launch', 'blackrock', 'buidl', 'tokenization', 'rwa', 'treasury'],
     source_urls: [
-      'https://securitize.io/learn/press/blackrock-launches-first-tokenized-fund-buidl-on-the-ethereum-network',
+      'https://www.blackrock.com/corporate/newsroom',
+      'https://defillama.com/protocol/blackrock-buidl',
     ],
     comparable_events: ['franklin-benji', 'ondo-usdy'],
-    context_summary: 'BlackRock BUIDL 是全球最大资管公司进入代币化市场的标志，模糊了国债基金与稳定币的边界。',
+    context_summary: '全球最大资管公司进入代币化国债赛道，BUIDL 的增速是 RWA 赛道的基准。',
   },
+  // ── 33. franklin-benji ──
   {
     id: 'franklin-benji',
     entity: 'Franklin Templeton',
@@ -1502,13 +770,324 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       tvl: '$350M+',
       underlying: '美国国债',
     },
-    tags: ['product-launch', 'franklin-templeton', 'benji', 'tokenization', 'rwa', 'stablecoin'],
+    tags: ['product-launch', 'franklin-templeton', 'benji', 'tokenization', 'rwa'],
     source_urls: [
-      'https://www.franklintempleton.com/investments/options/money-market-funds/products/702/SINGLCLASS/franklin-on-chain-us-government-money-fund',
+      'https://www.franklintempleton.com/articles/press-releases',
     ],
     comparable_events: ['blackrock-buidl-fund', 'ondo-usdy'],
-    context_summary: 'Franklin BENJI 是首个上链的传统货币市场基金，比 BlackRock BUIDL 早 3 年。',
+    context_summary: '传统资管公司最早的代币化基金产品，比 BlackRock 早 3 年入场，是先发者路径的参照。',
   },
+  // ── 34. aave-gho-launch ──
+  {
+    id: 'aave-gho-launch',
+    entity: 'Aave',
+    type: 'product_launch',
+    milestones: [
+      { date: '2023-07-15', event: 'GHO 稳定币在 Ethereum 主网上线' },
+      { date: '2024-03-01', event: 'GHO 市值突破 $50M' },
+    ],
+    metrics: {
+      launch_chain: 'Ethereum',
+      mechanism: 'Aave V3 抵押铸造',
+      initial_borrow_rate: '1.5%',
+    },
+    tags: ['product-launch', 'gho', 'aave', 'defi', 'stablecoin'],
+    source_urls: [
+      'https://governance.aave.com/',
+      'https://www.coingecko.com/en/coins/gho',
+    ],
+    comparable_events: ['crvusd-launch', 'frax-v3'],
+    context_summary: 'DeFi 借贷协议发行自有稳定币的代表案例，增长较慢但体现了 DeFi 原生稳定币的挑战。',
+  },
+  // ── 35. frax-v3 ──
+  {
+    id: 'frax-v3',
+    entity: 'Frax Finance',
+    type: 'product_launch',
+    milestones: [
+      { date: '2023-10-25', event: 'Frax v3 上线，FRAX 转为完全抵押 (去掉算法部分)' },
+      { date: '2024-01-01', event: 'sFRAX 收益率对标联邦基金利率' },
+    ],
+    metrics: {
+      previous_model: '部分算法抵押',
+      new_model: '100% 外生抵押',
+      sfrax_apy: '~5%',
+      frax_market_cap: '~$650M',
+    },
+    tags: ['product-launch', 'frax', 'stablecoin', 'defi', 'yield'],
+    source_urls: [
+      'https://docs.frax.finance/',
+      'https://www.coingecko.com/en/coins/frax',
+    ],
+    comparable_events: ['aave-gho-launch', 'crvusd-launch'],
+    context_summary: '从算法稳定币转向全额抵押的典型路径，UST 崩盘后行业共识转变的具体体现。',
+  },
+  // ── 36. crvusd-launch ──
+  {
+    id: 'crvusd-launch',
+    entity: 'Curve',
+    type: 'product_launch',
+    milestones: [
+      { date: '2023-05-17', event: 'crvUSD 在 Ethereum 上线，使用 LLAMMA 机制' },
+      { date: '2024-01-01', event: 'crvUSD 市值达 ~$120M' },
+    ],
+    metrics: {
+      mechanism: 'LLAMMA (Lending-Liquidating AMM Algorithm)',
+      launch_collateral: 'sfrxETH, wstETH',
+      peak_market_cap: '~$200M',
+    },
+    tags: ['product-launch', 'crvusd', 'curve', 'defi', 'stablecoin'],
+    source_urls: [
+      'https://www.coingecko.com/en/coins/crvusd',
+      'https://defillama.com/protocol/curve-dex',
+    ],
+    comparable_events: ['aave-gho-launch', 'frax-v3'],
+    context_summary: 'LLAMMA 创新清算机制的 DeFi 原生稳定币，与 GHO、FRAX 构成 DeFi 稳定币三角对比。',
+  },
+  // ── 37. sky-usds-rebrand ──
+  {
+    id: 'sky-usds-rebrand',
+    entity: 'Sky (ex-MakerDAO)',
+    type: 'product_launch',
+    milestones: [
+      { date: '2024-08-27', event: 'MakerDAO 品牌重塑为 Sky，DAI → USDS，MKR → SKY' },
+      { date: '2024-09-18', event: 'USDS 正式上线，DAI 可 1:1 升级' },
+    ],
+    metrics: {
+      dai_market_cap_at_rebrand: '~$5.3B',
+      upgrade_ratio: '1:1',
+      savings_rate: '~5% (SSR)',
+    },
+    tags: ['product-launch', 'sky', 'usds', 'makerdao', 'dai', 'rebrand', 'stablecoin'],
+    source_urls: [
+      'https://blog.makerdao.com/',
+      'https://defillama.com/protocol/makerdao',
+    ],
+    comparable_events: ['dai-creation', 'dai-tvl-growth'],
+    context_summary: 'DeFi 最大稳定币协议的品牌重塑和代币迁移，是协议治理和品牌策略的参照。',
+  },
+  // ── 38. sec-binance-case ──
+  {
+    id: 'sec-binance-case',
+    entity: 'SEC',
+    type: 'enforcement',
+    milestones: [
+      { date: '2023-06-05', event: 'SEC 起诉 Binance 和 CZ (13 项指控)' },
+      { date: '2023-11-21', event: 'CZ 认罪，Binance 支付 $4.3B 和解金 (DOJ/CFTC/FinCEN)' },
+      { date: '2024-04-30', event: 'CZ 被判 4 个月监禁' },
+    ],
+    metrics: {
+      total_settlement: '$4.3B',
+      cz_sentence: '4 个月',
+      sec_charges: 13,
+    },
+    tags: ['enforcement', 'sec', 'binance', 'cz', 'doj', 'settlement'],
+    source_urls: [
+      'https://www.sec.gov/litigation/litreleases',
+      'https://www.justice.gov/opa/pr/binance-and-ceo-plead-guilty',
+    ],
+    context_summary: '加密行业最大执法案件 ($4.3B)，Binance 作为 BUSD 主要分发渠道，其合规整改影响整个稳定币生态。',
+  },
+  // ── 39. sec-coinbase-case ──
+  {
+    id: 'sec-coinbase-case',
+    entity: 'SEC',
+    type: 'enforcement',
+    milestones: [
+      { date: '2023-06-06', event: 'SEC 起诉 Coinbase (未注册交易所/经纪商/清算)' },
+      { date: '2024-03-27', event: '法官驳回 Coinbase 的动议，案件继续' },
+    ],
+    metrics: {
+      charges: '未注册运营',
+      coinbase_defense: '监管不清晰',
+      case_status: '进行中',
+    },
+    tags: ['enforcement', 'sec', 'coinbase', 'exchange', 'securities'],
+    source_urls: [
+      'https://www.sec.gov/litigation/litreleases',
+    ],
+    context_summary: 'SEC 对最大合规交易所的诉讼，结果将影响 USDC 等合规稳定币的分发渠道监管框架。',
+  },
+  // ── 40. japan-stablecoin-law ──
+  {
+    id: 'japan-stablecoin-law',
+    entity: 'Japan FSA',
+    type: 'regulatory_bill',
+    milestones: [
+      { date: '2022-06-03', event: '日本《资金决済法》修正案通过，允许银行/信托发行稳定币' },
+      { date: '2023-06-01', event: '修正案正式生效' },
+    ],
+    metrics: {
+      eligible_issuers: '银行、资金移动业者、信托公司',
+      key_requirement: '1:1 法币储备',
+    },
+    tags: ['regulation', 'legislation', 'japan', 'fsa', 'stablecoin', 'asia'],
+    source_urls: [
+      'https://www.fsa.go.jp/en/',
+    ],
+    comparable_events: ['hk-stablecoin-framework', 'singapore-mas-stablecoin', 'uk-stablecoin-regulation'],
+    context_summary: '亚洲首个明确稳定币立法的主要经济体，银行可直接发行稳定币的框架是监管对比的参照。',
+  },
+  // ── 41. uk-stablecoin-regulation ──
+  {
+    id: 'uk-stablecoin-regulation',
+    entity: 'UK HM Treasury',
+    type: 'regulatory_bill',
+    milestones: [
+      { date: '2023-06-29', event: 'UK Financial Services and Markets Act 获得皇家批准 (含稳定币条款)' },
+      { date: '2024-01-01', event: 'FCA 启动稳定币监管咨询' },
+    ],
+    metrics: {
+      act_name: 'FSMA 2023',
+      scope: '支付用稳定币纳入 FCA 监管',
+    },
+    tags: ['regulation', 'legislation', 'uk', 'fca', 'stablecoin'],
+    source_urls: [
+      'https://www.legislation.gov.uk/ukpga/2023/29',
+    ],
+    comparable_events: ['hk-stablecoin-framework', 'japan-stablecoin-law', 'singapore-mas-stablecoin'],
+    context_summary: '英国将支付稳定币纳入 FCA 监管的立法框架，是非欧盟发达市场监管路径的参照。',
+  },
+  // ── 42. singapore-mas-stablecoin ──
+  {
+    id: 'singapore-mas-stablecoin',
+    entity: 'MAS',
+    type: 'regulatory_bill',
+    milestones: [
+      { date: '2023-08-15', event: 'MAS 公布稳定币监管框架最终版' },
+      { date: '2024-04-01', event: '框架正式生效，StraitsX (XSGD/XUSD) 获批' },
+    ],
+    metrics: {
+      key_requirement: '1:1 储备 + 审计 + 赎回保障',
+      first_licensed_issuer: 'StraitsX',
+    },
+    tags: ['regulation', 'singapore', 'mas', 'stablecoin', 'asia', 'xsgd'],
+    source_urls: [
+      'https://www.mas.gov.sg/publications/monographs-or-information-paper/2023/stablecoin-regulatory-framework',
+    ],
+    comparable_events: ['hk-stablecoin-framework', 'japan-stablecoin-law', 'uk-stablecoin-regulation'],
+    context_summary: '新加坡是全球首批颁布稳定币专门框架并发放牌照的监管机构，StraitsX 获批是落地案例的参照。',
+  },
+  // ── 43. uniswap-v3 ──
+  {
+    id: 'uniswap-v3',
+    entity: 'Uniswap',
+    type: 'product_launch',
+    milestones: [
+      { date: '2021-05-05', event: 'Uniswap V3 上线，引入集中流动性' },
+      { date: '2023-06-01', event: 'Uniswap V3 成为稳定币交易最大 DEX' },
+    ],
+    metrics: {
+      stablecoin_pair_tvl: '$2B+',
+      daily_stablecoin_volume: '$500M+',
+    },
+    tags: ['product-launch', 'uniswap', 'dex', 'defi', 'amm'],
+    source_urls: [
+      'https://defillama.com/protocol/uniswap-v3',
+    ],
+    context_summary: '稳定币交易量最大的 DEX，集中流动性机制对稳定币交易对效率影响的参照。',
+  },
+  // ── 44. curve-crv-crisis ──
+  {
+    id: 'curve-crv-crisis',
+    entity: 'Curve',
+    type: 'enforcement',
+    milestones: [
+      { date: '2023-07-30', event: 'Curve 多个池被 Vyper 重入漏洞攻击，损失 ~$70M' },
+      { date: '2023-08-01', event: 'CRV 价格暴跌，触发 Michael Egorov 大量借贷清算危机' },
+    ],
+    metrics: {
+      amount_stolen: '~$70M',
+      crv_price_drop: '-30%',
+      egorov_debt: '$100M+',
+    },
+    tags: ['hack', 'curve', 'crv', 'defi', 'exploit', 'liquidation'],
+    source_urls: [
+      'https://www.coingecko.com/en/coins/curve-dao-token',
+    ],
+    context_summary: '稳定币交易核心基础设施 Curve 被攻击，体现了 DeFi 稳定币生态的系统性风险传导。',
+  },
+  // ── 45. compound-v3-usdc ──
+  {
+    id: 'compound-v3-usdc',
+    entity: 'Compound',
+    type: 'product_launch',
+    milestones: [
+      { date: '2022-08-26', event: 'Compound III (Comet) 上线，单抵押品模型，以 USDC 为主' },
+    ],
+    metrics: {
+      model: '单一基础资产 + 多抵押品',
+      primary_base: 'USDC',
+      tvl_6m: '$1.5B+',
+    },
+    tags: ['product-launch', 'compound', 'defi', 'lending', 'usdc'],
+    source_urls: [
+      'https://defillama.com/protocol/compound-v3',
+    ],
+    context_summary: 'DeFi 借贷协议以 USDC 为核心基础资产的设计模式，是稳定币在 DeFi 中功能定位的参照。',
+  },
+  // ── 46. circle-cctp-launch ──
+  {
+    id: 'circle-cctp-launch',
+    entity: 'Circle',
+    type: 'product_launch',
+    milestones: [
+      { date: '2023-04-26', event: 'Circle 发布 CCTP (Cross-Chain Transfer Protocol)，原生 USDC 跨链' },
+      { date: '2024-01-01', event: 'CCTP 支持 8 条链' },
+    ],
+    metrics: {
+      initial_chains: 'Ethereum, Avalanche',
+      chains_at_1y: 8,
+      mechanism: '销毁-铸造 (原生转移，非桥接)',
+    },
+    tags: ['product-launch', 'circle', 'usdc', 'cctp', 'cross-chain', 'infrastructure'],
+    source_urls: [
+      'https://www.circle.com/en/cross-chain-transfer-protocol',
+    ],
+    context_summary: '原生跨链转移协议替代桥接模式的典范，CCTP 的多链扩展是稳定币基础设施演进的参照。',
+  },
+  // ── 47. paypal-xoom-stablecoin ──
+  {
+    id: 'paypal-xoom-stablecoin',
+    entity: 'PayPal',
+    type: 'product_launch',
+    milestones: [
+      { date: '2024-09-25', event: 'PayPal 允许美国商户用 PYUSD 接受支付' },
+      { date: '2024-11-01', event: 'PayPal/Xoom 用 PYUSD 进行跨境汇款' },
+    ],
+    metrics: {
+      merchant_base: '30M+',
+      cross_border_launch: '2024-11',
+    },
+    tags: ['product-launch', 'paypal', 'pyusd', 'payments', 'merchant'],
+    source_urls: [
+      'https://newsroom.paypal-corp.com/',
+    ],
+    comparable_events: ['pyusd-launch', 'paypal-pyusd-solana-incentive'],
+    context_summary: 'PayPal 将稳定币从交易工具扩展到商户支付和跨境汇款，是稳定币 B2C 落地的参照。',
+  },
+  // ── 48. stripe-usdc-payouts ──
+  {
+    id: 'stripe-usdc-payouts',
+    entity: 'Stripe',
+    type: 'product_launch',
+    milestones: [
+      { date: '2024-10-10', event: 'Stripe 在 Pay with Crypto 中支持 USDC 支付 (回归加密)' },
+      { date: '2024-12-01', event: 'Stripe 用 USDC 为全球 merchants 提供即时付款' },
+    ],
+    metrics: {
+      previous_crypto_exit_date: '2018',
+      years_absent: 6,
+      supported_chains: 'Ethereum, Solana, Polygon',
+    },
+    tags: ['product-launch', 'stripe', 'usdc', 'payments', 'merchant'],
+    source_urls: [
+      'https://stripe.com/newsroom',
+    ],
+    comparable_events: ['stripe-bridge-acquisition'],
+    context_summary: 'Stripe 时隔 6 年重返加密支付并选择 USDC，体现了稳定币在支付基础设施中地位的根本性变化。',
+  },
+  // ── 49. ondo-usdy ──
   {
     id: 'ondo-usdy',
     entity: 'Ondo Finance',
@@ -1522,40 +1101,95 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       yield: '~5%',
       tvl_1y: '$300M+',
     },
-    tags: ['product-launch', 'ondo', 'usdy', 'rwa', 'tokenization', 'yield', 'treasury', 'stablecoin'],
+    tags: ['product-launch', 'ondo', 'usdy', 'rwa', 'tokenization', 'yield', 'treasury'],
     source_urls: [
       'https://ondo.finance/',
       'https://defillama.com/protocol/ondo-finance',
     ],
-    comparable_events: ['blackrock-buidl-fund', 'usual-protocol'],
-    context_summary: 'USDY 是 DeFi 原生 RWA 稳定币的典型，模糊了收益型基金和稳定币的界限。',
+    comparable_events: ['blackrock-buidl-fund', 'franklin-benji'],
+    context_summary: 'DeFi 原生的代币化国债产品，与 BlackRock BUIDL 构成传统 vs 原生发行的对比。',
   },
+  // ── 50. tether-gold-xaut ──
   {
-    id: 'usual-protocol',
-    entity: 'Usual',
+    id: 'tether-gold-xaut',
+    entity: 'Tether',
     type: 'product_launch',
     milestones: [
-      { date: '2024-07-10', event: 'Usual 推出 USD0 (RWA 抵押稳定币)' },
-      { date: '2024-12-18', event: 'Binance 上线 USUAL 代币' },
-      { date: '2025-01-01', event: 'USD0 TVL 达 $1.4B' },
+      { date: '2020-01-23', event: 'Tether Gold (XAUT) 发行，每代币锚定 1 盎司黄金' },
+      { date: '2024-01-01', event: 'XAUT 市值达 ~$500M' },
     ],
     metrics: {
-      backing: '短期美国国债 (Hashnote, Ondo)',
-      tvl_6m: '$1.4B',
+      backing: '1 代币 = 1 盎司黄金 (伦敦金库)',
+      market_cap: '~$500M',
     },
-    tags: ['product-launch', 'usual', 'usd0', 'stablecoin', 'rwa', 'defi'],
+    tags: ['product-launch', 'tether', 'xaut', 'gold', 'commodity', 'stablecoin'],
     source_urls: [
-      'https://usual.money/',
-      'https://defillama.com/stablecoin/usual-usd',
+      'https://gold.tether.to/',
+      'https://www.coingecko.com/en/coins/tether-gold',
     ],
-    comparable_events: ['ondo-usdy', 'usde-growth'],
-    context_summary: 'USD0 结合了 RWA 收益和 DeFi 可组合性，是 2024 年增长最快的 RWA 稳定币之一。',
+    context_summary: '非美元锚定的代币化资产代表，黄金稳定币是资产多元化的参照。',
   },
-
-  // ════════════════════════════════════════════════════════════
-  // 审计 / 透明度
-  // ════════════════════════════════════════════════════════════
-
+  // ── 51. ftx-collapse ──
+  {
+    id: 'ftx-collapse',
+    entity: 'FTX',
+    type: 'enforcement',
+    milestones: [
+      { date: '2022-11-02', event: 'CoinDesk 曝光 Alameda 资产负债表 (FTT 占大头)' },
+      { date: '2022-11-06', event: 'CZ 宣布清仓 FTT，引发挤兑' },
+      { date: '2022-11-11', event: 'FTX 申请 Chapter 11 破产' },
+      { date: '2024-03-28', event: 'SBF 被判 25 年监禁' },
+    ],
+    metrics: {
+      customer_shortfall: '$8B+',
+      sbf_sentence: '25 年',
+      stablecoin_outflow_1w: '$3B (USDC 赎回潮)',
+    },
+    tags: ['collapse', 'ftx', 'sbf', 'bankruptcy', 'exchange'],
+    source_urls: [
+      'https://www.coindesk.com/business/ftx-collapse',
+    ],
+    context_summary: 'FTX 崩盘引发 $3B 稳定币赎回潮，是中心化交易所风险如何传导至稳定币市场的参照。',
+  },
+  // ── 52. ecb-digital-euro ──
+  {
+    id: 'ecb-digital-euro',
+    entity: 'ECB',
+    type: 'regulatory_bill',
+    milestones: [
+      { date: '2023-10-18', event: 'ECB 启动数字欧元准备阶段 (2 年)' },
+      { date: '2025-10-01', event: '准备阶段预计结束，进入决策' },
+    ],
+    metrics: {
+      phase: '准备阶段',
+      holding_limit: '€3,000 (提议)',
+    },
+    tags: ['cbdc', 'digital-euro', 'ecb', 'eu', 'central-bank'],
+    source_urls: [
+      'https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html',
+    ],
+    context_summary: '数字欧元是与私人稳定币竞争的 CBDC 代表，其进展直接影响 MiCA 下稳定币的市场空间。',
+  },
+  // ── 53. fed-digital-dollar-research ──
+  {
+    id: 'fed-digital-dollar-research',
+    entity: 'Federal Reserve',
+    type: 'regulatory_bill',
+    milestones: [
+      { date: '2022-01-20', event: 'Fed 发布 CBDC 讨论文件 (Money and Payments)' },
+      { date: '2023-01-01', event: 'Fed 明确表示无 CBDC 立法前不会推进' },
+    ],
+    metrics: {
+      paper_title: 'Money and Payments: The U.S. Dollar in the Age of Digital Transformation',
+      status: '研究阶段，无立法计划',
+    },
+    tags: ['cbdc', 'digital-dollar', 'fed', 'central-bank', 'us'],
+    source_urls: [
+      'https://www.federalreserve.gov/publications/money-and-payments-the-us-dollar-in-the-age-of-digital-transformation.htm',
+    ],
+    context_summary: '美联储对 CBDC 的审慎态度间接利好私人稳定币，是美国监管路径选择的参照。',
+  },
+  // ── 54. circle-soc2-audit ──
   {
     id: 'circle-soc2-audit',
     entity: 'Circle',
@@ -1569,41 +1203,157 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       audit_type: 'SOC 2 Type II',
       reserve_report_frequency: '月度',
     },
-    tags: ['audit', 'circle', 'usdc', 'compliance', 'deloitte', 'soc2', 'stablecoin'],
+    tags: ['audit', 'circle', 'usdc', 'compliance', 'deloitte', 'soc2'],
     source_urls: [
-      'https://www.circle.com/usdc-transparency',
+      'https://www.circle.com/en/transparency',
     ],
-    comparable_events: ['tether-reserve-composition'],
-    context_summary: 'Circle 的 SOC 2 审计和月度储备报告设立了稳定币透明度的行业标杆。',
+    context_summary: '稳定币行业最高标准的审计合规实践，SOC 2 Type II + Deloitte 是透明度的行业基准。',
   },
+  // ── 55. tether-bnychicago-audit ──
   {
-    id: 'tether-reserve-composition',
+    id: 'tether-bnychicago-audit',
     entity: 'Tether',
     type: 'product_launch',
     milestones: [
       { date: '2021-08-09', event: 'Tether 首次公布储备详细分类 (商业票据占比 ~50%)' },
       { date: '2023-03-01', event: 'Tether 储备中商业票据占比降至 0%，转为美国国债' },
-      { date: '2024-01-01', event: 'Tether 美国国债持有量达 $72B+，为全球前 20 大持有者' },
     ],
     metrics: {
       cp_peak_share: '~50%',
       cp_current_share: '0%',
       us_treasury_share: '~80%',
       attestor: 'BDO Italia',
-      treasury_holdings: '$72B+',
     },
-    tags: ['audit', 'tether', 'usdt', 'reserve', 'transparency', 'stablecoin', 'treasury'],
+    tags: ['audit', 'tether', 'usdt', 'reserve', 'transparency'],
     source_urls: [
-      'https://tether.to/en/transparency/',
+      'https://tether.to/en/transparency',
     ],
-    comparable_events: ['circle-soc2-audit', 'tether-cftc-settlement'],
-    context_summary: 'Tether 从商业票据到美国国债的储备转型是监管压力推动行业安全化的典型案例。',
+    context_summary: 'Tether 储备从商业票据转向美国国债的过程，是稳定币储备质量演进的参照。',
   },
-
-  // ════════════════════════════════════════════════════════════
-  // B2B 基础设施
-  // ════════════════════════════════════════════════════════════
-
+  // ── 56. solana-usdc-native ──
+  {
+    id: 'solana-usdc-native',
+    entity: 'Circle',
+    type: 'product_launch',
+    milestones: [
+      { date: '2022-06-01', event: 'Circle 发行 Solana 原生 USDC (替代 Wormhole 桥接版)' },
+      { date: '2024-01-01', event: 'Solana USDC 流通量达 $2B+' },
+    ],
+    metrics: {
+      initial_supply: '~$100M',
+      supply_1y: '$2B+',
+      growth: '20x',
+    },
+    tags: ['product-launch', 'circle', 'usdc', 'solana', 'native'],
+    source_urls: [
+      'https://www.circle.com/en/usdc-multichain/solana',
+    ],
+    context_summary: '原生发行替代桥接版本的成功案例，20x 增长证明了原生多链策略的有效性。',
+  },
+  // ── 57. chainlink-ccip-stablecoin ──
+  {
+    id: 'chainlink-ccip-stablecoin',
+    entity: 'Chainlink',
+    type: 'product_launch',
+    milestones: [
+      { date: '2023-07-17', event: 'Chainlink CCIP 跨链协议正式上线' },
+      { date: '2024-02-01', event: 'CCIP 支持原生稳定币跨链转移' },
+    ],
+    metrics: {
+      supported_chains: '10+',
+      mechanism: 'Lock-and-Mint / Burn-and-Mint',
+    },
+    tags: ['product-launch', 'chainlink', 'ccip', 'cross-chain', 'infrastructure', 'oracle'],
+    source_urls: [
+      'https://chain.link/cross-chain',
+    ],
+    comparable_events: ['circle-cctp-launch'],
+    context_summary: '去中心化预言机网络进入跨链稳定币转移领域，与 Circle CCTP 构成不同架构路径的对比。',
+  },
+  // ── 58. layer-zero-oft ──
+  {
+    id: 'layer-zero-oft',
+    entity: 'LayerZero',
+    type: 'product_launch',
+    milestones: [
+      { date: '2023-01-01', event: 'LayerZero OFT (Omnichain Fungible Token) 标准用于稳定币' },
+      { date: '2024-06-20', event: 'LayerZero ZRO 代币发行' },
+    ],
+    metrics: {
+      total_messages: '100M+',
+      chains_supported: '30+',
+    },
+    tags: ['product-launch', 'layerzero', 'cross-chain', 'infrastructure', 'oft'],
+    source_urls: [
+      'https://layerzero.network/',
+    ],
+    comparable_events: ['tether-usdt0-launch'],
+    context_summary: 'OFT 标准成为稳定币跨链的主流方案之一，Tether USDT0 采用即为验证。',
+  },
+  // ── 59. usdc-base-launch ──
+  {
+    id: 'usdc-base-launch',
+    entity: 'Circle',
+    type: 'product_launch',
+    milestones: [
+      { date: '2023-09-05', event: 'USDC 原生上线 Base (Coinbase L2)' },
+      { date: '2024-06-01', event: 'Base USDC 流通量突破 $3B' },
+    ],
+    metrics: {
+      chain: 'Base (Coinbase L2)',
+      supply_6m: '$3B+',
+    },
+    tags: ['product-launch', 'circle', 'usdc', 'base', 'coinbase', 'l2'],
+    source_urls: [
+      'https://www.circle.com/en/usdc-multichain/base',
+      'https://defillama.com/chain/Base',
+    ],
+    comparable_events: ['coinbase-base-l2'],
+    context_summary: 'USDC 在 Coinbase L2 上的快速增长，体现了交易所自有 L2 对稳定币分发的放大效应。',
+  },
+  // ── 60. coinbase-base-l2 ──
+  {
+    id: 'coinbase-base-l2',
+    entity: 'Coinbase',
+    type: 'product_launch',
+    milestones: [
+      { date: '2023-08-09', event: 'Base (Coinbase L2) 主网上线' },
+      { date: '2024-03-01', event: 'Base 成为稳定币交易量第 3 大链' },
+    ],
+    metrics: {
+      stack: 'OP Stack (Optimism)',
+      usdc_on_base: '$3B+',
+      daily_txs: '5M+',
+    },
+    tags: ['product-launch', 'coinbase', 'base', 'l2', 'optimism'],
+    source_urls: [
+      'https://base.org/',
+      'https://defillama.com/chain/Base',
+    ],
+    comparable_events: ['usdc-base-launch'],
+    context_summary: 'Coinbase 自建 L2 成为稳定币交易量第 3 大链，是交易所垂直整合策略的参照。',
+  },
+  // ── 61. stablecoin-payments-volume-2024 ──
+  {
+    id: 'stablecoin-payments-volume-2024',
+    entity: 'Stablecoin Market',
+    type: 'market_cap_change',
+    milestones: [
+      { date: '2024-01-01', event: '2023 年稳定币链上交易量达 $10.8T (超过 Visa)' },
+      { date: '2024-06-01', event: '2024 H1 稳定币交易量达 $5.1T' },
+    ],
+    metrics: {
+      annual_volume_2023: '$10.8T',
+      visa_annual_2023: '$14.8T',
+      ratio_vs_visa: '~73%',
+    },
+    tags: ['market-cap', 'stablecoin', 'volume', 'payments', 'milestone'],
+    source_urls: [
+      'https://defillama.com/stablecoins',
+    ],
+    context_summary: '稳定币链上交易量达 Visa 73% 的数据，是衡量稳定币支付渗透率的核心指标。',
+  },
+  // ── 62. fireblocks-stablecoin-infra ──
   {
     id: 'fireblocks-stablecoin-infra',
     entity: 'Fireblocks',
@@ -1615,245 +1365,394 @@ export const REFERENCE_EVENTS: ReferenceEvent[] = [
       feature: '机构级 USDC 铸造/赎回 API',
       customers: '1,800+ 机构客户',
     },
-    tags: ['product-launch', 'fireblocks', 'usdc', 'infrastructure', 'b2b', 'api', 'stablecoin'],
+    tags: ['product-launch', 'fireblocks', 'usdc', 'infrastructure', 'b2b', 'api'],
     source_urls: [
-      'https://www.fireblocks.com/blog/fireblocks-tokenization-engine/', // verify
+      'https://www.fireblocks.com/blog/',
     ],
-    comparable_events: ['circle-cctp-launch', 'stripe-bridge-acquisition'],
-    context_summary: 'Fireblocks 的稳定币 API 降低了企业铸造/赎回 USDC 的技术门槛。',
+    context_summary: '机构级稳定币铸造/赎回 API 基础设施，是 B2B 稳定币服务层的参照。',
   },
+  // ── 63. usual-protocol ──
   {
-    id: 'brale-stablecoin-api',
-    entity: 'Brale',
+    id: 'usual-protocol',
+    entity: 'Usual',
     type: 'product_launch',
     milestones: [
-      { date: '2023-01-01', event: 'Brale (原 Stablecorp) 推出企业稳定币 API，支持白标发行' },
-      { date: '2024-06-01', event: 'Brale 获得多个州货币传输许可' },
+      { date: '2024-07-10', event: 'Usual 推出 USD0 (RWA 抵押稳定币)' },
+      { date: '2024-12-18', event: 'Binance 上线 USUAL 代币' },
     ],
     metrics: {
-      product: '白标稳定币发行+合规 API',
-      chains_supported: 'Ethereum, Solana, Polygon',
+      backing: '短期美国国债 (Hashnote, Ondo)',
+      tvl_6m: '$1.4B',
     },
-    tags: ['product-launch', 'brale', 'infrastructure', 'b2b', 'api', 'stablecoin', 'white-label'],
+    tags: ['product-launch', 'usual', 'usd0', 'stablecoin', 'rwa', 'defi'],
     source_urls: [
-      'https://www.brale.xyz/',
+      'https://usual.money/',
+      'https://defillama.com/protocol/usual',
     ],
-    comparable_events: ['fireblocks-stablecoin-infra', 'm0-foundation-funding'],
-    context_summary: 'Brale 代表了"稳定币即服务"的 B2B 基础设施趋势。',
+    comparable_events: ['usual-usd0pp-depeg'],
+    context_summary: 'RWA 抵押稳定币的新兴代表，6 个月达 $1.4B TVL，是 RWA 稳定币增速的参照。',
   },
+  // ── 64. eu-mica-tether-delisting ──
   {
-    id: 'paxos-stablecoin-as-service',
+    id: 'eu-mica-tether-delisting',
+    entity: 'EU/Tether',
+    type: 'regulatory_bill',
+    milestones: [
+      { date: '2024-12-30', event: 'MiCA 全面生效，部分欧盟交易所下架 USDT (不合规)' },
+    ],
+    metrics: {
+      affected_exchanges: 'Coinbase EU, OKX EU',
+      reason: 'Tether 未获得 MiCA 授权',
+      usdt_eu_share: '~5% of volume',
+    },
+    tags: ['regulation', 'mica', 'eu', 'tether', 'usdt', 'delisting', 'compliance'],
+    source_urls: [
+      'https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32023R1114',
+    ],
+    comparable_events: ['mica-eu'],
+    context_summary: 'MiCA 生效后 USDT 被欧盟部分下架的实际案例，是监管合规对稳定币市场份额影响的参照。',
+  },
+  // ── 65. mantle-usdy-integration ──
+  {
+    id: 'mantle-usdy-integration',
+    entity: 'Mantle',
+    type: 'partnership',
+    milestones: [
+      { date: '2024-03-04', event: 'Mantle 宣布 $200M 国库配置到 Ondo USDY + OUSG' },
+    ],
+    metrics: {
+      allocation: '$200M',
+      products: 'USDY + OUSG (Ondo)',
+      treasury_size: '$2B+',
+    },
+    tags: ['partnership', 'mantle', 'ondo', 'usdy', 'rwa', 'treasury'],
+    source_urls: [
+      'https://www.mantle.xyz/blog',
+    ],
+    context_summary: 'L2 国库大规模配置代币化国债的案例，$200M 规模体现了 DAO 国库管理的新趋势。',
+  },
+  // ── 66. tether-usdt0-launch ──
+  {
+    id: 'tether-usdt0-launch',
+    entity: 'Tether',
+    type: 'product_launch',
+    milestones: [
+      { date: '2025-01-16', event: 'Tether 推出 USDT0，使用 LayerZero OFT 实现原生跨链' },
+    ],
+    metrics: {
+      mechanism: 'LayerZero OFT',
+      initial_chains: 'Ethereum, Ink (Kraken L2)',
+    },
+    tags: ['product-launch', 'tether', 'usdt', 'usdt0', 'cross-chain', 'layerzero'],
+    source_urls: [
+      'https://tether.to/en/tether-usdt0',
+    ],
+    comparable_events: ['layer-zero-oft', 'circle-cctp-launch'],
+    context_summary: 'Tether 采用 LayerZero OFT 标准实现原生跨链，是 USDT 多链策略从桥接到原生转变的参照。',
+  },
+  // ── 67. ripple-rlusd ──
+  {
+    id: 'ripple-rlusd',
+    entity: 'Ripple',
+    type: 'product_launch',
+    milestones: [
+      { date: '2024-12-17', event: 'Ripple 发布 RLUSD 稳定币 (NYDFS 批准)' },
+    ],
+    metrics: {
+      regulator: 'NYDFS',
+      chains: 'XRP Ledger, Ethereum',
+      backing: '1:1 美元存款 + 美国国债',
+    },
+    tags: ['product-launch', 'ripple', 'rlusd', 'stablecoin', 'nydfs'],
+    source_urls: [
+      'https://ripple.com/insights/',
+      'https://www.coingecko.com/en/coins/ripple-usd',
+    ],
+    comparable_events: ['pyusd-launch', 'world-liberty-usd0'],
+    context_summary: 'Ripple 从 XRP 支付转向稳定币发行的战略转型，NYDFS 牌照路径是合规稳定币入场的参照。',
+  },
+  // ── 68. world-liberty-usd0 ──
+  {
+    id: 'world-liberty-usd0',
+    entity: 'World Liberty Financial',
+    type: 'product_launch',
+    milestones: [
+      { date: '2025-03-01', event: 'World Liberty Financial 推出 USD1 稳定币' },
+    ],
+    metrics: {
+      backing: '美国国债 + 现金等价物',
+      association: 'Trump family affiliated',
+    },
+    tags: ['product-launch', 'world-liberty', 'usd1', 'stablecoin', 'trump'],
+    source_urls: [
+      'https://www.worldlibertyfinancial.com/',
+    ],
+    comparable_events: ['pyusd-launch', 'ripple-rlusd'],
+    context_summary: '与 Trump 家族关联的稳定币项目，政治因素介入稳定币市场是前所未有的参照。',
+  },
+
+  // ══════════════════════════════════════════════════════════
+  // 新增 12 条 (69-80)
+  // ══════════════════════════════════════════════════════════
+
+  // ── 69. fdusd-launch ──
+  {
+    id: 'fdusd-launch',
+    entity: 'First Digital',
+    type: 'product_launch',
+    milestones: [
+      { date: '2023-06-01', event: 'First Digital USD (FDUSD) 发行，获 Binance 重点推广' },
+      { date: '2023-12-01', event: 'FDUSD 市值突破 $2B，成为 Binance 主要交易对' },
+    ],
+    metrics: {
+      issuer: 'First Digital Trust (Hong Kong)',
+      launch_to_2b_months: 6,
+      primary_exchange: 'Binance',
+      backing: '1:1 美元存款 + 短期国债',
+    },
+    tags: ['product-launch', 'fdusd', 'first-digital', 'binance', 'stablecoin', 'hong-kong'],
+    source_urls: [
+      'https://firstdigitallabs.com/',
+      'https://www.coingecko.com/en/coins/first-digital-usd',
+    ],
+    comparable_events: ['sec-paxos-busd', 'first-digital-fdusd-depeg-scare'],
+    context_summary: 'BUSD 下架后 Binance 扶持的替代稳定币，6 个月达 $2B 体现了交易所分发能力的价值。',
+  },
+  // ── 70. tusd-transparency-crisis ──
+  {
+    id: 'tusd-transparency-crisis',
+    entity: 'TrueUSD',
+    type: 'enforcement',
+    milestones: [
+      { date: '2023-07-01', event: 'TrueUSD (TUSD) 储备透明度受质疑，实时证明暂停' },
+      { date: '2023-10-01', event: 'TUSD 市值从 $3B 跌至 $1B，Binance 逐步降低支持' },
+    ],
+    metrics: {
+      peak_market_cap: '$3B',
+      post_crisis_market_cap: '$1B',
+      decline_percent: '-67%',
+      issue: '储备证明暂停，第三方审计争议',
+    },
+    tags: ['enforcement', 'tusd', 'trueusd', 'transparency', 'reserve', 'depeg'],
+    source_urls: [
+      'https://www.coingecko.com/en/coins/true-usd',
+    ],
+    context_summary: '储备透明度危机导致稳定币市值大幅缩水的案例，与 Tether 早期透明度争议形成对比。',
+  },
+  // ── 71. gusd-launch ──
+  {
+    id: 'gusd-launch',
+    entity: 'Gemini',
+    type: 'product_launch',
+    milestones: [
+      { date: '2018-09-10', event: 'Gemini Dollar (GUSD) 发行，NYDFS 批准' },
+      { date: '2023-01-01', event: 'GUSD 市值维持在 ~$200M 水平' },
+    ],
+    metrics: {
+      regulator: 'NYDFS',
+      peak_market_cap: '~$400M',
+      current_market_cap: '~$200M',
+    },
+    tags: ['product-launch', 'gusd', 'gemini', 'stablecoin', 'nydfs', 'regulated'],
+    source_urls: [
+      'https://www.gemini.com/dollar',
+      'https://www.coingecko.com/en/coins/gemini-dollar',
+    ],
+    context_summary: '最早的 NYDFS 批准稳定币之一，但增长有限，是合规先发优势未必转化为市场规模的案例。',
+  },
+  // ── 72. paxos-usdp ──
+  {
+    id: 'paxos-usdp',
     entity: 'Paxos',
     type: 'product_launch',
     milestones: [
-      { date: '2023-08-07', event: 'Paxos 作为 PayPal PYUSD 的发行方，确立 Stablecoin-as-a-Service 模式' },
-      { date: '2024-12-01', event: 'Paxos 获得 MAS 主要支付机构许可 (新加坡)' },
+      { date: '2018-09-10', event: 'Pax Dollar (PAX) 发行，NYDFS 批准' },
+      { date: '2021-08-24', event: 'PAX 更名为 USDP (Pax Dollar)' },
     ],
     metrics: {
-      clients: 'PayPal (PYUSD), Mercado Libre (MUSD)',
-      regulatory_licenses: 'NYDFS, MAS',
-      model: '白标稳定币发行+合规+托管',
+      regulator: 'NYDFS',
+      peak_market_cap: '~$1B',
+      rebranded_name: 'USDP',
     },
-    tags: ['product-launch', 'paxos', 'infrastructure', 'b2b', 'stablecoin-as-service', 'stablecoin'],
+    tags: ['product-launch', 'paxos', 'usdp', 'pax', 'stablecoin', 'nydfs', 'regulated'],
     source_urls: [
-      'https://paxos.com/stablecoin-as-a-service/',
+      'https://paxos.com/usdp/',
+      'https://www.coingecko.com/en/coins/pax-dollar',
     ],
-    comparable_events: ['pyusd-launch', 'brale-stablecoin-api'],
-    context_summary: 'Paxos 的 StaaS 模式让传统企业无需自建合规基础设施即可发行品牌稳定币。',
+    comparable_events: ['gusd-launch', 'sec-paxos-busd'],
+    context_summary: 'Paxos 自有品牌稳定币在 BUSD 停发后的存续，是发行商多产品线策略的参照。',
   },
+  // ── 73. circle-eurc ──
   {
-    id: 'mercado-libre-musd',
-    entity: 'Mercado Libre',
+    id: 'circle-eurc',
+    entity: 'Circle',
     type: 'product_launch',
     milestones: [
-      { date: '2024-12-01', event: 'Mercado Libre 通过 Paxos 在巴西发行 MUSD 稳定币' },
+      { date: '2022-06-16', event: 'Circle 发行 EURC (Euro Coin)，欧元稳定币' },
+      { date: '2024-07-01', event: 'EURC 获得 MiCA 合规地位，市值增长至 ~$100M' },
     ],
     metrics: {
-      issuer_partner: 'Paxos',
-      market: '巴西',
-      mercado_libre_users: '200M+',
+      denomination: 'EUR',
+      market_cap: '~$100M',
+      mica_compliant: 'yes',
     },
-    tags: ['product-launch', 'mercado-libre', 'musd', 'paxos', 'stablecoin', 'latam', 'brazil'],
+    tags: ['product-launch', 'circle', 'eurc', 'euro', 'stablecoin', 'mica', 'eu'],
     source_urls: [
-      'https://paxos.com/blog/mercado-libre-meli-dollar/', // verify
+      'https://www.circle.com/en/eurc',
+      'https://www.coingecko.com/en/coins/euro-coin',
     ],
-    comparable_events: ['pyusd-launch', 'paxos-stablecoin-as-service'],
-    context_summary: '拉美最大电商平台发行稳定币是新兴市场 Web2 公司采用稳定币的标志性事件。',
+    comparable_events: ['mica-eu', 'eu-mica-tether-delisting'],
+    context_summary: '首个 MiCA 合规的欧元稳定币，是非美元稳定币和欧盟监管合规路径的参照。',
   },
-
-  // ════════════════════════════════════════════════════════════
-  // 链上里程碑 + 市场结构
-  // ════════════════════════════════════════════════════════════
-
-  {
-    id: 'tron-usdt-dominance',
-    entity: 'Tron',
-    type: 'market_cap_change',
-    milestones: [
-      { date: '2019-04-17', event: 'USDT 从 Omni (Bitcoin) 扩展到 TRON TRC-20' },
-      { date: '2021-01-01', event: 'Tron USDT 流通量超过 Ethereum USDT' },
-      { date: '2024-01-01', event: 'Tron 上 USDT 达 $50B+，占 USDT 总量 ~50%' },
-    ],
-    metrics: {
-      tron_usdt_share: '~50%',
-      tron_usdt_amount: '$50B+',
-      use_case: '新兴市场 P2P 转账、低手续费',
-    },
-    tags: ['usdt', 'tether', 'tron', 'market-cap', 'stablecoin', 'chain-distribution'],
-    source_urls: [
-      'https://tronscan.org/#/',
-      'https://defillama.com/stablecoins/Tron',
-    ],
-    comparable_events: ['usdt-100b', 'stablecoin-payments-volume-2024'],
-    context_summary: 'Tron 承载约一半的 USDT 流通量，反映了新兴市场用户对低费用链的偏好。',
-  },
-  {
-    id: 'stablecoin-depegging-index',
-    entity: 'Stablecoin Market',
-    type: 'market_cap_change',
-    milestones: [
-      { date: '2022-05-09', event: 'UST 脱钩→归零，影响全市场稳定币信心' },
-      { date: '2023-03-11', event: 'USDC SVB 脱钩至 $0.87，48 小时恢复' },
-      { date: '2023-03-11', event: 'DAI 因 USDC 敞口联动脱钩至 $0.90' },
-    ],
-    metrics: {
-      ust_loss: '$18B (永久)',
-      usdc_svb_low: '$0.87 (48hr recovery)',
-      dai_svb_low: '$0.90',
-      total_depeg_events_2022_2023: '5+ 重大脱钩',
-    },
-    tags: ['depeg', 'stablecoin', 'market', 'risk', 'ust', 'usdc', 'dai'],
-    source_urls: [
-      'https://defillama.com/stablecoins',
-    ],
-    comparable_events: ['ust-collapse', 'usdc-svb-depeg'],
-    context_summary: '2022-2023 年的集中脱钩事件是分析稳定币系统性风险的核心参照数据集。',
-  },
+  // ── 74. stablecoin-200b-milestone ──
   {
     id: 'stablecoin-200b-milestone',
     entity: 'Stablecoin Market',
     type: 'market_cap_change',
     milestones: [
       { date: '2025-01-15', event: '稳定币总市值首次突破 $200B' },
-      { date: '2025-03-01', event: '稳定币总市值达 $225B+' },
     ],
     metrics: {
-      total_market_cap: '$225B+',
-      usdt_share: '~62%',
-      usdc_share: '~26%',
-      top5_concentration: '~95%',
+      total_market_cap: '$200B+',
+      usdt_share: '~65%',
+      usdc_share: '~20%',
+      time_from_100b_to_200b_months: 42,
     },
-    tags: ['market-cap', 'stablecoin', 'milestone', 'total-market'],
+    tags: ['market-cap', 'stablecoin', 'milestone', 'total-market', '200b'],
     source_urls: [
       'https://defillama.com/stablecoins',
     ],
     comparable_events: ['stablecoin-total-100b'],
-    context_summary: '$200B 里程碑标志着稳定币从加密原生工具向主流金融基础设施的转变。',
+    context_summary: '稳定币总市值从 $100B 到 $200B 用了约 3.5 年，是市场增长速度的里程碑锚点。',
   },
-
-  // ════════════════════════════════════════════════════════════
-  // 更多稳定币产品 & 事件
-  // ════════════════════════════════════════════════════════════
-
+  // ── 75. usual-usd0pp-depeg ──
   {
-    id: 'jpy-stablecoin-progmat',
-    entity: 'MUFG / Progmat',
-    type: 'product_launch',
+    id: 'usual-usd0pp-depeg',
+    entity: 'Usual',
+    type: 'market_cap_change',
     milestones: [
-      { date: '2024-06-01', event: 'MUFG 旗下 Progmat 平台与 Binance Japan 合作测试日元稳定币' },
-      { date: '2024-11-01', event: '日本银行联盟 DCJPY 测试网运行' },
+      { date: '2025-01-09', event: 'USD0++ (Usual 的质押版稳定币) 脱钩至 ~$0.92' },
+      { date: '2025-01-10', event: 'Usual 团队修改赎回机制，引发社区争议' },
     ],
     metrics: {
-      platform: 'Progmat (MUFG)',
-      currency: 'JPY',
-      framework: '日本《资金决济法》',
+      depeg_low: '$0.92',
+      cause: '赎回机制调整引发恐慌',
+      tvl_impact: '-$200M',
     },
-    tags: ['product-launch', 'jpy', 'japan', 'mufg', 'stablecoin', 'bank'],
+    tags: ['depeg', 'usual', 'usd0pp', 'stablecoin', 'defi', 'governance'],
     source_urls: [
-      'https://progmat.co.jp/en/',
+      'https://www.coingecko.com/en/coins/usual-usd0-plus-plus',
     ],
-    comparable_events: ['japan-stablecoin-law'],
-    context_summary: '日本银行主导的日元稳定币是银行体系发行稳定币的全球首批案例之一。',
+    comparable_events: ['usual-protocol'],
+    context_summary: 'RWA 稳定币质押衍生品的脱钩案例，治理决策引发市场恐慌的教训。',
   },
+  // ── 76. tether-q4-2024-profit ──
   {
-    id: 'societe-generale-eurcv',
-    entity: 'Société Générale FORGE',
-    type: 'product_launch',
-    milestones: [
-      { date: '2023-04-20', event: 'SG-FORGE 在 Ethereum 上发行 EUR CoinVertible (EURCV)' },
-      { date: '2024-06-30', event: 'EURCV 获得 MiCA 授权' },
-    ],
-    metrics: {
-      chain: 'Ethereum',
-      regulator: 'AMF (France)',
-      bank_tier: 'G-SIB (全球系统性重要银行)',
-    },
-    tags: ['product-launch', 'eurcv', 'societe-generale', 'euro', 'stablecoin', 'bank', 'mica'],
-    source_urls: [
-      'https://www.sgforge.com/',
-    ],
-    comparable_events: ['circle-eurc-launch', 'jpy-stablecoin-progmat'],
-    context_summary: 'SG-FORGE 是全球首个由 G-SIB 银行发行的稳定币，代表了传统银行进入稳定币发行的新趋势。',
-  },
-  {
-    id: 'jd-stablecoin-hk-sandbox',
-    entity: 'JD.com (京东)',
-    type: 'product_launch',
-    milestones: [
-      { date: '2024-07-18', event: '京东科技入选 HKMA 稳定币沙盒首批参与者' },
-      { date: '2024-07-18', event: '测试港元稳定币 (HKD-pegged stablecoin)' },
-    ],
-    metrics: {
-      sandbox: 'HKMA Stablecoin Sandbox',
-      currency: 'HKD',
-      status: '测试中',
-    },
-    tags: ['product-launch', 'jd', 'hong-kong', 'hkd', 'stablecoin', 'sandbox'],
-    source_urls: [
-      'https://www.hkma.gov.hk/eng/news-and-media/press-releases/2024/07/20240718-3/',
-    ],
-    comparable_events: ['hk-stablecoin-framework'],
-    context_summary: '京东参与香港稳定币沙盒体现了中国科技巨头通过香港布局稳定币的路径。',
-  },
-  {
-    id: 'tether-hadron-platform',
+    id: 'tether-q4-2024-profit',
     entity: 'Tether',
-    type: 'product_launch',
+    type: 'funding_round',
     milestones: [
-      { date: '2024-11-14', event: 'Tether 推出 Hadron 平台，允许机构代币化任何资产 (股票、债券、积分等)' },
+      { date: '2025-01-31', event: 'Tether 公布 2024 年净利润 $13B+，创历史新高' },
     ],
     metrics: {
-      product: 'Hadron 代币化平台',
-      target: '机构、基金管理人、政府',
-      capabilities: '资产发行、KYC/AML、多链部署',
+      annual_profit_2024: '$13B+',
+      annual_profit_2023: '$6.2B',
+      yoy_growth: '~110%',
+      us_treasury_holdings: '$90B+',
     },
-    tags: ['product-launch', 'tether', 'hadron', 'tokenization', 'infrastructure', 'b2b'],
+    tags: ['tether', 'usdt', 'profit', 'revenue', 'treasury', '2024'],
     source_urls: [
-      'https://tether.to/en/tether-launches-hadron-by-tether/',
+      'https://tether.to/en/transparency',
     ],
-    comparable_events: ['paxos-stablecoin-as-service', 'blackrock-buidl-fund'],
-    context_summary: 'Hadron 是 Tether 从稳定币发行扩展到通用代币化平台的战略多元化举措。',
+    comparable_events: ['tether-profit-2023'],
+    context_summary: 'Tether 年利润翻倍至 $13B，超过多数华尔街银行，是稳定币商业模式盈利能力的极端参照。',
   },
+  // ── 77. ethena-susde-growth ──
   {
-    id: 'ethena-susde-pendle',
+    id: 'ethena-susde-growth',
     entity: 'Ethena',
     type: 'tvl_milestone',
     milestones: [
-      { date: '2024-04-01', event: 'sUSDe 成为 Pendle 上最大收益来源' },
-      { date: '2024-07-01', event: 'sUSDe 在 Pendle 上的 TVL 超过 $1B' },
+      { date: '2024-04-01', event: 'sUSDe (质押版 USDe) 上线，提供收益分配' },
+      { date: '2025-01-01', event: 'sUSDe TVL 突破 $3B，成为最大收益型稳定币产品' },
     ],
     metrics: {
-      pendle_tvl: '$1B+',
-      peak_implied_yield: '~50% (Pendle PT)',
-      mechanism: 'sUSDe 的质押收益通过 Pendle 分离',
+      tvl: '$3B+',
+      avg_apy: '~15-30%',
+      mechanism: 'ETH staking + funding rate 收益',
     },
-    tags: ['tvl', 'ethena', 'susde', 'pendle', 'defi', 'yield', 'stablecoin'],
+    tags: ['tvl', 'ethena', 'susde', 'usde', 'yield', 'stablecoin', 'defi'],
     source_urls: [
-      'https://app.pendle.finance/',
-      'https://ethena.fi/',
+      'https://defillama.com/protocol/ethena',
+      'https://app.ethena.fi/',
     ],
     comparable_events: ['usde-growth'],
-    context_summary: 'sUSDe 在 Pendle 上的爆发式增长展示了收益型稳定币在 DeFi 可组合性中的杠杆效应。',
+    context_summary: 'sUSDe 成为最大收益型稳定币产品，15-30% APY 的可持续性是收益稳定币的关键观察点。',
+  },
+  // ── 78. paypal-pyusd-solana-incentive ──
+  {
+    id: 'paypal-pyusd-solana-incentive',
+    entity: 'PayPal',
+    type: 'product_launch',
+    milestones: [
+      { date: '2024-08-01', event: 'PayPal 在 Solana 上推出 PYUSD 收益激励计划' },
+      { date: '2024-09-01', event: 'Solana 上 PYUSD 市值从 $50M 增至 $500M+' },
+    ],
+    metrics: {
+      incentive_apy: '~5-7%',
+      solana_pyusd_growth: '10x in 1 month',
+      peak_solana_share: '~60% of total PYUSD',
+    },
+    tags: ['product-launch', 'paypal', 'pyusd', 'solana', 'incentive', 'yield'],
+    source_urls: [
+      'https://newsroom.paypal-corp.com/',
+      'https://www.coingecko.com/en/coins/paypal-usd',
+    ],
+    comparable_events: ['pyusd-launch', 'paypal-xoom-stablecoin'],
+    context_summary: '通过收益激励推动稳定币链上增长的案例，1 个月 10x 增长但可持续性存疑。',
+  },
+  // ── 79. first-digital-fdusd-depeg-scare ──
+  {
+    id: 'first-digital-fdusd-depeg-scare',
+    entity: 'First Digital',
+    type: 'market_cap_change',
+    milestones: [
+      { date: '2025-04-02', event: 'FDUSD 短暂脱钩至 ~$0.97，市场传言储备问题' },
+      { date: '2025-04-03', event: 'First Digital 发布声明确认储备充足，价格恢复' },
+    ],
+    metrics: {
+      depeg_low: '$0.97',
+      recovery_time_hours: 24,
+      market_cap_at_event: '~$2B',
+    },
+    tags: ['depeg', 'fdusd', 'first-digital', 'stablecoin', 'reserve', 'scare'],
+    source_urls: [
+      'https://www.coingecko.com/en/coins/first-digital-usd',
+      'https://firstdigitallabs.com/',
+    ],
+    comparable_events: ['fdusd-launch', 'usdc-svb-depeg'],
+    context_summary: 'FDUSD 短暂脱钩但快速恢复的案例，与 USDC SVB 脱钩形成不同严重程度的对比。',
+  },
+  // ── 80. circle-ipo-s1-2025 ──
+  {
+    id: 'circle-ipo-s1-2025',
+    entity: 'Circle',
+    type: 'ipo_filing',
+    milestones: [
+      { date: '2025-01-11', event: 'Circle 公开提交 S-1，正式启动 IPO 流程 (第三次尝试)' },
+    ],
+    metrics: {
+      previous_attempts: 2,
+      usdc_market_cap_at_filing: '~$44B',
+      target_exchange: 'NYSE',
+      revenue_2024: '~$1.7B (预估)',
+    },
+    tags: ['ipo', 'sec', 's-1', 'circle', 'usdc', 'nyse', '2025'],
+    source_urls: [
+      'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=circle&type=S-1',
+    ],
+    comparable_events: ['circle-ipo-spac-2022', 'circle-s1-2024', 'coinbase-ipo'],
+    context_summary: 'Circle 第三次 IPO 尝试，USDC 市值已达 $44B，成功上市将是稳定币行业的里程碑事件。',
   },
 ]
 

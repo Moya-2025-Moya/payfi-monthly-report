@@ -34,13 +34,14 @@ interface MonitoredTweetsResponse {
 }
 
 // Starter plan limit: 6 monitored accounts
+// 优化：聚焦稳定币/PayFi 核心人物，而非通用加密 KOL
 const PRIORITY_HANDLES = [
-  'jerallaire',
-  'paaborsch',
-  'cdixon',
-  'nic__carter',
-  'MessariCrypto',
-  'tokenterminal',
+  'jerallaire',     // Circle CEO (USDC)
+  'paaborsch',      // Tether CTO (USDT)
+  'RuneKek',        // MakerDAO Founder (DAI)
+  'staborcoins',    // Stablecoins.wtf (稳定币数据)
+  'zabornjak',      // Bridge.xyz CEO (稳定币基础设施)
+  'theaboringguy',  // Stablecoin 专题研究
 ]
 
 function buildTweetUrl(handle: string, tweetId: string): string {

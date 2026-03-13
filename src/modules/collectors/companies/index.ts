@@ -213,7 +213,7 @@ async function collectStockData(): Promise<number> {
         date: new Date().toISOString().split('T')[0],
       }
 
-      const { error } = await supabaseAdmin.from('raw_stock_data').insert(row)
+      const { error } = await supabaseAdmin.from('raw_stock_data').upsert(row, { onConflict: 'ticker,date' })
 
       if (error) {
         console.error(`[companies/stock] DB error for ${ticker}:`, error.message)

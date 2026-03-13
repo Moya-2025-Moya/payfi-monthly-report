@@ -25,7 +25,10 @@ export interface CollectorResult {
   breakdown: { source: string; count: number }[]
 }
 
-// Daily collection: A1-A5, A7 in parallel
+// Daily collection
+// 执行顺序：
+//   Wave 1 (并行): on-chain, news, companies, products, regulatory
+//   Wave 2 (串行): funding — 依赖 raw_news 表，必须在 news 之后
 export async function runDailyCollection(): Promise<{
   results: Record<string, { status: 'ok' | 'error'; count: number }>
   duration_ms: number
@@ -33,27 +36,32 @@ export async function runDailyCollection(): Promise<{
   const start = Date.now()
   const results: Record<string, { status: 'ok' | 'error'; count: number }> = {}
 
-  const tasks = [
+  function recordResult(name: string, result: PromiseSettledResult<CollectorResult | number>) {
+    if (result.status === 'fulfilled') {
+      const val = result.value
+      const count = typeof val === 'number' ? val : val.total
+      results[name] = { status: 'ok', count }
+    } else {
+      results[name] = { status: 'error', count: 0 }
+      console.error(`[Collector] ${name} failed:`, result.reason)
+    }
+  }
+
+  // Wave 1: 独立采集器并行
+  const wave1 = [
     { name: 'on-chain', fn: collectOnChainData },
     { name: 'news', fn: collectNews },
     { name: 'companies', fn: collectCompanyData },
     { name: 'products', fn: collectProductUpdates },
-    { name: 'funding', fn: collectFunding },
     { name: 'regulatory', fn: collectRegulatory },
   ]
 
-  const settled = await Promise.allSettled(tasks.map(t => t.fn()))
+  const wave1Results = await Promise.allSettled(wave1.map(t => t.fn()))
+  wave1Results.forEach((r, i) => recordResult(wave1[i].name, r))
 
-  settled.forEach((result, i) => {
-    if (result.status === 'fulfilled') {
-      const val = result.value
-      const count = typeof val === 'number' ? val : val.total
-      results[tasks[i].name] = { status: 'ok', count }
-    } else {
-      results[tasks[i].name] = { status: 'error', count: 0 }
-      console.error(`[Collector] ${tasks[i].name} failed:`, result.reason)
-    }
-  })
+  // Wave 2: funding 依赖 news 数据，必须在 wave1 之后
+  const fundingResult = await Promise.allSettled([collectFunding()])
+  recordResult('funding', fundingResult[0])
 
   return { results, duration_ms: Date.now() - start }
 }
