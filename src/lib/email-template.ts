@@ -18,6 +18,8 @@ export interface NarrativeContext {
   current_entity?: string
   current_value?: string
   delta_label?: string
+  comparison_basis?: string
+  insight?: string
 }
 
 export interface NarrativeForEmail {
@@ -88,6 +90,11 @@ function buildContextBlock(items: NarrativeContext[]): string {
       ? '<tr><td style="padding:6px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #e8e8e8;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>'
       : ''
 
+    // Comparison basis — why these are comparable
+    const basisRow = c.comparison_basis
+      ? `<tr><td style="padding:0 0 2px;font-size:13px;color:#999999;line-height:1.5;">${esc(c.comparison_basis)}</td></tr>`
+      : ''
+
     // Reference event — subdued, providing historical context
     const refRow = `<tr><td style="padding:0 0 2px;font-size:13px;color:#888888;line-height:1.6;">${esc(c.event)}${c.detail ? ` &middot; ${esc(c.detail)}` : ''}</td></tr>`
 
@@ -95,8 +102,10 @@ function buildContextBlock(items: NarrativeContext[]): string {
     let compRow = ''
     if (c.current_entity && c.current_value) {
       const isInvalidDelta = c.delta_label && /无.*对比|不同维度|不适用/.test(c.delta_label)
-      if (isInvalidDelta) {
-        // Weak comparison — render subdued
+      const pctMatch = c.delta_label?.match(/(\d+)%/)
+      const isExtremeDelta = pctMatch && parseInt(pctMatch[1]) > 80
+      if (isInvalidDelta || isExtremeDelta) {
+        // Weak/extreme comparison — render subdued without delta
         compRow = `<tr><td style="padding:2px 0 0;font-size:13px;color:#888888;line-height:1.6;">${esc(c.current_entity)}: ${esc(c.current_value)}</td></tr>`
       } else {
         const delta = c.delta_label
@@ -106,7 +115,12 @@ function buildContextBlock(items: NarrativeContext[]): string {
       }
     }
 
-    return `${separator}${refRow}${compRow}`
+    // Insight — what this comparison reveals
+    const insightRow = c.insight
+      ? `<tr><td style="padding:3px 0 0;font-size:13px;color:#666666;line-height:1.5;">${esc(c.insight)}</td></tr>`
+      : ''
+
+    return `${separator}${basisRow}${refRow}${compRow}${insightRow}`
   }).join('')
 
   return `<tr><td style="padding:10px 0 4px;">

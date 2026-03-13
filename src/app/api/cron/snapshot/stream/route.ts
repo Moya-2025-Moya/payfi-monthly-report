@@ -419,6 +419,8 @@ ${factsText}`,
                         current_entity: c.current_entity,
                         current_value: c.current_value,
                         delta_label: c.delta_label,
+                        comparison_basis: c.comparison_basis,
+                        insight: c.insight,
                       }))
                       logger.log(`    "${sn.topic}" → ${ctxResult.comparisons.length} 条上下文`, 'success')
                     } else {
@@ -466,6 +468,8 @@ ${factsText}`,
                     current_entity: firstComp.current_entity,
                     current_value: firstComp.current_value,
                     delta_label: firstComp.delta_label,
+                    comparison_basis: firstComp.comparison_basis,
+                    insight: firstComp.insight,
                   } : undefined,
                   source_url: factRef?.source_url ?? undefined,
                 })

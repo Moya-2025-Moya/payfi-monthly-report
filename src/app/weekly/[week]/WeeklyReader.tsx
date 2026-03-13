@@ -17,13 +17,15 @@ type ContextItem = string | {
   current_entity?: string
   current_value?: string
   delta_label?: string
+  comparison_basis?: string
+  insight?: string
 }
 
 interface SignalData {
   category: string
   text: string
   context?: string
-  structured_context?: { event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string }
+  structured_context?: { event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string }
   source_url?: string
 }
 
@@ -48,7 +50,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const CATEGORY_ORDER = ['market_structure', 'product', 'onchain_data', 'regulatory', 'funding', 'milestone', 'data']
 
-/* ── Context Block (used by signals) ── */
+/* ── Context Block (used by narratives) ── */
 
 function ContextBlock({ items }: { items: ContextItem[] }) {
   if (items.length === 0) return null
@@ -69,38 +71,92 @@ function ContextBlock({ items }: { items: ContextItem[] }) {
         }
 
         const hasDelta = c.current_entity && c.current_value && c.delta_label
+        const useful = isUsefulDelta(c.delta_label)
 
         return (
           <div key={i} className={i > 0 ? 'mt-3 pt-3 border-t' : ''} style={{ borderColor: 'var(--border)' }}>
-            {/* Reference event — subdued, providing context */}
+            {/* Comparison basis — why these two are comparable */}
+            {c.comparison_basis && (
+              <p className="text-[11px] mb-1" style={{ color: 'var(--fg-muted)' }}>
+                {c.comparison_basis}
+              </p>
+            )}
+
+            {/* Reference event */}
             <p className="text-[12px] leading-relaxed mb-1" style={{ color: 'var(--fg-muted)' }}>
               {c.event}{c.detail ? `  ·  ${c.detail}` : ''}
             </p>
 
-            {/* Current value + delta — this is the "punchline" */}
-            {hasDelta ? (
-              c.delta_label && /无.*对比|不同维度|不适用/.test(c.delta_label) ? (
-                <p className="text-[12px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>
+            {/* Current value + delta */}
+            {hasDelta && useful ? (
+              <div className="flex items-baseline gap-3 flex-wrap">
+                <p className="text-[14px] font-semibold" style={{ color: 'var(--fg-title)' }}>
                   {c.current_entity}: {c.current_value}
                 </p>
-              ) : (
-                <div className="flex items-baseline gap-3 flex-wrap">
-                  <p className="text-[14px] font-semibold" style={{ color: 'var(--fg-title)' }}>
-                    {c.current_entity}: {c.current_value}
-                  </p>
-                  <span className="text-[14px] font-bold" style={{ color: 'var(--accent)' }}>
-                    {c.delta_label}
-                  </span>
-                </div>
-              )
+                <span className="text-[14px] font-bold" style={{ color: 'var(--accent)' }}>
+                  {c.delta_label}
+                </span>
+              </div>
             ) : c.current_entity && c.current_value ? (
               <p className="text-[13px]" style={{ color: 'var(--fg-secondary)' }}>
                 {c.current_entity}: {c.current_value}
               </p>
             ) : null}
+
+            {/* Insight — what this comparison reveals */}
+            {c.insight && (
+              <p className="text-[12px] mt-1" style={{ color: 'var(--fg-secondary)' }}>
+                {c.insight}
+              </p>
+            )}
           </div>
         )
       })}
+    </div>
+  )
+}
+
+/* ── Signal Context Inline (compact, filters junk deltas) ── */
+
+function isUsefulDelta(delta: string | undefined): boolean {
+  if (!delta) return false
+  // Filter out: 无对比, 不同维度, 不适用
+  if (/无.*对比|不同维度|不适用/.test(delta)) return false
+  // Filter extreme deltas (>80%) — meaningless comparison
+  const pctMatch = delta.match(/(\d+)%/)
+  if (pctMatch && parseInt(pctMatch[1]) > 80) return false
+  return true
+}
+
+function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
+  const useful = isUsefulDelta(ctx.delta_label)
+  // Use insight if available, otherwise fall back to raw fields
+  const hasInsight = ctx.insight || ctx.comparison_basis
+
+  return (
+    <div className="mt-1.5 pl-3 text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+      {hasInsight ? (
+        <>
+          {ctx.comparison_basis && (
+            <p>{ctx.comparison_basis}</p>
+          )}
+          {ctx.insight && (
+            <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>
+          )}
+        </>
+      ) : (
+        <p>
+          {ctx.event}{ctx.detail ? ` · ${ctx.detail}` : ''}
+          {useful && ctx.current_value && (
+            <span>
+              {' → '}<span style={{ color: 'var(--fg-secondary)' }}>{ctx.current_entity}: {ctx.current_value}</span>
+              {ctx.delta_label && (
+                <span className="font-medium" style={{ color: 'var(--accent)' }}> {ctx.delta_label}</span>
+              )}
+            </span>
+          )}
+        </p>
+      )}
     </div>
   )
 }
@@ -212,9 +268,11 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
                         )}
                       </p>
                       {s.structured_context ? (
-                        <ContextBlock items={[s.structured_context]} />
+                        <SignalContextInline ctx={s.structured_context} />
                       ) : s.context ? (
-                        <ContextBlock items={[s.context]} />
+                        <p className="text-[12px] mt-0.5 pl-3" style={{ color: 'var(--fg-muted)' }}>
+                          {s.context}
+                        </p>
                       ) : null}
                     </div>
                   ))}

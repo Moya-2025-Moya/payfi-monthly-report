@@ -37,10 +37,14 @@ function groupEventsByDate(events: V13Event[]): DateGroup[] {
     else if (evt.significance === 'medium') group.secondary.push(evt)
     else group.collapsed.push(evt)
   }
-  // Promote: if no primary, promote first secondary to primary
   for (const group of map.values()) {
+    // Promote: if no primary, promote first secondary to primary
     if (group.primary.length === 0 && group.secondary.length > 0) {
       group.primary.push(group.secondary.shift()!)
+    }
+    // Demote: only keep first primary, rest become secondary
+    if (group.primary.length > 1) {
+      group.secondary.unshift(...group.primary.splice(1))
     }
   }
   return [...map.values()]

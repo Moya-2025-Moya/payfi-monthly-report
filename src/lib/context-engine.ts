@@ -25,6 +25,9 @@ export interface ContextComparison {
   current_entity?: string     // e.g. "Circle"
   current_value?: string      // e.g. "25 天"
   delta_label?: string        // e.g. "快 42%" or "大 1.7x"
+  // V15: 对比说明
+  comparison_basis?: string   // e.g. "同为稳定币发行方 IPO，对比上市进程速度"
+  insight?: string            // e.g. "Circle 进程比 Coinbase 快 42%，可能受益于更友好的监管环境"
 }
 
 export interface ContextResult {
@@ -245,13 +248,15 @@ ${candidatesText}
 提取 1-3 个对比数据点。每个数据点必须是以下结构:
 {
   "reference_event": "被比较的历史事件名",
-  "metric_label": "对比维度",
+  "metric_label": "对比维度 (如 '估值' '融资规模' '上市耗时')",
   "metric_value": "历史数值 (必须包含数字)",
   "date_range": "历史时间范围 (必须包含年份)",
   "used_candidate_index": 候选材料编号,
   "current_entity": "当前事实的实体名 (从当前事实中提取，可省略)",
   "current_value": "当前事实在同一维度的数值 (可省略)",
-  "delta_label": "差值 (如 '快 42%' 或 '大 1.7x'，可省略)"
+  "delta_label": "差值 (如 '快 42%' 或 '大 1.7x'，可省略)",
+  "comparison_basis": "为什么这两者可比 (一句话，如 '同为加密支付公司融资，对比融资估值规模')",
+  "insight": "这个对比揭示了什么 (一句话纯事实推断，如 'Airwallex G轮估值接近 Circle 2022年F轮水平，两者规模相当')"
 }
 
 绝对规则:
@@ -264,8 +269,10 @@ ${candidatesText}
 7. current_entity 从当前事实中提取实体名，如无法确定则省略此字段
 8. current_value 必须包含数字，与 metric_value 同维度，如当前事实无明确数值则省略
 9. delta_label 只写客观差值（禁止"显著""惊人"等评价词），格式: "快/慢/大/小/多/少 + 百分比或倍数"
-10. 三个字段要么全部提供，要么全部省略
-11. **所有字段必须使用中文**（实体名保留英文原名，如 "Circle"/"Coinbase"，但描述文字必须中文）
+10. current_entity/current_value/delta_label 三个字段要么全部提供，要么全部省略
+11. comparison_basis 和 insight 必须提供，且必须是纯事实推断，不含"值得关注""意味着"等主观判断
+12. comparison_basis 说明可比性依据 (行业/规模/阶段相似)，insight 说明对比结论 (用数据说话)
+13. **所有字段必须使用中文**（实体名保留英文原名，如 "Circle"/"Coinbase"，但描述文字必须中文）
     - reference_event: "Coinbase 上市" 而非 "Coinbase IPO"
     - metric_label: "S-1 提交到上市耗时" 而非 "S-1 to IPO duration"
     - metric_value: "118 天" 而非 "118 days"
