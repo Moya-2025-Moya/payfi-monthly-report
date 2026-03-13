@@ -11,11 +11,8 @@ const PROCESSED_TABLES = [
   // FK leaves first
   'comments',
   'notes',
-  'bookmarks',
   'chat_history',
-  'user_preferences',
   'shared_views',
-  'team_questions',
   'fact_sectors',
   'fact_entities',
   'entity_relationships',
@@ -23,11 +20,14 @@ const PROCESSED_TABLES = [
   'fact_contradictions',
   'blind_spot_reports',
   'regulatory_trackers',
+  'narrative_thread_entries',
+  'narrative_predictions',
   // Then parents
   'atomic_facts',
   'timelines',
   'sectors',
   'entities',
+  'narrative_threads',
   'weekly_snapshots',
   'pipeline_runs',
 ]
