@@ -5,6 +5,7 @@
 
 import { supabaseAdmin } from '@/db/client'
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyAdminToken } from '@/lib/admin-auth'
 
 // Delete order matters: children (FK dependents) before parents
 const PROCESSED_TABLES = [
@@ -68,6 +69,9 @@ async function clearTable(table: string): Promise<string | null> {
 }
 
 export async function POST(req: NextRequest) {
+  const authError = verifyAdminToken(req)
+  if (authError) return authError
+
   try {
     const body = await req.json()
     const mode: 'processed' | 'all' = body.mode ?? 'processed'

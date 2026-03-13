@@ -56,18 +56,39 @@ export async function createPipelineLogger(
   const runId = run?.id as string | undefined
   const logs: PipelineLogEntry[] = []
 
+  // Debounced DB write: accumulate logs and flush periodically
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+  let flushPromise: Promise<void> | null = null
+
+  async function flushLogs() {
+    if (!runId) return
+    const { error: e } = await supabaseAdmin
+      .from('pipeline_runs')
+      .update({ logs: [...logs] })
+      .eq('id', runId)
+    if (e) console.error('[pipeline-logger] DB write error:', e.message)
+  }
+
+  function scheduleFlush() {
+    if (flushTimer) return // already scheduled
+    flushTimer = setTimeout(() => {
+      flushTimer = null
+      flushPromise = flushLogs()
+    }, 1000) // flush at most once per second
+  }
+
   async function appendLog(entry: PipelineLogEntry) {
     logs.push(entry)
-    // Write to DB (best-effort, don't block)
-    if (runId) {
-      supabaseAdmin
-        .from('pipeline_runs')
-        .update({ logs })
-        .eq('id', runId)
-        .then(({ error: e }) => {
-          if (e) console.error('[pipeline-logger] DB write error:', e.message)
-        })
+    scheduleFlush()
+  }
+
+  async function ensureFlushed() {
+    if (flushTimer) {
+      clearTimeout(flushTimer)
+      flushTimer = null
     }
+    if (flushPromise) await flushPromise
+    await flushLogs() // final flush
   }
 
   return {
@@ -103,6 +124,7 @@ export async function createPipelineLogger(
       const time = new Date().toISOString()
       logs.push({ time, message: '用户取消', level: 'error' })
       send({ type: 'error', message: '用户取消' })
+      await ensureFlushed()
       if (runId) {
         // Try 'cancelled' first, fall back to 'failed' if DB constraint doesn't allow it
         const { error: err1 } = await supabaseAdmin
@@ -124,6 +146,9 @@ export async function createPipelineLogger(
 
       send({ type: 'done', ...extraData })
 
+      // Ensure all pending log writes are flushed before final status update
+      await ensureFlushed()
+
       if (runId) {
         await supabaseAdmin
           .from('pipeline_runs')
@@ -142,6 +167,8 @@ export async function createPipelineLogger(
       logs.push({ time, message, level: 'error' })
 
       send({ type: 'error', message })
+
+      await ensureFlushed()
 
       if (runId) {
         await supabaseAdmin

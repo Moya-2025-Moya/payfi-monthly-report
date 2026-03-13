@@ -12,11 +12,17 @@ export const supabaseAdmin = supabaseServiceKey
   ? createClient(supabaseUrl, supabaseServiceKey)
   : supabase
 
-// 辅助: 获取当前 ISO 周号 (e.g. '2026-W10')
+// 辅助: 获取当前 ISO 8601 周号 (e.g. '2026-W10')
+// Uses proper ISO week calculation: week 1 contains the first Thursday of the year
 export function getCurrentWeekNumber(): string {
   const now = new Date()
-  const startOfYear = new Date(now.getFullYear(), 0, 1)
-  const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / 86400000) + 1
-  const weekNum = Math.ceil((dayOfYear + startOfYear.getDay()) / 7)
-  return `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
+  // Create a UTC date to avoid timezone issues
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+  // ISO week: Monday=1 ... Sunday=7
+  const dayNum = d.getUTCDay() || 7
+  // Set to nearest Thursday (current date + 4 - day number)
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
 }

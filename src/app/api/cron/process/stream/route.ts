@@ -172,7 +172,7 @@ export async function GET(request: Request) {
 
               const verdict = adjudicate({ v1, v2, v3, v4, v5 })
 
-              await supabaseAdmin
+              const { error: updateError } = await supabaseAdmin
                 .from('atomic_facts')
                 .update({
                   v1_result: v1, v2_result: v2, v3_result: v3, v4_result: v4, v5_result: v5,
@@ -182,6 +182,10 @@ export async function GET(request: Request) {
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', fact.id)
+
+              if (updateError) {
+                console.error(`[process] Failed to update fact ${fact.id}:`, updateError.message)
+              }
 
               return verdict
             }))

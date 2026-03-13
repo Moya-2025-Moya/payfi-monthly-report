@@ -1,7 +1,10 @@
 // Admin API 鉴权 — 所有 /api/admin/* 和 /api/cron/* 路由共用
 import { NextResponse } from 'next/server'
 
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN
+// Support both server-only ADMIN_TOKEN and public NEXT_PUBLIC_ADMIN_TOKEN
+// The frontend sends NEXT_PUBLIC_ADMIN_TOKEN via x-admin-token header,
+// so the backend must accept the same value
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || process.env.NEXT_PUBLIC_ADMIN_TOKEN
 
 export function verifyAdminToken(request: Request): NextResponse | null {
   // 开发环境且未配置 token 时跳过鉴权

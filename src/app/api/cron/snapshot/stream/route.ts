@@ -200,13 +200,25 @@ ${batchInput}`,
                 .order('last_updated_week', { ascending: false })
                 .limit(10)
 
-              // Compute previous week string
-              const wMatch = weekNumber.match(/^(\d{4})-W(\d{2})$/)
+              // Compute previous week string using proper date arithmetic
               let prevWeek = ''
+              const wMatch = weekNumber.match(/^(\d{4})-W(\d{2})$/)
               if (wMatch) {
                 const yr = Number(wMatch[1])
-                const wn = Number(wMatch[2]) - 1
-                prevWeek = wn < 1 ? `${yr - 1}-W${String(52 + wn).padStart(2, '0')}` : `${yr}-W${String(wn).padStart(2, '0')}`
+                const wn = Number(wMatch[2])
+                // Find Monday of current ISO week, then go back 7 days
+                const jan4 = new Date(Date.UTC(yr, 0, 4))
+                const dow = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
+                const monday = new Date(jan4)
+                monday.setUTCDate(jan4.getUTCDate() - (dow - 1) + (wn - 1) * 7)
+                monday.setUTCDate(monday.getUTCDate() - 7) // Go back 1 week
+                // Convert back to ISO week
+                const d = new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate()))
+                const dn = d.getUTCDay() || 7
+                d.setUTCDate(d.getUTCDate() + 4 - dn)
+                const ys = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+                const pwn = Math.ceil((((d.getTime() - ys.getTime()) / 86400000) + 1) / 7)
+                prevWeek = `${d.getUTCFullYear()}-W${String(pwn).padStart(2, '0')}`
               }
 
               // Fetch last week's entries for each thread

@@ -29,12 +29,25 @@ export async function generateMetadata({ params }: { params: Promise<{ week: str
 }
 
 function shiftWeek(week: string, delta: number): string {
-  const [yearStr, wPart] = week.split('-W')
-  const year = Number(yearStr)
-  const num = Number(wPart) + delta
-  if (num < 1) return `${year - 1}-W${String(52 + num).padStart(2, '0')}`
-  if (num > 52) return `${year + 1}-W${String(num - 52).padStart(2, '0')}`
-  return `${year}-W${String(num).padStart(2, '0')}`
+  // Convert week string to a date, shift by 7*delta days, then back to ISO week
+  const m = week.match(/^(\d{4})-W(\d{2})$/)
+  if (!m) return week
+  const year = parseInt(m[1], 10)
+  const wNum = parseInt(m[2], 10)
+  // Find Monday of the given ISO week
+  const jan4 = new Date(Date.UTC(year, 0, 4))
+  const dow = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
+  const monday = new Date(jan4)
+  monday.setUTCDate(jan4.getUTCDate() - (dow - 1) + (wNum - 1) * 7)
+  // Shift by delta weeks
+  monday.setUTCDate(monday.getUTCDate() + delta * 7)
+  // Convert back to ISO week
+  const d = new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
 }
 
 export default async function WeeklyReportPage({ params }: { params: Promise<{ week: string }> }) {

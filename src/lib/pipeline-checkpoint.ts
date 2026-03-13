@@ -30,7 +30,7 @@ export async function saveCheckpoint(
     created_at: new Date().toISOString(),
   }
 
-  await supabaseAdmin.from('weekly_snapshots').upsert(
+  const { error } = await supabaseAdmin.from('weekly_snapshots').upsert(
     {
       week_number: cp.week_number,
       snapshot_data: sd,
@@ -38,6 +38,9 @@ export async function saveCheckpoint(
     },
     { onConflict: 'week_number' }
   )
+  if (error) {
+    console.error(`[checkpoint] Failed to save checkpoint for ${cp.pipeline} step ${cp.step}:`, error.message)
+  }
 }
 
 /**
