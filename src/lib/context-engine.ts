@@ -10,6 +10,7 @@ import {
   type ReferenceEvent,
   searchReferenceByTags,
   searchReferenceByType,
+  expandComparableEvents,
 } from '@/config/reference-events'
 
 // ── Types ──
@@ -93,12 +94,16 @@ async function retrieveCandidates(
     if (!refEvents.some(r => r.id === tm.id)) refEvents.push(tm)
   }
 
-  for (const ref of refEvents.slice(0, 4)) {
+  // Expand with comparable_events for richer context
+  refEvents = expandComparableEvents(refEvents, 6)
+
+  for (const ref of refEvents.slice(0, 6)) {
     const milestonesText = ref.milestones.map(m => `${m.date}: ${m.event}`).join('; ')
     const metricsText = Object.entries(ref.metrics).map(([k, v]) => `${k}=${v}`).join(', ')
+    const summary = ref.context_summary ? ` | 参照价值: ${ref.context_summary}` : ''
     candidates.push({
       source: 'reference',
-      content: `[${ref.entity}] ${milestonesText} | 指标: ${metricsText}`,
+      content: `[${ref.entity}] ${milestonesText} | 指标: ${metricsText}${summary}`,
       reference_id: ref.id,
       entity: ref.entity,
     })

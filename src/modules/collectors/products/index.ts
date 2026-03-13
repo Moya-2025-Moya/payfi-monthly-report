@@ -21,17 +21,18 @@ const parser = new RSSParser()
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
-// 只保留跟稳定币/支付相关的 release，过滤掉内部工具、SDK 补丁等噪音
-const RELEVANT_KEYWORDS = [
-  'stablecoin', 'stable', 'usdc', 'usdt', 'pyusd', 'dai', 'usde', 'frax',
-  'payment', 'transfer', 'bridge', 'mint', 'redeem', 'swap',
-  'compliance', 'kyc', 'aml', 'regulation',
-  'cross-chain', 'cross-border', 'settlement',
+// 过滤掉纯 CI/测试/文档的补丁 release（排除而非包含，宽进严出）
+const NOISE_PATTERNS = [
+  /^bump /i,            // "Bump lodash from 4.17.20 to 4.17.21"
+  /^dependabot/i,       // Dependabot PRs
+  /^chore\(/i,          // "chore(deps): ..."
+  /^ci[:/]/i,           // "ci: fix workflow"
 ]
 
-function isRelevantRelease(title: string, body: string | null): boolean {
-  const text = `${title} ${body ?? ''}`.toLowerCase()
-  return RELEVANT_KEYWORDS.some(kw => text.includes(kw))
+function isRelevantRelease(title: string, _body: string | null): boolean {
+  // 排除明显的噪音 release，其余全部保留
+  // 因为 WATCHLIST 实体的 release 本身就跟 PayFi 相关
+  return !NOISE_PATTERNS.some(p => p.test(title))
 }
 
 async function collectBlogUpdates(entity: (typeof WATCHLIST)[number]): Promise<RawProductUpdate[]> {

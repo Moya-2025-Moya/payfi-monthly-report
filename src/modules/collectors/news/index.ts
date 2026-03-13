@@ -2,6 +2,7 @@
 // 从多个来源抓取加密/稳定币相关新闻，抓取全文后存入 raw_news 表
 
 import { SOURCES } from '@/config/sources'
+import { WATCHLIST } from '@/config/watchlist'
 import { supabaseAdmin } from '@/db/client'
 import { extractContentBatch } from '@/lib/extract-content'
 import RSSParser from 'rss-parser'
@@ -34,40 +35,57 @@ const rssParser = new RSSParser({
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
-// ─── Stablecoin keyword pre-filter ───────────────────────────────────────────
-// 两层过滤：强关键词直接通过，弱关键词（通用公司名）需配合上下文词
+// ─── PayFi keyword pre-filter ─────────────────────────────────────────────
+// 从 WATCHLIST 自动构建关键词 + 手动补充行业术语
+// 策略：宽进严出 — 采集阶段多收，后续 AI 做硬过滤
 
-// 强关键词 — 出现即通过
+// 自动从 WATCHLIST 提取所有实体名+别名（小写，去重）
+const WATCHLIST_NAMES = (() => {
+  const names = new Set<string>()
+  for (const e of WATCHLIST) {
+    names.add(e.name.toLowerCase())
+    for (const a of e.aliases) names.add(a.toLowerCase())
+  }
+  // 去掉太短或太通用的词（如 "fed", "blk", "sq"）
+  return [...names].filter(n => n.length >= 3)
+})()
+
+// 强关键词 — 出现即通过（WATCHLIST 实体名 + 行业核心术语）
 const STRONG_KEYWORDS = [
+  ...WATCHLIST_NAMES,
   // 核心概念
   'stablecoin', 'stable coin', '稳定币',
-  // 主要稳定币名称
-  'usdc', 'usdt', 'pyusd', 'dai', 'usde', 'frax', 'ausd', 'busd', 'tusd', 'gusd', 'fdusd',
-  // 稳定币发行商（名字足够专属）
-  'circle', 'tether', 'ethena', 'makerdao',
-  // 稳定币基础设施
-  'bridge.xyz', 'zero hash',
-  // 支付相关
-  '跨境支付', 'cross-border payment', 'stablecoin payment',
+  // 稳定币名称（含 WATCHLIST 可能没覆盖的）
+  'busd', 'tusd', 'gusd', 'fdusd', 'eurs', 'eurt', 'lusd', 'susd', 'rai',
+  // 支付/PayFi
+  'payfi', 'cross-border payment', '跨境支付', 'stablecoin payment',
+  'crypto payment', 'digital payment', 'real-time settlement',
   // 监管
   'genius act', 'mica', 'stablecoin regulation', 'stablecoin bill',
+  'digital asset regulation', 'crypto regulation', 'crypto bill',
   // CBDC
-  'cbdc', 'digital dollar', 'digital euro', '数字货币',
+  'cbdc', 'digital dollar', 'digital euro', 'digital yuan', '数字货币',
+  // 行业热词
+  'tokenization', 'tokenize', 'tokenised', 'real world asset', 'rwa',
+  'defi', 'decentralized finance', 'yield', 'tvl',
+  'crypto', 'blockchain', 'web3', 'on-chain', 'onchain',
+  // 中文
+  '加密货币', '区块链', '代币', '链上', 'DeFi',
 ]
 
-// 弱关键词 — 需配合上下文词才通过（防止 "Visa Q4 earnings" 这种无关文章进入）
+// 弱关键词 — 需配合上下文词（防止 "Visa Q4 earnings" 进入）
 const WEAK_KEYWORDS = [
-  'visa', 'mastercard', 'jpmorgan', 'blackrock', 'coinbase', 'robinhood',
-  'block', 'square', 'stripe', 'fireblocks', 'paypal',
-  'aave', 'curve', 'uniswap', 'maker', 'agora',
-  'sec', 'occ', 'federal reserve', 'cftc',
+  'sec', 'occ', 'federal reserve', 'cftc', 'fdic', 'finma',
+  'ipo', 'etf', 'custody',
+  'bank', 'fintech', 'neobank',
 ]
 
-// 上下文词 — 弱关键词必须跟这些词共现才算相关
+// 上下文词 — 弱关键词必须跟这些词共现
 const CONTEXT_WORDS = [
   'stablecoin', 'stable', 'usdc', 'usdt', 'pyusd', 'payment', 'crypto',
   'digital asset', 'blockchain', 'tokenize', 'tokenization', 'on-chain', 'onchain',
   'defi', 'web3', 'remittance', 'settlement', 'cross-border',
+  'bitcoin', 'ethereum', 'solana', 'token', 'coin',
   '稳定币', '加密', '区块链', '支付', '数字资产',
 ]
 
