@@ -330,7 +330,12 @@ export async function GET() {
 
           // Generate timeline from facts
           const timeline = await generateTimeline(topic, facts)
-          logger.log(`  AI 生成 ${timeline.events.length} 个节点, ${timeline.branches.length} 个分支`, 'info')
+          if (!timeline?.events?.length) {
+            logger.log(`  AI 未返回有效事件，跳过`, 'info')
+            continue
+          }
+          const timelineBranches = timeline.branches ?? []
+          logger.log(`  AI 生成 ${timeline.events.length} 个节点, ${timelineBranches.length} 个分支`, 'info')
 
           // Build internal nodes
           const nodes: NarrativeNode[] = []
@@ -391,7 +396,7 @@ export async function GET() {
           const gapQueries = timeline.gap_queries ?? []
           if (gapQueries.length > 0) {
             try {
-              const enrichment = await enrichWithExternal(topic, gapQueries, existingTitles, timeline.branches)
+              const enrichment = await enrichWithExternal(topic, gapQueries, existingTitles, timelineBranches)
 
               for (const ext of enrichment.external_events) {
                 nodes.push({
@@ -441,7 +446,7 @@ export async function GET() {
           narratives.push({
             topic: topic.label,
             summary: timeline.summary,
-            branches: timeline.branches,
+            branches: timelineBranches,
             nodes,
             edges,
           })
