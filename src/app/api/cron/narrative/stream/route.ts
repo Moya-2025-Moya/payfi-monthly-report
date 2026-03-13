@@ -597,7 +597,7 @@ export async function GET(request: Request) {
                   date: ext.date,
                   title: ext.title,
                   description: ext.description,
-                  significance: 'low',
+                  significance: 'medium',
                   factIds: [],
                   entityNames: [],
                   isExternal: true,

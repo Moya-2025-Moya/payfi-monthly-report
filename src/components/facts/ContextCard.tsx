@@ -168,20 +168,6 @@ export function ContextCard({ fact, context, focusClassName }: ContextCardProps)
               </div>
             </div>
 
-            {/* Metric display */}
-            {fact.fact_type === 'metric' && fact.metric_value != null && (
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-[16px] font-semibold font-mono" style={{ color: 'var(--fg-title)' }}>
-                  {fact.metric_value.toLocaleString()} {fact.metric_unit}
-                </span>
-                {fact.metric_change && (
-                  <span className="text-[12px] font-mono" style={{ color: fact.metric_change.startsWith('+') || fact.metric_change.startsWith('↑') ? 'var(--success)' : fact.metric_change.startsWith('-') || fact.metric_change.startsWith('↓') ? 'var(--danger)' : 'var(--fg-muted)' }}>
-                    {fact.metric_change}
-                  </span>
-                )}
-              </div>
-            )}
-
             {/* Tags */}
             {fact.tags.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">

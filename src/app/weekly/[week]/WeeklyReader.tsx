@@ -116,6 +116,21 @@ function ContextBlock({ items }: { items: ContextItem[] }) {
   )
 }
 
+/* ── Signal dedup: skip context if signal text already contains the comparison data ── */
+
+function isRedundantContext(signalText: string, ctx: { current_value?: string; delta_label?: string; insight?: string }): boolean {
+  // If insight exists, always show (it adds new info)
+  if (ctx.insight) return false
+  // If the signal text already mentions the current_value, context is redundant
+  if (ctx.current_value && signalText.includes(ctx.current_value.replace(/\s/g, ''))) return true
+  // If delta is already in signal text
+  if (ctx.delta_label) {
+    const pct = ctx.delta_label.match(/\d+%/)
+    if (pct && signalText.includes(pct[0])) return true
+  }
+  return false
+}
+
 /* ── Signal Context Inline (compact, filters junk deltas) ── */
 
 function isUsefulDelta(delta: string | undefined): boolean {
@@ -267,9 +282,9 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
                           </a>
                         )}
                       </p>
-                      {s.structured_context ? (
+                      {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
                         <SignalContextInline ctx={s.structured_context} />
-                      ) : s.context ? (
+                      ) : s.context && !s.structured_context ? (
                         <p className="text-[12px] mt-0.5 pl-3" style={{ color: 'var(--fg-muted)' }}>
                           {s.context}
                         </p>
