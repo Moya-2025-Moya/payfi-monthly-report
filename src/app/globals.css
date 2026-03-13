@@ -120,3 +120,30 @@ h1, h2, h3, h4, h5, h6 {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* ─── Depth Control: layer visibility ─── */
+.depth-layer-1, .depth-layer-2, .depth-layer-3 {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 300ms ease, opacity 200ms ease;
+}
+
+[data-depth="1"] .depth-layer-1,
+[data-depth="2"] .depth-layer-1, [data-depth="2"] .depth-layer-2,
+[data-depth="3"] .depth-layer-1, [data-depth="3"] .depth-layer-2, [data-depth="3"] .depth-layer-3 {
+  max-height: 500px;
+  opacity: 1;
+}
+
+/* ─── Entity Focus Lens ─── */
+.focus-receded {
+  opacity: 0.1;
+  pointer-events: none;
+  transition: opacity 400ms ease;
+}
+.focus-highlighted {
+  opacity: 1;
+  box-shadow: 0 0 0 1px var(--accent-muted), 0 0 20px rgba(255,109,0,0.08);
+  transition: opacity 400ms ease, box-shadow 400ms ease;
+}

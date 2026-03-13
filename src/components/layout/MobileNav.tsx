@@ -4,8 +4,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const MOBILE_TABS = [
-  { href: '/', label: '周报' },
-  { href: '/weekly', label: '历史' },
+  { href: '/', label: '首页' },
+  { href: '/weekly', label: '周报' },
+  { href: '/entities', label: '实体' },
   { href: '/admin', label: '管理' },
 ]
 
@@ -18,7 +19,9 @@ export function MobileNav() {
       style={{ background: 'var(--topbar-bg)', borderColor: 'var(--topbar-border)', height: '52px' }}
     >
       {MOBILE_TABS.map(tab => {
-        const isActive = tab.href === '/' ? pathname === '/' : pathname.startsWith(tab.href)
+        const isActive = tab.href === '/'
+          ? pathname === '/'
+          : pathname.startsWith(tab.href)
         return (
           <Link
             key={tab.href}

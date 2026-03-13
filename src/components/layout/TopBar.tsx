@@ -36,6 +36,18 @@ function ThemeToggle() {
   )
 }
 
+/* ── Nav link ── */
+function NavLink({ href, label, pathname }: { href: string; label: string; pathname: string }) {
+  const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
+  return (
+    <Link href={href}
+      className="px-2 py-1 rounded text-[12px] font-medium tracking-wide transition-colors"
+      style={{ color: isActive ? 'var(--accent)' : 'var(--fg-muted)' }}>
+      {label}
+    </Link>
+  )
+}
+
 // Keep for layout compatibility
 export function getActiveGroup(_pathname: string): string {
   return 'browse'
@@ -55,8 +67,23 @@ export function TopBar() {
         </span>
       </Link>
 
+      {/* Separator */}
+      <span className="mx-3 hidden md:inline" style={{ color: 'var(--border)' }}>—</span>
+
+      {/* Nav links */}
+      <nav className="hidden md:flex items-center gap-1">
+        <NavLink href="/" label="周报" pathname={pathname} />
+        <NavLink href="/entities" label="实体" pathname={pathname} />
+      </nav>
+
       {/* Center spacer */}
       <div className="flex-1" />
+
+      {/* Zero-Opinion Badge */}
+      <span className="hidden md:inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded mr-2"
+        style={{ color: 'var(--success)', background: 'var(--success-soft)' }}>
+        0 opinions
+      </span>
 
       <div className="flex items-center gap-1 shrink-0">
         <Link href="/admin"

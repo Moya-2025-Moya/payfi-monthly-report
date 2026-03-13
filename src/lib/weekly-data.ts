@@ -180,6 +180,92 @@ export async function getWeeklyArchiveList(limit = 52): Promise<WeeklyArchiveEnt
   })
 }
 
+/**
+ * Get knowledge growth stats for the heartbeat visualization.
+ * Returns weekly counts of reference events for the last N weeks.
+ */
+export async function getKnowledgeGrowthStats(weeks = 12): Promise<{ week: string; total: number }[]> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('reference_events')
+      .select('created_at')
+      .order('created_at', { ascending: true })
+
+    if (!data || data.length === 0) return []
+
+    // Group by ISO week
+    const weekCounts = new Map<string, number>()
+    for (const row of data) {
+      const d = new Date(row.created_at as string)
+      const week = getISOWeek(d)
+      weekCounts.set(week, (weekCounts.get(week) ?? 0) + 1)
+    }
+
+    // Convert to cumulative and take last N weeks
+    const allWeeks = [...weekCounts.keys()].sort()
+    let cumulative = 0
+    const result: { week: string; total: number }[] = []
+    for (const w of allWeeks) {
+      cumulative += weekCounts.get(w)!
+      result.push({ week: w, total: cumulative })
+    }
+
+    return result.slice(-weeks)
+  } catch {
+    return []
+  }
+}
+
+function getISOWeek(date: Date): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
+}
+
+/**
+ * Get enhanced archive list with one-liner and narrative topics.
+ */
+export async function getWeeklyArchiveListEnhanced(limit = 52): Promise<(WeeklyArchiveEntry & {
+  oneLiner?: string
+  narrativeTopics?: string[]
+  dateRange?: string
+})[]> {
+  const { data } = await supabaseAdmin
+    .from('weekly_snapshots')
+    .select('week_number, generated_at, snapshot_data')
+    .order('week_number', { ascending: false })
+    .limit(limit)
+
+  return (data ?? []).map(row => {
+    const sd = row.snapshot_data as Record<string, unknown> | null
+    const factCount = (sd?.total_facts as number) ?? 0
+    const narratives = (sd?.narratives as { topic: string }[]) ?? []
+    const narrativeCount = narratives.length
+
+    // Parse detailed summary for one-liner
+    let oneLiner: string | undefined
+    try {
+      const detailed = sd?.weekly_summary_detailed as string
+      if (detailed) {
+        const parsed = JSON.parse(detailed)
+        oneLiner = parsed.oneLiner || parsed.one_liner
+      }
+    } catch { /* ignore */ }
+
+    return {
+      week: row.week_number as string,
+      generatedAt: row.generated_at as string,
+      factCount,
+      narrativeCount,
+      oneLiner,
+      narrativeTopics: narratives.map(n => n.topic),
+    }
+  })
+}
+
 // ─── Write Functions ───
 
 /**

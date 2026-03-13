@@ -48,21 +48,16 @@ export default async function WeeklyReportPage({ params }: { params: Promise<{ w
   const pageData = await getWeeklyPageData(week)
   const currentWeek = getCurrentWeekNumber()
 
-  // Fetch all facts for the full-facts section below the mirror
+  // Fetch all facts with full AtomicFact fields (V1-V5 results for Trust Spine)
   const { data: allFactsRaw } = await supabaseAdmin
     .from('atomic_facts')
-    .select('content_zh, content_en, fact_date, tags, source_url')
+    .select('id, content_zh, content_en, fact_type, objectivity, speaker, tags, source_url, source_type, source_credibility, metric_name, metric_value, metric_unit, metric_period, metric_change, verification_status, confidence, confidence_reasons, v1_result, v2_result, v3_result, v4_result, v5_result, fact_date, week_number, created_at, updated_at, source_id, source_table, collected_at')
     .eq('week_number', week)
     .in('verification_status', ['verified', 'partially_verified'])
     .order('fact_date', { ascending: false })
     .limit(200)
 
-  const allFacts = (allFactsRaw ?? []).map(f => ({
-    content: (f.content_zh || f.content_en || '') as string,
-    date: String(f.fact_date).split('T')[0],
-    tags: (f.tags as string[]) ?? [],
-    source_url: (f.source_url as string) ?? undefined,
-  }))
+  const allFacts = (allFactsRaw ?? []) as unknown as import('@/lib/types').AtomicFact[]
   const isCurrentWeek = week === currentWeek
   const isFutureWeek = week > currentWeek
   const prevWeek = shiftWeek(week, -1)
@@ -114,6 +109,9 @@ export default async function WeeklyReportPage({ params }: { params: Promise<{ w
           summaryDetailed={pageData.summaryDetailed}
           stats={pageData.stats}
           allFacts={allFacts}
+          snapshotData={{
+            newContradictions: (pageData as unknown as { stats: { new_contradictions?: number } | null }).stats?.new_contradictions ?? undefined,
+          }}
         />
       )}
     </div>
