@@ -244,7 +244,8 @@ export async function detectContradictions(factId: string): Promise<void> {
 
 export async function detectContradictionsBatch(
   factIds: string[],
-  onCancelCheck?: () => Promise<void>
+  onCancelCheck?: () => Promise<void>,
+  onProgress?: (current: number, total: number) => void
 ): Promise<{ checked: number; failed: number }> {
   console.log(`[B4] Batch detecting contradictions for ${factIds.length} facts`)
 
@@ -253,6 +254,7 @@ export async function detectContradictionsBatch(
 
   for (let i = 0; i < factIds.length; i++) {
     if (onCancelCheck && i > 0 && i % 5 === 0) await onCancelCheck()
+    if (onProgress && i % 5 === 0) onProgress(i, factIds.length)
     try {
       await detectContradictions(factIds[i])
       checked++
@@ -261,6 +263,7 @@ export async function detectContradictionsBatch(
       console.error(`[B4] Error processing fact ${factIds[i]}:`, err)
     }
   }
+  if (onProgress) onProgress(factIds.length, factIds.length)
 
   console.log(`[B4] Batch complete — checked: ${checked}, failed: ${failed}`)
   return { checked, failed }

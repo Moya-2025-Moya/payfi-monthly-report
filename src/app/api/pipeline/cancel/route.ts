@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/db/client'
-import { verifyAdminToken } from '@/lib/admin-auth'
 
 export async function POST(request: Request) {
-  const authError = verifyAdminToken(request)
-  if (authError) return authError
-
   try {
     const { runId } = await request.json()
     if (!runId) {

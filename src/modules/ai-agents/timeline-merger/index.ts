@@ -305,7 +305,8 @@ export async function mergeTimeline(
 
 export async function mergeTimelinesBatch(
   factIds: string[],
-  onCancelCheck?: () => Promise<void>
+  onCancelCheck?: () => Promise<void>,
+  onProgress?: (current: number, total: number) => void
 ): Promise<{ assigned: number; created: number; standalone: number; failed: number }> {
   console.log(`[B3] Starting batch timeline merge for ${factIds.length} fact(s)`)
 
@@ -316,6 +317,7 @@ export async function mergeTimelinesBatch(
 
   for (let i = 0; i < factIds.length; i++) {
     if (onCancelCheck && i > 0 && i % 5 === 0) await onCancelCheck()
+    if (onProgress && i % 5 === 0) onProgress(i, factIds.length)
     try {
       const result = await mergeTimeline(factIds[i])
       if (result.action === 'assign') assigned++
@@ -326,6 +328,7 @@ export async function mergeTimelinesBatch(
       console.error(`[B3] Error processing fact ${factIds[i]}:`, err)
     }
   }
+  if (onProgress) onProgress(factIds.length, factIds.length)
 
   console.log(`[B3] Batch complete — assigned: ${assigned}, created: ${created}, standalone: ${standalone}, failed: ${failed}`)
   return { assigned, created, standalone, failed }

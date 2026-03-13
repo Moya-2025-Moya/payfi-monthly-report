@@ -215,24 +215,81 @@ export async function resolveEntities(factId: string): Promise<void> {
 
 export async function resolveEntitiesBatch(
   factIds: string[],
-  onCancelCheck?: () => Promise<void>
+  onCancelCheck?: () => Promise<void>,
+  onProgress?: (current: number, total: number) => void
 ): Promise<{ succeeded: number; failed: number }> {
   console.log(`[B2] Starting batch entity resolution for ${factIds.length} fact(s)`)
+
+  // Pre-fetch known entities once (instead of per-fact)
+  let knownEntities = await fetchKnownEntities()
 
   let succeeded = 0
   let failed = 0
 
   for (let i = 0; i < factIds.length; i++) {
     if (onCancelCheck && i > 0 && i % 5 === 0) await onCancelCheck()
+
+    // Report progress every 5 facts
+    if (onProgress && i % 5 === 0) onProgress(i, factIds.length)
+
     try {
-      await resolveEntities(factIds[i])
+      await resolveEntitiesWithCache(factIds[i], knownEntities)
       succeeded++
     } catch (err) {
       failed++
       console.log(`[B2] Failed to resolve entities for fact ${factIds[i]}: ${err instanceof Error ? err.message : String(err)}`)
     }
+
+    // Refresh entity cache every 10 facts (picks up newly created entities)
+    if ((i + 1) % 10 === 0) {
+      knownEntities = await fetchKnownEntities()
+    }
   }
+
+  // Final progress
+  if (onProgress) onProgress(factIds.length, factIds.length)
 
   console.log(`[B2] Batch complete — succeeded: ${succeeded}, failed: ${failed}`)
   return { succeeded, failed }
+}
+
+// Variant that accepts pre-fetched entities to avoid N+1 queries
+async function resolveEntitiesWithCache(factId: string, knownEntities: EntityRow[]): Promise<void> {
+  console.log(`[B2] Resolving entities for fact: ${factId}`)
+
+  const fact = await fetchFact(factId)
+  const factContent = fact.content_zh || fact.content_en
+  if (!factContent) {
+    console.log(`[B2] No content for fact: ${factId}, skipping`)
+    return
+  }
+
+  const resolved = await callEntityResolver(factContent, knownEntities)
+  if (resolved.length === 0) {
+    console.log(`[B2] No entities found for fact: ${factId}`)
+    return
+  }
+
+  console.log(`[B2] Found ${resolved.length} entity reference(s) for fact: ${factId}`)
+
+  for (const entity of resolved) {
+    try {
+      let entityId: string
+      if (!entity.is_new) {
+        const match = findEntityInDB(entity.name, knownEntities)
+        if (!match) {
+          console.log(`[B2] Known entity not found in DB, skipping: "${entity.name}"`)
+          continue
+        }
+        entityId = match.id
+      } else {
+        console.log(`[B2] Creating new entity: "${entity.name}" (category: ${entity.category})`)
+        entityId = await createEntity(entity.name, entity.category)
+      }
+      await upsertFactEntity(factId, entityId, entity.role)
+      console.log(`[B2] Linked entity "${entity.name}" (role: ${entity.role}) to fact: ${factId}`)
+    } catch (err) {
+      console.log(`[B2] Error processing entity "${entity.name}" for fact ${factId}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
 }

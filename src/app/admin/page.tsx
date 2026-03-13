@@ -86,6 +86,7 @@ function useSSEStream() {
   const [running, setRunning] = useState(false)
   const [runId, setRunId] = useState<string | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
@@ -95,8 +96,13 @@ function useSSEStream() {
     setRunning(true)
     setLogs([])
     setRunId(null)
+
+    // Create AbortController so we can kill the connection
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
-      const res = await adminFetch(url)
+      const res = await adminFetch(url, { signal: controller.signal })
       if (!res.ok || !res.body) {
         setLogs(prev => [...prev, '[ERROR] 请求失败'])
         setRunning(false)
@@ -129,10 +135,23 @@ function useSSEStream() {
           } catch { /* ignore */ }
         }
       }
-    } catch {
-      setLogs(prev => [...prev, '[ERROR] 网络错误'])
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setLogs(prev => [...prev, '[停止] 连接已中断'])
+      } else {
+        setLogs(prev => [...prev, '[ERROR] 网络错误'])
+      }
     } finally {
+      abortRef.current = null
       setRunning(false)
+    }
+  }, [])
+
+  // Abort the SSE connection directly
+  const abort = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
     }
   }, [])
 
@@ -146,7 +165,7 @@ function useSSEStream() {
     setRunning(status === 'running')
   }, [])
 
-  return { logs, running, run, runId, logsEndRef, restore, setLogs, setRunning }
+  return { logs, running, run, runId, logsEndRef, restore, setLogs, setRunning, abort }
 }
 
 function LogPanel({ logs, logsEndRef }: { logs: string[]; logsEndRef: React.RefObject<HTMLDivElement | null> }) {
@@ -198,7 +217,7 @@ function formatTime(iso: string): string {
 }
 
 function PipelineTab() {
-  const { logs, running, run, runId, logsEndRef, restore, setLogs, setRunning } = useSSEStream()
+  const { logs, running, run, runId, logsEndRef, restore, setLogs, setRunning, abort } = useSSEStream()
   const [runningStep, setRunningStep] = useState<string | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [resetStatus, setResetStatus] = useState('')
@@ -316,16 +335,25 @@ function PipelineTab() {
   }
 
   async function handleCancel() {
+    // 1. Immediately abort the SSE connection (kills the frontend fetch)
+    abort()
+
+    // 2. Also try to mark the run as cancelled in DB (best-effort, server may be dead)
     const id = runId ?? pollingRunIdRef.current
-    if (!id) return
-    try {
-      await adminFetch('/api/pipeline/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runId: id }),
-      })
-      setLogs(prev => [...prev, '[取消] 已发送取消请求...'])
-    } catch { /* ignore */ }
+    if (id) {
+      try {
+        await adminFetch('/api/pipeline/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ runId: id }),
+        })
+      } catch { /* server might already be dead, that's ok */ }
+    }
+
+    // 3. Force UI state reset
+    setRunning(false)
+    setRunningStep(null)
+    stopPolling()
   }
 
   async function handleReset() {
