@@ -3,6 +3,7 @@
 // AI-scores urgency, stores breaking/important alerts in weekly_snapshots.
 
 import { NextResponse } from 'next/server'
+import { verifyAdminToken } from '@/lib/admin-auth'
 import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
 import { callHaikuJSON } from '@/lib/ai-client'
 import { SOURCES } from '@/config/sources'
@@ -206,7 +207,10 @@ async function storeAlerts(alerts: BreakingAlert[]): Promise<void> {
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authError = verifyAdminToken(request)
+  if (authError) return authError
+
   const start = Date.now()
 
   try {

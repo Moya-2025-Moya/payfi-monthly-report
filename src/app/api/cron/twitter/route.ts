@@ -2,10 +2,13 @@
 
 import { NextResponse } from 'next/server'
 import { runWeeklyTwitterCollection } from '@/modules/collectors'
+import { verifyAdminToken } from '@/lib/admin-auth'
 
 export const maxDuration = 120
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authError = verifyAdminToken(request)
+  if (authError) return authError
   try {
     const { result, duration_ms } = await runWeeklyTwitterCollection()
     console.log('[Cron] Twitter collection done:', result, `${duration_ms}ms`)

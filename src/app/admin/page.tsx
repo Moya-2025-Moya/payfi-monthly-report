@@ -3,7 +3,18 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
 
-type Tab = 'generate' | 'pipeline' | 'preview' | 'subscribers'
+// Admin token for API auth (dev environments may leave this empty)
+function getAdminHeaders(): Record<string, string> {
+  const token = process.env.NEXT_PUBLIC_ADMIN_TOKEN
+  return token ? { 'x-admin-token': token } : {}
+}
+
+function adminFetch(url: string, init?: RequestInit): Promise<Response> {
+  const headers = { ...getAdminHeaders(), ...(init?.headers ?? {}) }
+  return fetch(url, { ...init, headers })
+}
+
+type Tab = 'pipeline' | 'preview' | 'subscribers'
 
 /* ── Stream event types ── */
 interface StreamEvent {
@@ -12,6 +23,24 @@ interface StreamEvent {
   step?: string
   message?: string
   level?: string
+}
+
+/* ── DB log entry (from pipeline_runs.logs) ── */
+interface DBLogEntry {
+  time: string
+  message: string
+  level: 'info' | 'success' | 'error' | 'progress'
+}
+
+/* ── Pipeline run record ── */
+interface PipelineRunData {
+  id: string
+  pipeline_type: string
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
+  started_at: string
+  completed_at: string | null
+  logs: DBLogEntry[]
+  stats: Record<string, unknown> | null
 }
 
 /* ── Report data ── */
@@ -51,10 +80,11 @@ function ConfirmDialog({ title, message, onConfirm, onCancel, danger }: {
   )
 }
 
-/* ── SSE Log Stream Hook ── */
+/* ── SSE Log Stream Hook (returns runId for polling) ── */
 function useSSEStream() {
   const [logs, setLogs] = useState<string[]>([])
   const [running, setRunning] = useState(false)
+  const [runId, setRunId] = useState<string | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -64,8 +94,9 @@ function useSSEStream() {
   const run = useCallback(async (url: string) => {
     setRunning(true)
     setLogs([])
+    setRunId(null)
     try {
-      const res = await fetch(url)
+      const res = await adminFetch(url)
       if (!res.ok || !res.body) {
         setLogs(prev => [...prev, '[ERROR] 请求失败'])
         setRunning(false)
@@ -84,7 +115,9 @@ function useSSEStream() {
           if (!line.startsWith('data: ')) continue
           try {
             const event: StreamEvent = JSON.parse(line.slice(6))
-            if (event.type === 'log' && event.message) {
+            if (event.type === 'init' && event.runId) {
+              setRunId(event.runId)
+            } else if (event.type === 'log' && event.message) {
               setLogs(prev => [...prev, event.message!])
             } else if (event.type === 'progress' && event.step && event.message) {
               setLogs(prev => [...prev, `[${event.step}] ${event.message}`])
@@ -103,7 +136,17 @@ function useSSEStream() {
     }
   }, [])
 
-  return { logs, running, run, logsEndRef }
+  // Restore logs from a DB run record
+  const restore = useCallback((dbLogs: DBLogEntry[], status: string, id: string) => {
+    setRunId(id)
+    setLogs(dbLogs.map(l => {
+      const prefix = l.level === 'error' ? '[ERROR] ' : ''
+      return prefix + l.message
+    }))
+    setRunning(status === 'running')
+  }, [])
+
+  return { logs, running, run, runId, logsEndRef, restore, setLogs, setRunning }
 }
 
 function LogPanel({ logs, logsEndRef }: { logs: string[]; logsEndRef: React.RefObject<HTMLDivElement | null> }) {
@@ -125,96 +168,167 @@ function LogPanel({ logs, logsEndRef }: { logs: string[]; logsEndRef: React.RefO
 }
 
 /* ──────────────────────────────────────────
-   Tab 1: Generate Weekly Report (一键)
-   ────────────────────────────────────────── */
-function GenerateTab() {
-  const { logs, running, run, logsEndRef } = useSSEStream()
-  const [showConfirm, setShowConfirm] = useState(false)
-
-  return (
-    <div className="space-y-4">
-      {showConfirm && (
-        <ConfirmDialog
-          title="生成本周周报"
-          message="将执行完整流水线: 统计 → 矛盾检测 → AI 选取+上下文引擎 → 保存 → 邮件生成。确认继续？"
-          onConfirm={() => { setShowConfirm(false); run('/api/cron/snapshot/stream') }}
-          onCancel={() => setShowConfirm(false)}
-        />
-      )}
-      <Card>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[14px] font-semibold" style={{ color: 'var(--fg-title)' }}>生成本周周报</p>
-            <p className="text-[12px] mt-1" style={{ color: 'var(--fg-muted)' }}>
-              统计 → 矛盾检测 → AI 选取+上下文引擎 → 保存 → 邮件生成
-            </p>
-          </div>
-          <button
-            onClick={() => setShowConfirm(true)}
-            disabled={running}
-            className="px-6 py-2.5 rounded-md text-[13px] font-semibold transition-colors"
-            style={{
-              background: running ? 'var(--surface-alt)' : 'var(--accent)',
-              color: running ? 'var(--fg-muted)' : 'var(--accent-fg)',
-              opacity: running ? 0.7 : 1,
-            }}>
-            {running ? '生成中...' : '生成本周周报'}
-          </button>
-        </div>
-      </Card>
-      <LogPanel logs={logs} logsEndRef={logsEndRef} />
-    </div>
-  )
-}
-
-/* ──────────────────────────────────────────
-   Tab 2: Pipeline (逐步执行)
+   Tab 1: Pipeline (逐步执行 + 持久化日志)
    ────────────────────────────────────────── */
 const PIPELINE_STEPS = [
-  { key: 'collect', label: '数据采集', endpoint: '/api/cron/collect', desc: '从 RSS / SEC EDGAR 采集新闻' },
-  { key: 'twitter', label: '推特采集', endpoint: '/api/cron/twitter', desc: '从 Twitter/X 采集推文' },
-  { key: 'process', label: 'AI 处理', endpoint: '/api/cron/process/stream', desc: '事实拆解 + 验证 + 分类', isStream: true },
-  { key: 'snapshot', label: '快照生成', endpoint: '/api/cron/snapshot/stream', desc: '选取 + 上下文引擎 + 邮件', isStream: true },
-  { key: 'narrative', label: '叙事更新', endpoint: '/api/cron/narrative/stream', desc: '更新叙事线索追踪', isStream: true },
-]
+  { key: 'collect', label: '数据采集', endpoint: '/api/cron/collect', desc: '从 RSS / SEC EDGAR 采集新闻', pipelineType: 'collect' },
+  { key: 'twitter', label: '推特采集', endpoint: '/api/cron/twitter', desc: '从 Twitter/X 采集推文', pipelineType: 'twitter' },
+  { key: 'process', label: 'AI 处理', endpoint: '/api/cron/process/stream', desc: '事实拆解 + 验证 + 分类', pipelineType: 'process', isStream: true },
+  { key: 'snapshot', label: '快照生成', endpoint: '/api/cron/snapshot/stream', desc: '选取 + 上下文引擎 + 邮件', pipelineType: 'snapshot', isStream: true },
+  { key: 'narrative', label: '叙事更新', endpoint: '/api/cron/narrative/stream', desc: '更新叙事线索追踪', pipelineType: 'narrative', isStream: true },
+] as const
+
+/* Status badge colors */
+function statusColor(status: string | undefined): { bg: string; fg: string; label: string } {
+  switch (status) {
+    case 'running': return { bg: 'var(--accent-soft)', fg: 'var(--accent)', label: '运行中' }
+    case 'completed': return { bg: 'var(--success-soft, rgba(34,197,94,0.1))', fg: 'var(--success)', label: '已完成' }
+    case 'failed': return { bg: 'rgba(239,68,68,0.1)', fg: 'var(--danger)', label: '失败' }
+    case 'cancelled': return { bg: 'var(--surface-alt)', fg: 'var(--fg-muted)', label: '已取消' }
+    default: return { bg: 'var(--surface-alt)', fg: 'var(--fg-muted)', label: '未执行' }
+  }
+}
+
+function formatTime(iso: string): string {
+  try { return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }
+  catch { return '' }
+}
 
 function PipelineTab() {
-  const { logs, running, run, logsEndRef } = useSSEStream()
+  const { logs, running, run, runId, logsEndRef, restore, setLogs, setRunning } = useSSEStream()
   const [runningStep, setRunningStep] = useState<string | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [resetStatus, setResetStatus] = useState('')
+  const [activeStep, setActiveStep] = useState<string | null>(null)
+  // Per-step latest run info (from DB)
+  const [stepRuns, setStepRuns] = useState<Record<string, PipelineRunData | null>>({})
+  const [loadingRuns, setLoadingRuns] = useState(true)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollingRunIdRef = useRef<string | null>(null)
+
+  // ─── Load latest runs on mount ───
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await adminFetch('/api/pipeline/runs')
+        if (res.ok) {
+          const data = await res.json()
+          if (!cancelled) {
+            setStepRuns(data)
+            // Find any currently running step
+            for (const step of PIPELINE_STEPS) {
+              const r = data[step.pipelineType] as PipelineRunData | null
+              if (r?.status === 'running') {
+                setActiveStep(step.key)
+                restore(r.logs ?? [], r.status, r.id)
+                // Start polling
+                startPolling(r.id)
+                break
+              }
+            }
+            // If no running step, show latest completed/failed step's logs
+            if (!cancelled) {
+              let latest: PipelineRunData | null = null
+              let latestKey: string | null = null
+              for (const step of PIPELINE_STEPS) {
+                const r = data[step.pipelineType] as PipelineRunData | null
+                if (r && r.status !== 'running') {
+                  if (!latest || r.started_at > latest.started_at) {
+                    latest = r
+                    latestKey = step.key
+                  }
+                }
+              }
+              if (latest && latestKey && !data[PIPELINE_STEPS.find(s => s.key === latestKey)!.pipelineType]?.status?.includes('running')) {
+                // Only restore if no running step was found
+                const hasRunning = PIPELINE_STEPS.some(s => data[s.pipelineType]?.status === 'running')
+                if (!hasRunning) {
+                  setActiveStep(latestKey)
+                  restore(latest.logs ?? [], latest.status, latest.id)
+                }
+              }
+            }
+          }
+        }
+      } catch { /* ignore */ }
+      finally { if (!cancelled) setLoadingRuns(false) }
+    }
+    load()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ─── Polling for running pipelines ───
+  function startPolling(id: string) {
+    stopPolling()
+    pollingRunIdRef.current = id
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await adminFetch(`/api/pipeline/runs?id=${id}`)
+        if (!res.ok) return
+        const data: PipelineRunData = await res.json()
+        // Update logs
+        setLogs((data.logs ?? []).map(l => {
+          const prefix = l.level === 'error' ? '[ERROR] ' : ''
+          return prefix + l.message
+        }))
+        // Update step status
+        setStepRuns(prev => ({ ...prev, [data.pipeline_type]: data }))
+        // If done, stop polling
+        if (data.status !== 'running') {
+          if (data.status === 'completed') {
+            setLogs(prev => [...prev, '--- 完成 ---'])
+          }
+          setRunning(false)
+          stopPolling()
+        }
+      } catch { /* ignore */ }
+    }, 2000)
+  }
+
+  function stopPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+    pollingRunIdRef.current = null
+  }
+
+  // Cleanup on unmount
+  useEffect(() => () => stopPolling(), [])
 
   async function handleStep(step: typeof PIPELINE_STEPS[number]) {
     setRunningStep(step.key)
-    if (step.isStream) {
-      await run(step.endpoint)
-    } else {
-      // Non-stream: simple POST/GET
-      try {
-        const res = await fetch(step.endpoint)
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}))
-          // Show result in a simple way
-          const msg = data.message || data.status || '完成'
-          run(step.endpoint) // fallback: just show it ran
-          void msg
-        }
-      } catch { /* ignore */ }
-    }
+    setActiveStep(step.key)
+    await run(step.endpoint)
     setRunningStep(null)
+    // Refresh runs after completion
+    try {
+      const res = await fetch('/api/pipeline/runs')
+      if (res.ok) setStepRuns(await res.json())
+    } catch { /* ignore */ }
+  }
+
+  async function handleCancel() {
+    const id = runId ?? pollingRunIdRef.current
+    if (!id) return
+    try {
+      await adminFetch('/api/pipeline/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId: id }),
+      })
+      setLogs(prev => [...prev, '[取消] 已发送取消请求...'])
+    } catch { /* ignore */ }
   }
 
   async function handleReset() {
     setShowResetConfirm(false)
     setResetStatus('重置中...')
     try {
-      // Delete all atomic_facts, weekly_snapshots, reports for current week
-      const res = await fetch('/api/admin/reset', { method: 'POST' })
-      if (res.ok) {
-        setResetStatus('数据已重置')
-      } else {
-        setResetStatus('重置失败')
-      }
+      const res = await adminFetch('/api/admin/reset', { method: 'POST' })
+      setResetStatus(res.ok ? '数据已重置' : '重置失败')
     } catch {
       setResetStatus('重置失败')
     }
@@ -235,31 +349,104 @@ function PipelineTab() {
 
       <Card>
         <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>流水线步骤</p>
-        <div className="space-y-2">
-          {PIPELINE_STEPS.map(step => (
-            <div key={step.key} className="flex items-center justify-between py-2 px-3 rounded-md border"
-              style={{ borderColor: 'var(--border)' }}>
-              <div>
-                <p className="text-[13px] font-medium" style={{ color: 'var(--fg-body)' }}>{step.label}</p>
-                <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{step.desc}</p>
-              </div>
-              <button
-                onClick={() => handleStep(step)}
-                disabled={running || runningStep !== null}
-                className="px-4 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
-                style={{
-                  borderColor: runningStep === step.key ? 'var(--accent)' : 'var(--border)',
-                  color: runningStep === step.key ? 'var(--accent)' : 'var(--fg-secondary)',
-                  opacity: (running || runningStep !== null) ? 0.5 : 1,
-                }}>
-                {runningStep === step.key ? '运行中...' : '执行'}
-              </button>
-            </div>
-          ))}
-        </div>
+        {loadingRuns ? (
+          <p className="text-[12px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>加载状态...</p>
+        ) : (
+          <div className="space-y-2">
+            {PIPELINE_STEPS.map(step => {
+              const stepRun = stepRuns[step.pipelineType]
+              const sc = statusColor(stepRun?.status)
+              const isActive = activeStep === step.key
+              return (
+                <div key={step.key}
+                  className="flex items-center justify-between py-2.5 px-3 rounded-md border cursor-pointer transition-colors"
+                  style={{
+                    borderColor: isActive ? 'var(--accent)' : 'var(--border)',
+                    background: isActive ? 'var(--accent-soft)' : 'transparent',
+                  }}
+                  onClick={() => {
+                    if (stepRun) {
+                      setActiveStep(step.key)
+                      restore(stepRun.logs ?? [], stepRun.status, stepRun.id)
+                      if (stepRun.status === 'running') startPolling(stepRun.id)
+                    }
+                  }}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[13px] font-medium" style={{ color: 'var(--fg-body)' }}>{step.label}</p>
+                        {stepRun && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                            style={{ background: sc.bg, color: sc.fg }}>
+                            {sc.label}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>
+                        {step.desc}
+                        {stepRun?.started_at && (
+                          <span className="ml-2">· {formatTime(stepRun.started_at)}</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {runningStep === step.key && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCancel() }}
+                        className="px-3 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
+                        style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
+                        取消
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleStep(step) }}
+                      disabled={running || runningStep !== null}
+                      className="px-4 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
+                      style={{
+                        borderColor: runningStep === step.key ? 'var(--accent)' : 'var(--border)',
+                        color: runningStep === step.key ? 'var(--accent)' : 'var(--fg-secondary)',
+                        opacity: (running || runningStep !== null) ? 0.5 : 1,
+                      }}>
+                      {runningStep === step.key ? '运行中...' : '执行'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </Card>
 
-      <LogPanel logs={logs} logsEndRef={logsEndRef} />
+      {/* Log panel with step context */}
+      {logs.length > 0 && (
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[11px] font-medium tracking-wider uppercase" style={{ color: 'var(--fg-muted)' }}>
+              {activeStep ? PIPELINE_STEPS.find(s => s.key === activeStep)?.label + ' — ' : ''}日志
+            </p>
+            {running && (
+              <span className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--accent)' }}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
+                实时
+              </span>
+            )}
+          </div>
+          <div className="font-mono text-[11px] leading-relaxed rounded-md p-3 overflow-auto"
+            style={{ background: 'var(--surface-alt)', color: 'var(--fg-secondary)', maxHeight: '500px' }}>
+            {logs.map((log, i) => (
+              <div key={i} style={{
+                color: log.includes('[ERROR]') ? 'var(--danger)'
+                  : log.includes('完成') || log.includes('--- 完成 ---') ? 'var(--success)'
+                  : undefined
+              }}>
+                {log}
+              </div>
+            ))}
+            <div ref={logsEndRef} />
+          </div>
+        </Card>
+      )}
 
       {/* DEV: Data Reset */}
       <Card>
@@ -292,7 +479,7 @@ function PreviewTab() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/reports')
+    adminFetch('/api/reports')
       .then(r => r.json())
       .then((data: ReportData[]) => {
         setReports(data)
@@ -348,7 +535,7 @@ function SubscribersTab() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/subscribers')
+      const res = await adminFetch('/api/subscribers')
       if (res.ok) {
         const data = await res.json()
         setSubscribers(Array.isArray(data) ? data : data.data ?? [])
@@ -364,7 +551,7 @@ function SubscribersTab() {
     if (!email || adding) return
     setAdding(true)
     try {
-      const res = await fetch('/api/subscribe', {
+      const res = await adminFetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -377,7 +564,7 @@ function SubscribersTab() {
   async function handleToggle(id: string, currentStatus: string) {
     const newStatus = currentStatus === 'active' ? 'unsubscribed' : 'active'
     try {
-      await fetch('/api/subscribers', {
+      await adminFetch('/api/subscribers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status: newStatus }),
@@ -447,17 +634,16 @@ function SubscribersTab() {
 }
 
 /* ──────────────────────────────────────────
-   Main Admin Page: 4 Tabs
+   Main Admin Page: 3 Tabs
    ────────────────────────────────────────── */
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'generate', label: '运行周报' },
   { key: 'pipeline', label: '流水线' },
   { key: 'preview', label: '预览邮件' },
   { key: 'subscribers', label: '订阅者' },
 ]
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<Tab>('generate')
+  const [tab, setTab] = useState<Tab>('pipeline')
 
   return (
     <div>
@@ -481,7 +667,6 @@ export default function AdminPage() {
       </div>
 
       {/* Tab content */}
-      {tab === 'generate' && <GenerateTab />}
       {tab === 'pipeline' && <PipelineTab />}
       {tab === 'preview' && <PreviewTab />}
       {tab === 'subscribers' && <SubscribersTab />}

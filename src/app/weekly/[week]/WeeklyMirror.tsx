@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import type { WeeklyStats } from '@/lib/weekly-data'
 
-/* ── Types matching V11 format stored in weekly_summary_detailed ── */
+/* ── Types matching V12 format ── */
 
 interface NarrativeData {
   topic: string
@@ -40,17 +40,23 @@ const CATEGORY_LABELS: Record<string, string> = {
   market_structure: '市场结构',
   product: '产品动态',
   onchain_data: '链上数据',
-  // V10 fallback
   milestone: '里程碑',
   data: '数据',
 }
+
+// V12 semantic colors
+const COLOR = {
+  narrative: '#2563eb',    // blue-600
+  context: '#059669',      // emerald-600
+  narrativeBg: 'rgba(37,99,235,0.06)',
+} as const
 
 export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
   const [expandedNarrative, setExpandedNarrative] = useState<number | null>(null)
   const [factSearch, setFactSearch] = useState('')
   const [factTagFilter, setFactTagFilter] = useState<string | null>(null)
 
-  // Parse the V11/V10 format
+  // Parse format
   let oneLiner = ''
   let marketLine = ''
   let narratives: NarrativeData[] = []
@@ -63,7 +69,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
     narratives = parsed.narratives || []
     signals = parsed.signals || []
 
-    // Fallback: V9 format with news + narratives
+    // Fallback: V9 format
     if (!oneLiner && parsed.news && Array.isArray(parsed.news)) {
       const news = parsed.news as { simple_zh?: string; what_happened_zh?: string; tags?: string[]; source_url?: string | null }[]
       oneLiner = news.slice(0, 2).map(n => n.simple_zh || '').filter(Boolean).join('; ')
@@ -84,7 +90,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
   }
   const categoryOrder = ['market_structure', 'product', 'onchain_data', 'milestone', 'data']
 
-  // All facts search/filter
+  // Facts search/filter
   const allTags = useMemo(() => {
     if (!allFacts) return []
     const tagSet = new Set<string>()
@@ -113,12 +119,12 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
       {(oneLiner || marketLine) && (
         <div className="px-4 py-3 rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           {marketLine && (
-            <p className="text-[12px] font-mono mb-2" style={{ color: 'var(--fg-muted)' }}>
+            <p className="text-[13px] font-mono mb-2" style={{ color: 'var(--fg-muted)' }}>
               {marketLine}
             </p>
           )}
           {oneLiner && (
-            <p className="text-[14px] font-semibold leading-relaxed" style={{ color: 'var(--fg-title)' }}>
+            <p className="text-[15px] font-semibold leading-relaxed" style={{ color: 'var(--fg-title)' }}>
               {oneLiner}
             </p>
           )}
@@ -128,7 +134,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
       {/* Narratives */}
       {narratives.length > 0 && (
         <div>
-          <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: '#3b82f6' }}>
+          <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: COLOR.narrative }}>
             叙事追踪
           </h2>
           <div className="space-y-3">
@@ -136,11 +142,11 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
               <div key={idx} className="rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
                 <div className="px-4 py-3">
                   <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-[14px] font-semibold" style={{ color: 'var(--fg-title)' }}>
+                    <h3 className="text-[15px] font-semibold" style={{ color: 'var(--fg-title)' }}>
                       {n.topic}
                     </h3>
                     {n.weekCount && n.weekCount > 1 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ color: '#3b82f6', background: 'rgba(59,130,246,0.1)' }}>
+                      <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ color: COLOR.narrative, background: COLOR.narrativeBg }}>
                         第{n.weekCount}周
                       </span>
                     )}
@@ -148,29 +154,29 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
 
                   {/* Origin */}
                   {n.origin && (
-                    <p className="text-[12px] leading-relaxed mb-2 pl-3 border-l-2" style={{ color: 'var(--fg-muted)', borderColor: 'var(--border)' }}>
+                    <p className="text-[13px] leading-relaxed mb-2 pl-3 border-l-2" style={{ color: 'var(--fg-muted)', borderColor: 'var(--border)' }}>
                       起点: {n.origin}
                     </p>
                   )}
 
                   {/* Last week */}
                   {n.last_week && n.last_week !== '首次追踪' && (
-                    <p className="text-[12px] leading-relaxed mb-1 pl-3 border-l-2" style={{ color: 'var(--fg-muted)', borderColor: 'var(--border)' }}>
+                    <p className="text-[13px] leading-relaxed mb-1 pl-3 border-l-2" style={{ color: 'var(--fg-muted)', borderColor: 'var(--border)' }}>
                       上周: {n.last_week}
                     </p>
                   )}
 
                   {/* This week */}
-                  <p className="text-[13px] leading-relaxed mb-2 pl-3 border-l-2" style={{ color: 'var(--fg-secondary)', borderColor: '#10b981' }}>
+                  <p className="text-[13px] leading-relaxed mb-2 pl-3 border-l-2" style={{ color: 'var(--fg-secondary)', borderColor: COLOR.context }}>
                     本周: {n.this_week}
                   </p>
 
                   {/* Context block */}
                   {n.context && n.context.length > 0 && (
-                    <div className="mt-2 mb-2 pl-3 py-2 rounded" style={{ background: 'rgba(16,185,129,0.05)' }}>
-                      <p className="text-[11px] font-semibold mb-1" style={{ color: '#10b981' }}>上下文</p>
+                    <div className="mt-2 mb-2 pl-3 py-2 rounded" style={{ background: 'rgba(5,150,105,0.05)' }}>
+                      <p className="text-[11px] font-semibold mb-1" style={{ color: COLOR.context }}>上下文</p>
                       {n.context.map((c, ci) => (
-                        <p key={ci} className="text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+                        <p key={ci} className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
                           · {c}
                         </p>
                       ))}
@@ -179,7 +185,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
 
                   {/* Timeline */}
                   {n.timeline && (
-                    <p className="text-[12px] leading-relaxed mb-1 pl-3" style={{ color: 'var(--fg-muted)' }}>
+                    <p className="text-[13px] leading-relaxed mb-1 pl-3" style={{ color: 'var(--fg-muted)' }}>
                       时间线: {n.timeline}
                     </p>
                   )}
@@ -196,7 +202,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
                       {expandedNarrative === idx && (
                         <div className="mt-2 pl-3 border-l space-y-1.5" style={{ borderColor: 'var(--border)' }}>
                           {n.facts.map((f, fi) => (
-                            <div key={fi} className="text-[12px]" style={{ color: 'var(--fg-muted)' }}>
+                            <div key={fi} className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
                               <span className="font-mono mr-2">{f.date}</span>
                               <span>{f.content}</span>
                               {f.source_url && (
@@ -221,14 +227,14 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
       {/* Signals */}
       {signals.length > 0 && (
         <div>
-          <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: '#10b981' }}>
+          <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: COLOR.context }}>
             本周事实
           </h2>
           <div className="rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <div className="px-4 py-3 space-y-4">
               {categoryOrder.filter(cat => grouped[cat]?.length).map(cat => (
                 <div key={cat}>
-                  <p className="text-[12px] font-semibold mb-1.5" style={{ color: 'var(--fg-muted)' }}>
+                  <p className="text-[13px] font-semibold mb-1.5" style={{ color: 'var(--fg-muted)' }}>
                     {CATEGORY_LABELS[cat]}:
                   </p>
                   <div className="space-y-1.5">
@@ -267,7 +273,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
         </div>
       )}
 
-      {/* ─── Full facts section (below mirror) ─── */}
+      {/* Full facts section */}
       {allFacts && allFacts.length > 0 && (
         <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
           <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
@@ -281,7 +287,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
               value={factSearch}
               onChange={e => setFactSearch(e.target.value)}
               placeholder="搜索事实..."
-              className="flex-1 min-w-[200px] px-3 py-1.5 rounded-md border text-[12px] outline-none"
+              className="flex-1 min-w-[200px] px-3 py-1.5 rounded-md border text-[13px] outline-none"
               style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }}
             />
             {factTagFilter && (
@@ -301,7 +307,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
                 <button
                   key={tag}
                   onClick={() => setFactTagFilter(tag)}
-                  className="px-2 py-0.5 rounded text-[10px] border transition-colors hover:border-[var(--accent-muted)]"
+                  className="px-2 py-0.5 rounded text-[11px] border transition-colors hover:border-[var(--accent-muted)]"
                   style={{ borderColor: 'var(--border)', color: 'var(--fg-muted)' }}>
                   {tag}
                 </button>
@@ -312,7 +318,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
           {/* Facts list */}
           <div className="space-y-1">
             {filteredFacts.slice(0, 50).map((f, i) => (
-              <div key={i} className="flex gap-2 py-1.5 px-2 rounded text-[12px] hover:bg-[var(--surface)]">
+              <div key={i} className="flex gap-2 py-1.5 px-2 rounded text-[13px] hover:bg-[var(--surface)]">
                 <span className="font-mono shrink-0" style={{ color: 'var(--fg-muted)', minWidth: '70px' }}>{f.date}</span>
                 <span style={{ color: 'var(--fg-secondary)' }}>{f.content}</span>
                 {f.source_url && (
@@ -329,7 +335,7 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts }: Props) {
               </p>
             )}
             {filteredFacts.length === 0 && (
-              <p className="text-[12px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>无匹配事实</p>
+              <p className="text-[13px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>无匹配事实</p>
             )}
           </div>
         </div>

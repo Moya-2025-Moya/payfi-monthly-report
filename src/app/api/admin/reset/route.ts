@@ -1,8 +1,12 @@
 // DEV: Reset all data — clears atomic_facts, weekly_snapshots, reports
 import { supabaseAdmin } from '@/db/client'
 import { NextResponse } from 'next/server'
+import { verifyAdminToken } from '@/lib/admin-auth'
 
-export async function POST() {
+export async function POST(request: Request) {
+  const authError = verifyAdminToken(request)
+  if (authError) return authError
+
   try {
     // Delete in order to respect potential FK constraints
     await supabaseAdmin.from('reports').delete().neq('id', '00000000-0000-0000-0000-000000000000')

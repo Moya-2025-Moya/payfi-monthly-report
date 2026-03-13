@@ -1,9 +1,8 @@
-// StablePulse Weekly Email — V11 上下文引擎版
-// Layer 1 (2s): 数字先行 + one-liner
-// Layer 2 (30s): 3 narratives (起点/上周/本周/上下文区块/时间线)
-// Layer 3 (2min): 5 signals by category, 每条含 inline 上下文
-// Footer: 极简数据来源
-// AI boundary: 零意见 — 结构化事实对比允许，预测/评价禁止
+// StablePulse Weekly Email — V12 Light Theme
+// Pure <table> layout, no CSS3 (no border-radius, no rgba)
+// Light theme: #ffffff / #f7f7f7 / #333333
+// font-size >= 13px (except metadata labels)
+// MSO conditional comments for Outlook
 
 const SITE_URL = 'https://payfi-monthly-report.vercel.app'
 
@@ -12,22 +11,22 @@ const SITE_URL = 'https://payfi-monthly-report.vercel.app'
 export interface NarrativeForEmail {
   topic: string
   weekCount?: number
-  origin?: string          // 叙事起点 (e.g. "2026.02.15 Circle 启动 IPO 流程")
+  origin?: string
   last_week: string
   this_week: string
   timeline?: string
-  context?: string[]       // 2-3 条结构化上下文 (mandatory in V11)
+  context?: string[]
 }
 
 export interface SignalItem {
   category: 'market_structure' | 'product' | 'onchain_data'
   text: string
-  context?: string         // inline 上下文 (e.g. "DAI 达 $5B TVL 用时 3 年")
+  context?: string
 }
 
 export interface EmailData {
-  weekDate: string         // e.g. "3月10日 - 3月16日"
-  marketLine?: string      // e.g. "USDC $60.2B (+2.1%) · USDT $144.1B (+0.8%) · 稳定币总市值 $205B"
+  weekDate: string
+  marketLine?: string
   oneLiner: string
   narratives: NarrativeForEmail[]
   signals: SignalItem[]
@@ -46,40 +45,40 @@ const CATEGORY_LABELS: Record<string, string> = {
 export function generateEmailHTML(data: EmailData): string {
   const { weekDate, marketLine, oneLiner, narratives, signals } = data
 
-  // Layer 2: Narratives as HTML table blocks
+  // Layer 2: Narratives
   const narrativesHTML = narratives.slice(0, 3).map(n => {
     const weekBadge = n.weekCount && n.weekCount > 1
-      ? `<span style="display:inline-block;font-size:10px;color:#3b82f6;background:rgba(59,130,246,0.1);padding:1px 6px;border-radius:3px;margin-left:8px;">第${n.weekCount}周</span>`
+      ? `<span style="display:inline-block;font-size:11px;color:#2563eb;background:#eff6ff;padding:1px 6px;margin-left:8px;">第${n.weekCount}周</span>`
       : ''
 
     const originLine = n.origin
-      ? `<tr><td style="padding:6px 12px;font-size:12px;color:#888;line-height:1.6;border-bottom:1px solid #1a1a1a;">起点: ${esc(n.origin)}</td></tr>`
+      ? `<tr><td style="padding:4px 16px;font-size:13px;color:#666666;line-height:1.6;border-bottom:1px solid #eeeeee;">起点: ${esc(n.origin)}</td></tr>`
       : ''
 
     const lastWeekLine = n.last_week && n.last_week !== '首次追踪'
-      ? `<tr><td style="padding:6px 12px;font-size:12px;color:#888;line-height:1.6;"><span style="color:#666;">上周</span>  ${esc(n.last_week)}</td></tr>`
+      ? `<tr><td style="padding:4px 16px;font-size:13px;color:#666666;line-height:1.6;"><span style="color:#999999;">上周</span>&nbsp;&nbsp;${esc(n.last_week)}</td></tr>`
       : ''
-    const thisWeekLine = `<tr><td style="padding:6px 12px;font-size:13px;color:#ccc;line-height:1.6;"><span style="color:#888;">本周</span>  ${esc(n.this_week)}</td></tr>`
 
-    // Context block (mandatory)
+    const thisWeekLine = `<tr><td style="padding:4px 16px;font-size:14px;color:#333333;line-height:1.6;"><span style="color:#999999;">本周</span>&nbsp;&nbsp;${esc(n.this_week)}</td></tr>`
+
     let contextBlock = ''
     if (n.context && n.context.length > 0) {
       const contextItems = n.context.map(c =>
-        `<tr><td style="padding:2px 12px 2px 16px;font-size:12px;color:#aaa;line-height:1.7;">· ${esc(c)}</td></tr>`
+        `<tr><td style="padding:2px 16px 2px 24px;font-size:13px;color:#666666;line-height:1.7;">&middot; ${esc(c)}</td></tr>`
       ).join('\n')
       contextBlock = `
-        <tr><td style="padding:8px 12px 4px;font-size:11px;font-weight:600;color:#10b981;letter-spacing:0.5px;">上下文</td></tr>
+        <tr><td style="padding:8px 16px 2px;font-size:11px;font-weight:bold;color:#059669;letter-spacing:0.5px;">上下文</td></tr>
         ${contextItems}`
     }
 
     const timelineLine = n.timeline
-      ? `<tr><td style="padding:6px 12px;font-size:12px;color:#666;line-height:1.6;">时间线: ${esc(n.timeline)}</td></tr>`
+      ? `<tr><td style="padding:4px 16px;font-size:13px;color:#999999;line-height:1.6;">时间线: ${esc(n.timeline)}</td></tr>`
       : ''
 
-    return `<tr><td style="padding:0 0 16px;">
-      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #222;border-radius:6px;overflow:hidden;">
-        <tr><td style="padding:10px 12px 6px;">
-          <span style="font-size:14px;font-weight:700;color:#e5e5e5;">${esc(n.topic)}</span>${weekBadge}
+    return `<tr><td style="padding:0 0 12px;">
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e5e5e5;">
+        <tr><td style="padding:10px 16px 6px;">
+          <span style="font-size:15px;font-weight:bold;color:#111111;">${esc(n.topic)}</span>${weekBadge}
         </td></tr>
         ${originLine}
         ${lastWeekLine}
@@ -104,50 +103,73 @@ export function generateEmailHTML(data: EmailData): string {
     .map(cat => {
       const items = grouped[cat]!.map(s => {
         const contextLine = s.context
-          ? `<br><span style="font-size:11px;color:#888;padding-left:10px;">  ${esc(s.context)}</span>`
+          ? `<br><span style="font-size:13px;color:#999999;padding-left:12px;">&nbsp;&nbsp;${esc(s.context)}</span>`
           : ''
-        return `<tr><td style="padding:2px 0 4px 8px;font-size:13px;color:#ccc;line-height:1.7;">· ${esc(s.text)}${contextLine}</td></tr>`
+        return `<tr><td style="padding:2px 0 4px 8px;font-size:14px;color:#333333;line-height:1.7;">&middot; ${esc(s.text)}${contextLine}</td></tr>`
       }).join('\n')
       return `<tr><td style="padding:0 0 12px;">
-        <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#888;">${esc(CATEGORY_LABELS[cat] ?? cat)}</p>
-        <table cellpadding="0" cellspacing="0" border="0" width="100%">${items}</table>
+        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr><td style="padding:0 0 4px;font-size:13px;font-weight:bold;color:#666666;">${esc(CATEGORY_LABELS[cat] ?? cat)}</td></tr>
+          ${items}
+        </table>
       </td></tr>`
     }).join('\n')
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <title>StablePulse | ${esc(weekDate)}</title>
-  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:AllowPNG/>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <!--[if mso]>
+  <style type="text/css">
+    table { border-collapse: collapse; }
+    td { font-family: Arial, sans-serif; }
+  </style>
+  <![endif]-->
 </head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<body style="margin:0;padding:0;background-color:#f7f7f7;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 
-<table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0a0a0a;">
+<!--[if mso]><table cellpadding="0" cellspacing="0" border="0" width="600" align="center"><tr><td><![endif]-->
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f7f7f7;">
 <tr><td align="center" style="padding:24px 16px;">
 
-<table cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;">
+<table cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background-color:#ffffff;">
 
-  <!-- Header: STABLEPULSE + date -->
-  <tr><td style="padding:28px 32px 8px;">
-    <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:3px;color:#10b981;">STABLEPULSE</p>
-    <p style="margin:4px 0 0;font-size:12px;color:#666;">${esc(weekDate)}</p>
+  <!-- Header -->
+  <tr><td style="padding:28px 32px 8px;border-bottom:2px solid #059669;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr>
+        <td style="font-size:11px;font-weight:bold;letter-spacing:3px;color:#059669;">STABLEPULSE</td>
+        <td align="right" style="font-size:13px;color:#999999;">${esc(weekDate)}</td>
+      </tr>
+    </table>
   </td></tr>
 
-  <!-- Layer 1: Market numbers + one-liner -->
-  <tr><td style="padding:16px 32px 12px;">
-    ${marketLine ? `<p style="margin:0 0 10px;font-size:13px;color:#aaa;font-family:monospace;line-height:1.6;">${esc(marketLine)}</p>` : ''}
-    <p style="margin:0;font-size:14px;font-weight:600;color:#e5e5e5;line-height:1.6;">
+  <!-- Layer 1: Market + one-liner -->
+  <tr><td style="padding:20px 32px 16px;">
+    ${marketLine ? `<p style="margin:0 0 10px;font-size:14px;color:#666666;font-family:'Courier New',Courier,monospace;line-height:1.6;">${esc(marketLine)}</p>` : ''}
+    <p style="margin:0;font-size:15px;font-weight:bold;color:#111111;line-height:1.6;">
       ${esc(oneLiner)}
     </p>
   </td></tr>
 
-  <tr><td style="padding:0 32px;"><div style="border-top:1px solid #222;"></div></td></tr>
+  <tr><td style="padding:0 32px;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #eeeeee;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
 
   <!-- Layer 2: Narrative Tracking -->
   <tr><td style="padding:20px 32px 4px;">
-    <p style="margin:0 0 14px;font-size:11px;font-weight:600;letter-spacing:2px;color:#3b82f6;">叙事追踪</p>
+    <p style="margin:0 0 14px;font-size:11px;font-weight:bold;letter-spacing:2px;color:#2563eb;">叙事追踪</p>
   </td></tr>
 
   <tr><td style="padding:0 32px;">
@@ -156,11 +178,11 @@ export function generateEmailHTML(data: EmailData): string {
     </table>
   </td></tr>
 
-  <tr><td style="padding:0 32px;"><div style="border-top:1px solid #222;"></div></td></tr>
+  <tr><td style="padding:0 32px;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #eeeeee;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
 
   <!-- Layer 3: Signals -->
   <tr><td style="padding:20px 32px 4px;">
-    <p style="margin:0 0 14px;font-size:11px;font-weight:600;letter-spacing:2px;color:#10b981;">本周事实</p>
+    <p style="margin:0 0 14px;font-size:11px;font-weight:bold;letter-spacing:2px;color:#059669;">本周事实</p>
   </td></tr>
 
   <tr><td style="padding:0 32px;">
@@ -171,29 +193,33 @@ export function generateEmailHTML(data: EmailData): string {
 
   <!-- Footer -->
   <tr><td style="padding:20px 32px 8px;">
-    <div style="border-top:1px solid #222;padding-top:16px;">
-      <p style="margin:0 0 10px;font-size:11px;color:#555;text-align:center;">
-        数据来源: RSS + SEC EDGAR + DeFiLlama · AI 多源交叉验证
-      </p>
-      <p style="margin:0 0 10px;text-align:center;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #eeeeee;font-size:1px;line-height:1px;">&nbsp;</td></tr></table>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="padding-top:16px;">
+      <tr><td align="center" style="font-size:13px;color:#999999;padding:8px 0;">
+        数据来源: RSS + SEC EDGAR + DeFiLlama &middot; AI 多源交叉验证
+      </td></tr>
+      <tr><td align="center" style="padding:4px 0 8px;">
         <a href="${SITE_URL}/weekly/current" target="_blank"
-          style="font-size:12px;color:#10b981;text-decoration:none;">浏览器中查看完整事实 →</a>
-      </p>
-    </div>
+          style="font-size:14px;color:#059669;text-decoration:none;">查看完整周报 &rarr;</a>
+      </td></tr>
+    </table>
   </td></tr>
 
-  <tr><td style="padding:12px 32px 24px;border-top:1px solid #222;">
-    <p style="margin:0 0 4px;font-size:11px;color:#444;text-align:center;letter-spacing:1px;">STABLEPULSE</p>
-    <p style="margin:0 0 8px;font-size:11px;color:#333;text-align:center;">稳定币行业上下文引擎 · 内部参考</p>
-    <p style="margin:0;font-size:11px;text-align:center;">
-      <a href="{{unsubscribe_url}}" style="color:#444;text-decoration:underline;">退订</a>
-    </p>
+  <tr><td style="padding:12px 32px 24px;border-top:1px solid #eeeeee;background-color:#f7f7f7;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr><td align="center" style="font-size:11px;color:#999999;letter-spacing:1px;padding:4px 0;">STABLEPULSE</td></tr>
+      <tr><td align="center" style="font-size:13px;color:#999999;padding:2px 0;">稳定币行业上下文引擎 &middot; 内部参考</td></tr>
+      <tr><td align="center" style="padding:4px 0;">
+        <a href="{{unsubscribe_url}}" style="font-size:13px;color:#999999;text-decoration:underline;">退订</a>
+      </td></tr>
+    </table>
   </td></tr>
 
 </table>
 
 </td></tr>
 </table>
+<!--[if mso]></td></tr></table><![endif]-->
 
 </body>
 </html>`

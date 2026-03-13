@@ -167,9 +167,23 @@ speaker 字段必须包含足够信息让读者理解发言人身份：
 
 每个事实打1-5个标签。标签规则：
 - 使用英文小写
-- 包含涉及的实体名（如 circle, usdc, stripe）
-- 包含涉及的主题（如 ipo, revenue, regulation, market_cap）
-- 包含涉及的赛道（如 payments, defi, issuance）
+- **优先使用以下标准标签**（系统会自动归一化，但使用标准标签可以提高匹配率）
+
+### 实体标签（优先级最高，涉及哪个实体就打哪个）
+aave, agora, blackrock, block, bridge, circle, coinbase, curve, ethena, federal reserve, fireblocks, frax, jpmorgan, makerdao, mastercard, occ, paypal, robinhood, sec, stripe, tether, uniswap, visa, zero hash
+
+### 主题标签
+- 业务事件: ipo, acquisition, partnership, funding, launch, listing, delisting
+- 财务指标: revenue, market_cap, tvl, volume, supply, reserves, aum
+- 监管: regulation, legislation, enforcement, compliance, license, audit
+- 产品: payments, cross_border, remittance, wallet, custody, settlement
+- 技术: defi, lending, yield, bridge, l2, smart_contract
+- 赛道: issuance, infrastructure, tradfi, cbdc
+- 文件: s-1, 10-k, 10-q, 8-k
+
+### 规则
+- 不在上述列表中的标签也可以使用，但优先选择已有标签
+- 别名自动归一化：usdc→circle, usdt→tether, pyusd→paypal, dai→makerdao, usde→ethena
 
 ## Step 8: 标注证据句
 

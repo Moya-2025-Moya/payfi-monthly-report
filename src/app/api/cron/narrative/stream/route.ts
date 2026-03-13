@@ -6,6 +6,7 @@ import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
 import { callHaikuJSON } from '@/lib/ai-client'
 import { searchWeb } from '@/lib/web-search'
 import { createPipelineLogger } from '@/lib/pipeline-logger'
+import { verifyAdminToken } from '@/lib/admin-auth'
 import type { AtomicFact } from '@/lib/types'
 
 export const maxDuration = 300
@@ -410,7 +411,10 @@ predictions 必须是可以在未来验证对错的具体预测，不是模糊�
 
 // ─── Main SSE route ───
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authError = verifyAdminToken(request)
+  if (authError) return authError
+
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({

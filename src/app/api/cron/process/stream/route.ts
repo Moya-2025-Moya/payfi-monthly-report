@@ -17,6 +17,7 @@ import { adjudicate } from '@/modules/ai-agents/validators/adjudicator'
 import { getVerifiersForFact } from '@/config/verification-strategy'
 
 import { createPipelineLogger, PipelineCancelledError } from '@/lib/pipeline-logger'
+import { verifyAdminToken } from '@/lib/admin-auth'
 import type { AtomicFact } from '@/lib/types'
 
 export const maxDuration = 600
@@ -28,6 +29,9 @@ const RAW_TABLE_NAMES: Record<string, string> = {
 }
 
 export async function GET(request: Request) {
+  const authError = verifyAdminToken(request)
+  if (authError) return authError
+
   const url = new URL(request.url)
   const fromStage = parseInt(url.searchParams.get('from') ?? '1', 10)
   const isTest = url.searchParams.get('test') === 'true'

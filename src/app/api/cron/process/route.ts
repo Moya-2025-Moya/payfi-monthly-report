@@ -3,10 +3,13 @@
 
 import { NextResponse } from 'next/server'
 import { runDailyPipeline } from '@/modules/ai-agents/orchestrator'
+import { verifyAdminToken } from '@/lib/admin-auth'
 
 export const maxDuration = 300
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authError = verifyAdminToken(request)
+  if (authError) return authError
   try {
     const stats = await runDailyPipeline()
     console.log('[Cron] Daily pipeline done:', stats)

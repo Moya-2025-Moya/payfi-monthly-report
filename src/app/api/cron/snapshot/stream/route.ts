@@ -8,13 +8,18 @@ import { generateEmailHTML, weekToDateRange, weekToMondayDate } from '@/lib/emai
 import { saveCheckpoint, loadCheckpoint, clearCheckpoints } from '@/lib/pipeline-checkpoint'
 import { saveWeeklySnapshot } from '@/lib/weekly-data'
 import { generateFactContext } from '@/lib/context-engine'
+import { adversarialCheck } from '@/lib/adversarial-check'
+import { growKnowledgeBase } from '@/lib/knowledge-growth'
+import { verifyAdminToken } from '@/lib/admin-auth'
 import type { EmailData, NarrativeForEmail, SignalItem } from '@/lib/email-template'
 
 export const maxDuration = 120
 
 const PIPELINE_NAME = 'snapshot'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authError = verifyAdminToken(request)
+  if (authError) return authError
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -187,13 +192,44 @@ ${batchInput}`,
               .limit(60)
 
             if (topFacts && topFacts.length > 0) {
+              // Fetch active narrative threads with their last_week entries
               const { data: activeThreads } = await supabaseAdmin
                 .from('narrative_threads')
-                .select('id, topic, slug')
+                .select('id, topic, slug, total_weeks, key_entities')
                 .in('status', ['active', 'dormant'])
                 .order('last_updated_week', { ascending: false })
                 .limit(10)
-              const threadTopics = (activeThreads ?? []).map(t => t.topic.replace(/[#\n\r`]/g, ' ').slice(0, 200))
+
+              // Compute previous week string
+              const wMatch = weekNumber.match(/^(\d{4})-W(\d{2})$/)
+              let prevWeek = ''
+              if (wMatch) {
+                const yr = Number(wMatch[1])
+                const wn = Number(wMatch[2]) - 1
+                prevWeek = wn < 1 ? `${yr - 1}-W${String(52 + wn).padStart(2, '0')}` : `${yr}-W${String(wn).padStart(2, '0')}`
+              }
+
+              // Fetch last week's entries for each thread
+              const threadIds = (activeThreads ?? []).map(t => t.id)
+              const { data: prevEntries } = threadIds.length > 0 && prevWeek
+                ? await supabaseAdmin
+                    .from('narrative_thread_entries')
+                    .select('thread_id, summary, next_week_watch')
+                    .eq('week_number', prevWeek)
+                    .in('thread_id', threadIds)
+                : { data: null }
+
+              const prevEntryMap = new Map(
+                (prevEntries ?? []).map(e => [e.thread_id, { summary: e.summary, next_week_watch: e.next_week_watch }])
+              )
+
+              // Build thread info with real last_week data
+              const threadInfoLines = (activeThreads ?? []).map((t, i) => {
+                const prev = prevEntryMap.get(t.id)
+                const lastWeekText = prev ? prev.summary : '(无上周数据)'
+                const watchText = prev?.next_week_watch ? ` | 关注: ${prev.next_week_watch}` : ''
+                return `${i + 1}. ${t.topic} (第${t.total_weeks}周) — 上周: ${lastWeekText}${watchText}`
+              })
 
               const factsText = topFacts
                 .map((f, i) => `[${i}] [${f.fact_type}] ${f.content_zh || f.content_en} (${String(f.fact_date).split('T')[0]}) [tags: ${f.tags.join(', ')}]${f.source_url ? ` [url: ${f.source_url}]` : ''}`)
@@ -220,8 +256,8 @@ ${batchInput}`,
               }>(
                 `你是稳定币行业事实聚合工具。从以下本周事实中选取并组织周报内容。
 
-已有叙事线索:
-${threadTopics.length > 0 ? threadTopics.map((t, i) => `${i + 1}. ${t}`).join('\n') : '(暂无)'}
+已有叙事线索（含上周真实进展）:
+${threadInfoLines.length > 0 ? threadInfoLines.join('\n') : '(暂无)'}
 
 任务:
 1. one_liner: 一句话概括本周（纯事实，如 "Circle S-1 修订提交; GENIUS Act 过委员会"）
@@ -233,7 +269,7 @@ ${threadTopics.length > 0 ? threadTopics.map((t, i) => `${i + 1}. ${t}`).join('\
 - topic: 主题名（如 "Circle IPO 进程"）
 - week_count: 追踪第几周（首次=1）
 - origin: 叙事起点（一句话，如 "2026.02.15 Circle 宣布启动 IPO 流程"），首次追踪必填
-- last_week: 上周进展（1句事实，首次写 "首次追踪"）
+- last_week: 上周进展（直接复制上方叙事线索中的"上周"内容，首次写 "首次追踪"。禁止编造上周数据）
 - this_week: 本周进展（1-2句事实）
 - timeline: 关键时间节点（如 "SEC 反馈窗口 3.17 起"），没有则省略
 - fact_indices: 事实编号数组
@@ -320,7 +356,38 @@ ${factsText}`,
 
               logger.log(`  上下文引擎完成`, 'success')
 
-              // Assemble V11 format
+              // Phase 2F: Adversarial validation on free-text fields
+              logger.log('  对抗验证...', 'info')
+              try {
+                const fieldsToCheck = [
+                  { name: 'one_liner', value: selectionResult.one_liner },
+                  ...narrativesWithContext.map((n, i) => ({ name: `narrative_${i}_this_week`, value: n.this_week })),
+                ]
+                const checks = await adversarialCheck(fieldsToCheck)
+                let violations = 0
+                for (const check of checks) {
+                  if (check.violation && check.cleaned) {
+                    violations++
+                    if (check.field === 'one_liner') {
+                      selectionResult.one_liner = check.cleaned
+                    } else {
+                      const match = check.field.match(/^narrative_(\d+)_this_week$/)
+                      if (match) {
+                        const idx = parseInt(match[1])
+                        if (narrativesWithContext[idx]) {
+                          narrativesWithContext[idx].this_week = check.cleaned
+                        }
+                      }
+                    }
+                    logger.log(`    ${check.field}: ${check.violation} → 已重写`, 'info')
+                  }
+                }
+                logger.log(`  对抗验证完成: ${violations} 条违规已修正`, violations > 0 ? 'success' : 'info')
+              } catch (err) {
+                logger.log(`  对抗验证跳过: ${err instanceof Error ? err.message : String(err)}`, 'info')
+              }
+
+              // Assemble V12 format
               const narrativesWithFacts = narrativesWithContext.map((n, idx) => {
                 const origNarr = (selectionResult.narratives ?? [])[idx]
                 return {
@@ -339,7 +406,7 @@ ${factsText}`,
               })
 
               weeklySummaryDetailed = JSON.stringify({
-                version: 'v11',
+                version: 'v12',
                 oneLiner: selectionResult.one_liner,
                 marketLine: selectionResult.market_line,
                 narratives: narrativesWithFacts,
@@ -382,6 +449,16 @@ ${factsText}`,
           })
 
           logger.log(`快照已保存: ${weekNumber}`, 'success')
+
+          // Phase 2E: Self-growing knowledge base
+          try {
+            const kbAdded = await growKnowledgeBase(weekNumber)
+            if (kbAdded > 0) {
+              logger.log(`  知识库自增长: +${kbAdded} 条参考事件`, 'success')
+            }
+          } catch (err) {
+            logger.log(`  知识库增长跳过: ${err instanceof Error ? err.message : String(err)}`, 'info')
+          }
 
           await saveCheckpoint({
             pipeline: PIPELINE_NAME, week_number: weekNumber, step: 4, step_name: '保存快照',

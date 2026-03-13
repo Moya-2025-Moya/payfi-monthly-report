@@ -6,6 +6,8 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { callHaikuJSON } from '@/lib/ai-client'
 import { supabaseAdmin } from '@/db/client'
+import { normalizeTags } from '@/config/tag-vocabulary'
+import { generateEmbeddings } from '@/lib/embedding'
 import type { CandidateFact, FactType, Objectivity, SourceType } from '@/lib/types'
 
 // ─── Prompt 模板 ───
@@ -208,7 +210,7 @@ async function saveCandidates(
     fact_type: c.fact_type,
     objectivity: c.objectivity ?? 'fact',
     speaker: c.speaker ?? null,
-    tags: c.tags,
+    tags: normalizeTags(c.tags),
     source_id: raw.id,
     source_table: raw.source_table,
     source_type: raw.source_type,
@@ -237,7 +239,27 @@ async function saveCandidates(
     .select('id')
 
   if (error) throw new Error(`Failed to save candidates: ${error.message}`)
-  return (data ?? []).map((r: { id: string }) => r.id)
+  const factIds = (data ?? []).map((r: { id: string }) => r.id)
+
+  // V12: Generate embeddings asynchronously (non-blocking, best-effort)
+  if (factIds.length > 0) {
+    const texts = deduped.map(c => c.content)
+    generateEmbeddings(texts).then(async (embeddings) => {
+      if (!embeddings) return
+      for (let i = 0; i < factIds.length; i++) {
+        if (embeddings[i]) {
+          await supabaseAdmin
+            .from('atomic_facts')
+            .update({ embedding: JSON.stringify(embeddings[i]) })
+            .eq('id', factIds[i])
+        }
+      }
+    }).catch(err => {
+      console.warn('[fact-splitter] Embedding generation failed (non-critical):', err)
+    })
+  }
+
+  return factIds
 }
 
 // ─── 从 raw_* 表构建 RawRecord ───
