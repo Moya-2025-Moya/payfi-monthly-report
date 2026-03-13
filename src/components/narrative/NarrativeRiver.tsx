@@ -37,17 +37,37 @@ function groupEventsByDate(events: V13Event[]): DateGroup[] {
     else if (evt.significance === 'medium') group.secondary.push(evt)
     else group.collapsed.push(evt)
   }
+  // Pass 1: per-group — max 1 primary per date
   for (const group of map.values()) {
-    // Promote: if no primary, promote first secondary to primary
     if (group.primary.length === 0 && group.secondary.length > 0) {
       group.primary.push(group.secondary.shift()!)
     }
-    // Demote: only keep first primary, rest become secondary
     if (group.primary.length > 1) {
       group.secondary.unshift(...group.primary.splice(1))
     }
   }
-  return [...map.values()]
+
+  // Pass 2: global — max 2 primary across entire timeline
+  const groups = [...map.values()]
+  let totalPrimary = groups.reduce((n, g) => n + g.primary.length, 0)
+  if (totalPrimary > 2) {
+    // Keep first and last group's primary, demote the rest
+    for (let i = 1; i < groups.length - 1 && totalPrimary > 2; i++) {
+      if (groups[i].primary.length > 0) {
+        groups[i].secondary.unshift(...groups[i].primary.splice(0))
+        totalPrimary--
+      }
+    }
+    // If still > 2, demote from end
+    for (let i = groups.length - 1; i >= 0 && totalPrimary > 2; i--) {
+      while (groups[i].primary.length > 0 && totalPrimary > 2) {
+        groups[i].secondary.unshift(groups[i].primary.pop()!)
+        totalPrimary--
+      }
+    }
+  }
+
+  return groups
 }
 interface V13Upcoming {
   date: string; title: string; description: string
