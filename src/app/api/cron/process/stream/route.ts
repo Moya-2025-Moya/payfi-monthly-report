@@ -20,7 +20,7 @@ import { createPipelineLogger, PipelineCancelledError } from '@/lib/pipeline-log
 import { verifyAdminToken } from '@/lib/admin-auth'
 import type { AtomicFact } from '@/lib/types'
 
-export const maxDuration = 900
+export const maxDuration = 800
 
 const RAW_TABLES = ['raw_news', 'raw_filings', 'raw_product_updates', 'raw_funding', 'raw_regulatory'] as const
 const RAW_TABLE_NAMES: Record<string, string> = {
