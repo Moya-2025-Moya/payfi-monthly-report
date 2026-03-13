@@ -1,4 +1,4 @@
-// StablePulse Weekly Email — V13 Context-First
+// StablePulse Weekly Email — V14 Context-First + Parallel Comparison
 // Pure <table> layout, no CSS3 (no border-radius, no rgba, no box-shadow)
 // Light theme: #ffffff body, #f7f7f7 outer, #f0f7ff context blocks
 // Context blocks = visual protagonist: border-left 3px #3b82f6 + bg #f0f7ff
@@ -12,6 +12,10 @@ const SITE_URL = 'https://payfi-monthly-report.vercel.app'
 export interface NarrativeContext {
   event: string   // e.g. "Coinbase IPO"
   detail: string  // e.g. "S-1→上市: 118 天 (2020.12→2021.04)"
+  // V14: 当前 vs 历史并排对比
+  current_entity?: string   // e.g. "Circle"
+  current_value?: string    // e.g. "25 天"
+  delta_label?: string      // e.g. "快 42%"
 }
 
 export interface NarrativeForEmail {
@@ -27,7 +31,8 @@ export interface NarrativeForEmail {
 export interface SignalItem {
   category: 'market_structure' | 'product' | 'onchain_data' | 'regulatory' | 'funding'
   text: string
-  context?: string  // one-line historical comparison (if any)
+  context?: string                     // legacy one-liner (backward compat)
+  structured_context?: NarrativeContext // V14: structured with parallel comparison
 }
 
 export interface EmailStats {
@@ -63,27 +68,45 @@ const CATEGORY_ORDER: Array<SignalItem['category']> = [
 ]
 
 /* ── Context block builder (the visual protagonist) ── */
-function buildContextBlock(items: NarrativeContext[]): string {
+function buildContextItem(c: NarrativeContext): string {
+  // Row 1: Historical reference (normal weight, monospace)
+  let html = `<tr><td style="padding:0 0 2px 0;font-size:13px;color:#333333;line-height:1.7;font-family:'Courier New',Courier,monospace;font-weight:bold;">${esc(c.event)}</td></tr>`
+  html += `<tr><td style="padding:0 0 4px 0;font-size:13px;color:#555555;line-height:1.7;font-family:'Courier New',Courier,monospace;">${esc(c.detail)}</td></tr>`
+
+  // Row 2: Current entity parallel comparison (bold, larger, prominent)
+  if (c.current_entity && c.current_value) {
+    const delta = c.delta_label
+      ? `<span style="color:#3b82f6;font-weight:bold;font-size:14px;"> — ${esc(c.delta_label)}</span>`
+      : ''
+    html += `<tr><td style="padding:4px 0 6px 0;font-size:14px;color:#111111;line-height:1.6;font-weight:bold;">${esc(c.current_entity)} 当前: ${esc(c.current_value)}${delta}</td></tr>`
+  }
+
+  return html
+}
+
+function buildContextBlockInner(items: NarrativeContext[]): string {
   if (!items || items.length === 0) return ''
 
-  const rows = items.map(c =>
-    `<tr><td style="padding:0 0 4px 0;font-size:13px;color:#444444;line-height:1.7;font-family:'Courier New',Courier,monospace;">` +
-    `<span style="font-size:13px;font-weight:bold;color:#333333;">${esc(c.event)}</span>` +
-    `</td></tr>` +
-    `<tr><td style="padding:0 0 6px 0;font-size:13px;color:#555555;line-height:1.7;font-family:'Courier New',Courier,monospace;">${esc(c.detail)}</td></tr>`
-  ).join('\n')
+  const rows = items.map((c, i) => {
+    const separator = i > 0
+      ? `<tr><td style="padding:4px 0;border-top:1px solid #dbe8f4;font-size:1px;line-height:1px;">&nbsp;</td></tr>`
+      : ''
+    return separator + buildContextItem(c)
+  }).join('\n')
 
-  // Context block: blue left border + light blue background
-  return `<tr><td style="padding:8px 0 4px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+  return `<table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
       <td style="border-left:3px solid #3b82f6;background-color:#f0f7ff;padding:12px 16px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%">
-          <tr><td style="padding:0 0 6px;font-size:11px;font-weight:bold;letter-spacing:1px;color:#3b82f6;">历史对比</td></tr>
+          <tr><td style="padding:0 0 6px;font-size:11px;font-weight:bold;letter-spacing:1px;color:#3b82f6;">参照对比</td></tr>
           ${rows}
         </table>
       </td>
-    </tr></table>
-  </td></tr>`
+    </tr></table>`
+}
+
+function buildContextBlock(items: NarrativeContext[]): string {
+  if (!items || items.length === 0) return ''
+  return `<tr><td style="padding:8px 0 4px;">${buildContextBlockInner(items)}</td></tr>`
 }
 
 /* ── Narrative cards ── */
@@ -110,7 +133,7 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
 
     // Context block (the protagonist)
     const contextHtml = n.context && n.context.length > 0
-      ? `<tr><td style="padding:4px 16px 4px;">${buildContextBlock(n.context).replace(/<tr><td style="padding:8px 0 4px;">/, '').replace(/<\/td><\/tr>$/, '')}</td></tr>`
+      ? `<tr><td style="padding:4px 16px 4px;">${buildContextBlockInner(n.context)}</td></tr>`
       : ''
 
     // Next week watch
@@ -157,8 +180,21 @@ function buildSignals(signals: SignalItem[]): string {
         // Signal fact line
         let row = `<tr><td style="padding:2px 0 2px 8px;font-size:14px;color:#333333;line-height:1.7;">&middot; ${esc(s.text)}</td></tr>`
 
-        // Inline context (one-liner, with blue left border if present)
-        if (s.context) {
+        // V14: prefer structured_context with parallel comparison
+        if (s.structured_context) {
+          const sc = s.structured_context
+          let ctxContent = `<span style="font-weight:bold;color:#333333;">${esc(sc.event)}</span>: ${esc(sc.detail)}`
+          if (sc.current_entity && sc.current_value) {
+            const delta = sc.delta_label ? ` — <span style="color:#3b82f6;font-weight:bold;">${esc(sc.delta_label)}</span>` : ''
+            ctxContent += `<br>${esc(sc.current_entity)} 当前: <strong>${esc(sc.current_value)}</strong>${delta}`
+          }
+          row += `<tr><td style="padding:0 0 4px 8px;">
+            <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+              <td style="border-left:3px solid #3b82f6;background-color:#f0f7ff;padding:6px 10px;font-size:13px;color:#555555;line-height:1.6;font-family:'Courier New',Courier,monospace;">${ctxContent}</td>
+            </tr></table>
+          </td></tr>`
+        } else if (s.context) {
+          // Legacy fallback: plain string context
           row += `<tr><td style="padding:0 0 4px 8px;">
             <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
               <td style="border-left:3px solid #3b82f6;background-color:#f0f7ff;padding:4px 10px;font-size:13px;color:#555555;line-height:1.6;font-family:'Courier New',Courier,monospace;">${esc(s.context)}</td>
@@ -211,6 +247,11 @@ export function generateEmailHTML(data: EmailData): string {
   <![endif]-->
 </head>
 <body style="margin:0;padding:0;background-color:#f7f7f7;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+
+<!-- Preheader: visible in inbox preview, hidden in email body -->
+<div style="display:none;font-size:1px;color:#f7f7f7;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+  StablePulse | ${esc(weekLabel)} — ${esc(oneLiner)}
+</div>
 
 <!--[if mso]><table cellpadding="0" cellspacing="0" border="0" width="600" align="center"><tr><td><![endif]-->
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f7f7f7;">
@@ -315,6 +356,7 @@ export function weekToDateRange(weekNumber: string): string {
   const [yearStr, wPart] = weekNumber.split('-W')
   const year = Number(yearStr)
   const num = Number(wPart)
+  if (isNaN(year) || isNaN(num)) return weekNumber // fallback to raw input
   const jan4 = new Date(Date.UTC(year, 0, 4))
   const dayOfWeek = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
   const monday = new Date(jan4)
@@ -331,6 +373,7 @@ export function weekToMondayDate(weekNumber: string): string {
   const [yearStr, wPart] = weekNumber.split('-W')
   const year = Number(yearStr)
   const num = Number(wPart)
+  if (isNaN(year) || isNaN(num)) return new Date().toISOString().split('T')[0] // fallback to today
   const jan4 = new Date(Date.UTC(year, 0, 4))
   const dayOfWeek = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
   const monday = new Date(jan4)

@@ -1,25 +1,11 @@
 import { getCurrentWeekNumber } from '@/db/client'
 import { getWeeklyArchiveListEnhanced } from '@/lib/weekly-data'
+import { formatWeekRange } from '@/lib/week-utils'
 import Link from 'next/link'
 
 export const metadata = {
   title: '周报归档 — StablePulse',
   description: '稳定币行业周报历史归档',
-}
-
-function parseWeekDateRange(week: string): string | null {
-  const m = week.match(/^(\d{4})-W(\d{2})$/)
-  if (!m) return null
-  const year = parseInt(m[1], 10)
-  const wNum = parseInt(m[2], 10)
-  const jan4 = new Date(Date.UTC(year, 0, 4))
-  const dow = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
-  const monday = new Date(jan4)
-  monday.setUTCDate(jan4.getUTCDate() - (dow - 1) + (wNum - 1) * 7)
-  const sunday = new Date(monday)
-  sunday.setUTCDate(monday.getUTCDate() + 6)
-  const fmt = (d: Date) => `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
-  return `${fmt(monday)} - ${fmt(sunday)}`
 }
 
 /** Build narrative continuity map: topic → list of weeks it appeared in */
@@ -111,7 +97,7 @@ export default async function WeeklyIndexPage() {
         <div className="space-y-2">
           {weeks.map(w => {
             const isCurrent = w.week === currentWeek
-            const dateRange = parseWeekDateRange(w.week)
+            const dateRange = formatWeekRange(w.week)
             return (
               <Link key={w.week} href={`/weekly/${w.week}`}
                 className="block px-4 py-3 rounded-lg border transition-colors hover:border-[var(--info-muted)]"

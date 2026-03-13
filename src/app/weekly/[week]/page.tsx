@@ -1,23 +1,9 @@
 import { getCurrentWeekNumber, supabaseAdmin } from '@/db/client'
 import { redirect } from 'next/navigation'
 import { getWeeklyPageData } from '@/lib/weekly-data'
+import { parseWeekDateRange, shiftWeek } from '@/lib/week-utils'
 import { WeeklyReader } from './WeeklyReader'
 import type { Metadata } from 'next'
-
-function parseWeekDateRange(week: string): { display: string } | null {
-  const m = week.match(/^(\d{4})-W(\d{2})$/)
-  if (!m) return null
-  const year = parseInt(m[1], 10)
-  const wNum = parseInt(m[2], 10)
-  const jan4 = new Date(Date.UTC(year, 0, 4))
-  const dow = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
-  const monday = new Date(jan4)
-  monday.setUTCDate(jan4.getUTCDate() - (dow - 1) + (wNum - 1) * 7)
-  const sunday = new Date(monday)
-  sunday.setUTCDate(monday.getUTCDate() + 6)
-  const fmt = (d: Date) => `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
-  return { display: `${fmt(monday)} - ${fmt(sunday)}` }
-}
 
 export async function generateMetadata({ params }: { params: Promise<{ week: string }> }): Promise<Metadata> {
   const { week } = await params
@@ -26,24 +12,6 @@ export async function generateMetadata({ params }: { params: Promise<{ week: str
     title: `稳定币周报 ${week}${range ? ` | ${range.display}` : ''}`,
     description: `StablePulse 稳定币行业周报 — ${week}`,
   }
-}
-
-function shiftWeek(week: string, delta: number): string {
-  const m = week.match(/^(\d{4})-W(\d{2})$/)
-  if (!m) return week
-  const year = parseInt(m[1], 10)
-  const wNum = parseInt(m[2], 10)
-  const jan4 = new Date(Date.UTC(year, 0, 4))
-  const dow = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
-  const monday = new Date(jan4)
-  monday.setUTCDate(jan4.getUTCDate() - (dow - 1) + (wNum - 1) * 7)
-  monday.setUTCDate(monday.getUTCDate() + delta * 7)
-  const d = new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate()))
-  const dayNum = d.getUTCDay() || 7
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
-  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
 }
 
 export default async function WeeklyReportPage({ params }: { params: Promise<{ week: string }> }) {

@@ -21,6 +21,10 @@ export interface ContextComparison {
   metric_value: string      // e.g. "118 天"
   date_range: string        // e.g. "2020.12→2021.04"
   used_candidate_index: number
+  // V14: 当前 vs 历史并排对比
+  current_entity?: string     // e.g. "Circle"
+  current_value?: string      // e.g. "25 天"
+  delta_label?: string        // e.g. "快 42%" or "大 1.7x"
 }
 
 export interface ContextResult {
@@ -109,9 +113,16 @@ async function retrieveCandidates(
     })
   }
 
+  // Generate embedding once for both vector searches
+  let queryEmb: number[] | null = null
+  try {
+    queryEmb = await generateQueryEmbedding(fact.content)
+  } catch {
+    // Embedding unavailable — continue with rule-based results
+  }
+
   // 2A+: Vector search for reference_events in DB (if embeddings available)
   try {
-    const queryEmb = await generateQueryEmbedding(fact.content)
     if (queryEmb) {
       const { data: refMatches } = await supabaseAdmin.rpc('match_reference_events', {
         query_embedding: JSON.stringify(queryEmb),
@@ -121,6 +132,8 @@ async function retrieveCandidates(
       if (refMatches) {
         for (const rm of refMatches) {
           if (candidates.some(c => c.reference_id === rm.id)) continue
+          // Quality gate: skip unverified auto-generated events from DB
+          if (rm.auto_generated && rm.verified === false) continue
           const milestones = (rm.milestones as { date: string; event: string }[]) ?? []
           const metrics = (rm.metrics as Record<string, string | number>) ?? {}
           const milestonesText = milestones.map(m => `${m.date}: ${m.event}`).join('; ')
@@ -142,8 +155,7 @@ async function retrieveCandidates(
   try {
     let historicalFound = false
 
-    // Try vector search
-    const queryEmb = await generateQueryEmbedding(fact.content)
+    // Reuse embedding from above
     if (queryEmb) {
       const { data: vectorMatches } = await supabaseAdmin.rpc('match_facts', {
         query_embedding: JSON.stringify(queryEmb),
@@ -227,11 +239,14 @@ ${candidatesText}
 
 提取 1-3 个对比数据点。每个数据点必须是以下结构:
 {
-  "reference_event": "被比较的历史事件名 (如 'Coinbase IPO')",
-  "metric_label": "对比维度 (如 'S-1 提交到上市')",
-  "metric_value": "数值 (如 '118 天'、'$85.8B')",
-  "date_range": "时间范围 (如 '2020.12→2021.04' 或 '2023.01')",
-  "used_candidate_index": 候选材料编号
+  "reference_event": "被比较的历史事件名",
+  "metric_label": "对比维度",
+  "metric_value": "历史数值 (必须包含数字)",
+  "date_range": "历史时间范围 (必须包含年份)",
+  "used_candidate_index": 候选材料编号,
+  "current_entity": "当前事实的实体名 (从当前事实中提取，可省略)",
+  "current_value": "当前事实在同一维度的数值 (可省略)",
+  "delta_label": "差值 (如 '快 42%' 或 '大 1.7x'，可省略)"
 }
 
 绝对规则:
@@ -241,13 +256,17 @@ ${candidatesText}
 4. metric_value 必须包含数字
 5. date_range 必须包含年份
 6. 如果候选材料不足以形成有意义的对比，返回空数组
+7. current_entity 从当前事实中提取实体名，如无法确定则省略此字段
+8. current_value 必须包含数字，与 metric_value 同维度，如当前事实无明确数值则省略
+9. delta_label 只写客观差值（禁止"显著""惊人"等评价词），格式: "快/慢/大/小/多/少 + 百分比或倍数"
+10. 三个字段要么全部提供，要么全部省略
 
 输出严格 JSON:
 {
   "comparisons": [...],
   "confidence": "high" | "medium" | "low"
 }`,
-    { system: '结构化数据提取工具。输出严格 JSON。只提取事实字段。', maxTokens: 800 }
+    { system: '结构化数据提取工具。输出严格 JSON。只提取事实字段。', maxTokens: 1000 }
   )
 
   const comparisons = result.comparisons ?? []
@@ -265,13 +284,17 @@ ${candidatesText}
 // ── Template assembly: structured fields → context line ──
 
 function assembleContextLine(comp: ContextComparison): string {
-  // "Coinbase IPO: S-1 提交到上市 118 天 (2020.12→2021.04)"
-  return `${comp.reference_event}: ${comp.metric_label} ${comp.metric_value} (${comp.date_range})`
+  let line = `${comp.reference_event}: ${comp.metric_label} ${comp.metric_value} (${comp.date_range})`
+  if (comp.current_entity && comp.current_value) {
+    line += ` | ${comp.current_entity} 当前: ${comp.current_value}`
+    if (comp.delta_label) line += ` — ${comp.delta_label}`
+  }
+  return line
 }
 
 // ── Quality Gate 2: Schema 校验 ──
 
-const OPINION_WORDS = /可能|或许|预计|看好|利空|建议|值得|关注|重大|利好|趋势|前景|有望|显著/
+const OPINION_WORDS = /可能|或许|预计|看好|利空|建议|值得|关注|重大|利好|趋势|前景|有望|显著|意义|令人|震撼|突破性|革命/
 
 function validateComparison(comp: ContextComparison, candidateCount: number): boolean {
   // used_candidate_index must point to a real candidate
@@ -283,9 +306,11 @@ function validateComparison(comp: ContextComparison, candidateCount: number): bo
   // No opinion words in any field
   const allText = `${comp.reference_event} ${comp.metric_label} ${comp.metric_value}`
   if (OPINION_WORDS.test(allText)) return false
+  // Validate delta_label against opinion words if present
+  if (comp.delta_label && OPINION_WORDS.test(comp.delta_label)) return false
   // Assembled line length check
   const line = assembleContextLine(comp)
-  if (line.length < 5 || line.length > 100) return false
+  if (line.length < 5 || line.length > 160) return false
   return true
 }
 
@@ -303,8 +328,8 @@ function validateInsight(comp: ContextComparison, fact: FactInput): boolean {
     const refMonth = dateMatch[2] ? parseInt(dateMatch[2]) : 0
     // Same year + adjacent month = likely too recent
     if (refYear === factYear && refMonth > 0 && Math.abs(refMonth - factMonth) <= 1) {
-      // Allow if it's a different entity comparison
-      if (!comp.reference_event || comp.reference_event.toLowerCase().includes(fact.entity?.toLowerCase() ?? '___none___')) {
+      // Allow if it's a different entity comparison; if entity unknown, reject adjacent-week data
+      if (!fact.entity || !comp.reference_event || comp.reference_event.toLowerCase().includes(fact.entity.toLowerCase())) {
         return false
       }
     }

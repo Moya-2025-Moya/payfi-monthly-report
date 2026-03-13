@@ -52,6 +52,7 @@ interface NarrativeNode {
   isExternal?: boolean
   externalUrl?: string
   isPrediction?: boolean
+  isConfirmedEvent?: boolean  // confirmed upcoming event with specific date
   branchId: string
 }
 
@@ -83,13 +84,13 @@ async function getFactsByQuery(query: string, keywords: string[]): Promise<Atomi
   const allFacts: AtomicFact[] = []
   const seen = new Set<string>()
 
-  // Tag search
+  // Tag search — extended to 90 days for historical context
   for (const kw of keywords.slice(0, 5)) {
     const { data } = await supabaseAdmin
       .from('atomic_facts').select('*')
       .in('verification_status', ['verified', 'partially_verified'])
       .contains('tags', [kw.toLowerCase()])
-      .order('fact_date', { ascending: true }).limit(40)
+      .order('fact_date', { ascending: true }).limit(80)
     for (const f of (data ?? []) as AtomicFact[]) {
       if (!seen.has(f.id)) { seen.add(f.id); allFacts.push(f) }
     }
@@ -101,9 +102,39 @@ async function getFactsByQuery(query: string, keywords: string[]): Promise<Atomi
     .from('atomic_facts').select('*')
     .in('verification_status', ['verified', 'partially_verified'])
     .or(`content_zh.ilike.%${safeQuery}%,content_en.ilike.%${safeQuery}%`)
-    .order('fact_date', { ascending: true }).limit(30)
+    .order('fact_date', { ascending: true }).limit(60)
   for (const f of (contentSearch ?? []) as AtomicFact[]) {
     if (!seen.has(f.id)) { seen.add(f.id); allFacts.push(f) }
+  }
+
+  // Entity-based search — find facts linked to matching entities via fact_entities
+  const safeEntityQuery = keywords.slice(0, 3).map(k => k.replace(/[%_,.()\n\r]/g, ' ').trim()).filter(Boolean)
+  if (safeEntityQuery.length > 0) {
+    const { data: entities } = await supabaseAdmin
+      .from('entities').select('id')
+      .or(safeEntityQuery.map(k => `name.ilike.%${k}%`).join(','))
+      .limit(5)
+
+    if (entities && entities.length > 0) {
+      const entityIds = entities.map(e => e.id)
+      const { data: factLinks } = await supabaseAdmin
+        .from('fact_entities').select('fact_id')
+        .in('entity_id', entityIds)
+        .limit(100)
+
+      if (factLinks && factLinks.length > 0) {
+        const factIds = [...new Set(factLinks.map(l => l.fact_id as string))].filter(id => !seen.has(id))
+        if (factIds.length > 0) {
+          const { data: entityFacts } = await supabaseAdmin
+            .from('atomic_facts').select('*')
+            .in('verification_status', ['verified', 'partially_verified'])
+            .in('id', factIds.slice(0, 50))
+          for (const f of (entityFacts ?? []) as AtomicFact[]) {
+            if (!seen.has(f.id)) { seen.add(f.id); allFacts.push(f) }
+          }
+        }
+      }
+    }
   }
 
   allFacts.sort((a, b) => new Date(a.fact_date).getTime() - new Date(b.fact_date).getTime())
@@ -147,14 +178,14 @@ async function fetchActiveThreads(): Promise<ActiveThread[]> {
 }
 
 async function discoverTopics(weekNumber: string): Promise<NarrativeTopic[]> {
-  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const { data: facts } = await supabaseAdmin
     .from('atomic_facts')
     .select('content_zh, content_en, tags, fact_date')
     .in('verification_status', ['verified', 'partially_verified'])
-    .gte('fact_date', fourteenDaysAgo)
+    .gte('fact_date', thirtyDaysAgo)
     .order('fact_date', { ascending: false })
-    .limit(200)
+    .limit(300)
 
   if (!facts || facts.length === 0) return []
 
@@ -320,6 +351,10 @@ interface ExternalAndPredictions {
     date: string; title: string; description: string
     branch_id: string; source_url: string
   }>
+  confirmed_upcoming: Array<{
+    date: string; title: string; description: string
+    branch_id: string; source?: string
+  }>
   predictions: Array<{
     title: string; description: string; branch_id: string
   }>
@@ -330,6 +365,7 @@ async function enrichWithExternal(
   gapQueries: string[],
   existingTitles: Set<string>,
   branches: NarrativeBranch[],
+  existingFacts: AtomicFact[],
 ): Promise<ExternalAndPredictions> {
   // Search both Brave + Google for each gap query
   const allResults: Array<{ title: string; url: string; description: string; date: string | null }> = []
@@ -345,13 +381,19 @@ async function enrichWithExternal(
       if (titleLower.includes(existing.toLowerCase()) || existing.toLowerCase().includes(titleLower)) return false
     }
     return true
-  }).slice(0, 10) // cap at 10
+  }).slice(0, 12)
 
   if (filtered.length === 0) {
-    return { external_events: [], predictions: [] }
+    return { external_events: [], confirmed_upcoming: [], predictions: [] }
   }
 
-  // Let AI select relevant ones and generate predictions
+  // Light verification: cross-reference external results against existing facts
+  // Build a summary of existing facts for the AI to check against
+  const factSummary = existingFacts.slice(-20).map(f => {
+    const content = f.content_zh || f.content_en
+    return `${String(f.fact_date).split('T')[0]}: ${content?.slice(0, 100)}`
+  }).join('\n')
+
   const externalText = filtered.map((r, i) =>
     `[${i}] ${r.title} | ${r.description.slice(0, 150)} | url: ${r.url}${r.date ? ` | date: ${r.date}` : ''}`
   ).join('\n')
@@ -365,47 +407,59 @@ async function enrichWithExternal(
 ## 已有时间线分支
 ${branches.map(b => `- ${b.id}: ${b.label}`).join('\n')}
 
+## 已验证事实摘要（用于交叉验证外部结果）
+${factSummary}
+
 ## 外部搜索结果
 ${externalText}
 
-## 任务
-1. 从搜索结果中选出 3-6 条与「${safeLabel}」直接相关的事件，作为 external_events
-2. 基于整条时间线（fact base + 外部），生成 2-3 个**可证伪的具体预测**作为 predictions
+## 任务（三个部分）
 
-## predictions 要求（重要）
-predictions 必须是可以在未来验证对错的具体预测，不是模糊的"关注方向"。
-- ✅ "Circle 将在 2026 年 Q2 完成 IPO" — 可证伪
-- ✅ "GENIUS Act 将在 2026 年 6 月前通过参议院投票" — 可证伪
-- ❌ "后续关注: Circle IPO 进展" — 这是 watchlist 不是预测
-- ❌ "后续关注: 稳定币监管动态" — 太模糊
+### 1. external_events: 历史补充事件（3-6 条）
+从搜索结果中选出与「${safeLabel}」直接相关的**已发生**事件。
+- 必须与已验证事实不矛盾
+- 如果某条外部结果与已验证事实明显矛盾，跳过该条
+
+### 2. confirmed_upcoming: 已确认的未来事件（2-4 条）
+从搜索结果或公开信息推导出**有明确日期的、已被官方/权威来源确认的**未来事件。
+示例：
+- ✅ "SEC 反馈窗口 3 月 17 日开始"（基于 S-1 提交日期推算的固定流程）
+- ✅ "GENIUS Act 参议院全体投票，预计 4 月初"（委员会通过后的确定流程）
+- ✅ "香港 HKMA 第二批牌照审批结果 Q2 公布"（官方时间表）
+- ❌ "监管可能会出台新政策"（不具体）
+
+### 3. predictions: 可证伪的具体预测（4-6 条）
+基于整条时间线（已验证事实 + 外部），生成可在未来验证对错的预测。
+每条预测必须：
+- 有明确的时间范围或可验证条件
+- 有基于事实的推理依据
+示例：
+- ✅ "Circle 将在 2026 年 Q2 完成 IPO 定价"
+- ✅ "GENIUS Act 将在 6 月前通过参议院全体投票"
+- ✅ "至少 3 家中资银行将申请香港稳定币牌照"
+- ❌ "后续关注: Circle IPO 进展"（太模糊）
+- ❌ "稳定币市场会继续增长"（不可证伪）
 
 ## 输出格式
 {
   "external_events": [
-    {
-      "date": "2026-03-10",
-      "title": "事件标题（中文简短）",
-      "description": "1句话描述（中文）",
-      "branch_id": "${branchIds[0] || 'branch_1'}",
-      "source_url": "https://..."
-    }
+    { "date": "2026-03-10", "title": "事件标题（中文简短）", "description": "1句描述", "branch_id": "${branchIds[0] || 'branch_1'}", "source_url": "https://..." }
+  ],
+  "confirmed_upcoming": [
+    { "date": "2026-03-17", "title": "确认事件标题", "description": "1句说明", "branch_id": "${branchIds[0] || 'branch_1'}", "source": "来源说明" }
   ],
   "predictions": [
-    {
-      "title": "具体预测内容（中文）",
-      "description": "预测依据（1句话中文）",
-      "branch_id": "${branchIds[0] || 'branch_1'}"
-    }
+    { "title": "具体预测（中文）", "description": "预测依据（1句）", "branch_id": "${branchIds[0] || 'branch_1'}" }
   ]
 }
 
 规则:
-- external_events 必须有 source_url（从搜索结果的 url 中取）
-- date: 如果搜索结果没有提供日期，使用当天日期并在 title 中标注"(日期估计)"
-- branch_id 必须是已有分支之一: ${branchIds.join(', ')}
-- 只选与主题直接相关的结果，不要硬凑
+- external_events 必须有 source_url
+- confirmed_upcoming 必须有具体日期（至少到月/季度）
+- branch_id 必须是: ${branchIds.join(', ')}
+- 只选直接相关结果，不硬凑
 - 中文输出，中英文之间加空格`,
-    { system: '输出严格 JSON。中英文之间加空格。' }
+    { system: '输出严格 JSON。中英文之间加空格。external_events 3-6条, confirmed_upcoming 2-4条, predictions 4-6条。' }
   )
 }
 
@@ -529,7 +583,7 @@ export async function GET(request: Request) {
           const gapQueries = (timeline.gap_queries ?? []).filter(q => typeof q === 'string' && q.trim().length > 0)
           if (gapQueries.length > 0) {
             try {
-              const enrichment = await enrichWithExternal(topic, gapQueries, existingTitles, timelineBranches)
+              const enrichment = await enrichWithExternal(topic, gapQueries, existingTitles, timelineBranches, facts)
 
               for (const ext of enrichment.external_events) {
                 nodes.push({
@@ -548,11 +602,29 @@ export async function GET(request: Request) {
               }
               logger.log(`  添加 ${enrichment.external_events.length} 个外部节点`, 'info')
 
+              // Confirmed upcoming events
+              for (const evt of enrichment.confirmed_upcoming ?? []) {
+                nodes.push({
+                  id: `upcoming-${nodeIdx}`,
+                  date: evt.date,
+                  title: evt.title,
+                  description: evt.description,
+                  significance: 'medium',
+                  factIds: [],
+                  entityNames: [],
+                  isConfirmedEvent: true,
+                  sourceUrl: evt.source,
+                  branchId: evt.branch_id,
+                })
+                nodeIdx++
+              }
+              logger.log(`  添加 ${(enrichment.confirmed_upcoming ?? []).length} 个确认事件`, 'info')
+
               // Prediction nodes
               for (const pred of enrichment.predictions) {
                 nodes.push({
                   id: `pred-${nodeIdx}`,
-                  date: new Date().toISOString().split('T')[0], // today
+                  date: new Date().toISOString().split('T')[0],
                   title: pred.title,
                   description: pred.description,
                   significance: 'medium',
@@ -563,16 +635,18 @@ export async function GET(request: Request) {
                 })
                 nodeIdx++
               }
-              logger.log(`  添加 ${enrichment.predictions.length} 个关注方向`, 'info')
+              logger.log(`  添加 ${enrichment.predictions.length} 个预测`, 'info')
             } catch (err) {
               logger.log(`  外部搜索失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
             }
           }
 
-          // Sort nodes by date
+          // Sort nodes by date: historical first, then confirmed upcoming, then predictions last
           nodes.sort((a, b) => {
             if (a.isPrediction && !b.isPrediction) return 1
             if (!a.isPrediction && b.isPrediction) return -1
+            if (a.isConfirmedEvent && !b.isConfirmedEvent && !b.isPrediction) return 1
+            if (!a.isConfirmedEvent && !a.isPrediction && b.isConfirmedEvent) return -1
             return a.date.localeCompare(b.date)
           })
 
@@ -630,11 +704,10 @@ export async function GET(request: Request) {
           const keyDevelopments = narrative.nodes
             .filter(n => n.significance === 'high' && !n.isPrediction && !n.isExternal)
             .map(n => n.title)
-          // Next week watch from prediction nodes
-          const nextWeekWatch = narrative.nodes
-            .filter(n => n.isPrediction)
-            .map(n => n.title)
-            .join('；') || null
+          // Next week watch from confirmed events + prediction nodes
+          const confirmedWatch = narrative.nodes.filter(n => n.isConfirmedEvent).map(n => `[${n.date}] ${n.title}`)
+          const predictionWatch = narrative.nodes.filter(n => n.isPrediction).map(n => n.title)
+          const nextWeekWatch = [...confirmedWatch, ...predictionWatch].join('；') || null
 
           try {
             let threadId = ''
@@ -727,22 +800,23 @@ export async function GET(request: Request) {
           }
         }
 
-        // Write prediction nodes to narrative_predictions table (Direction B)
+        // Write prediction + confirmed event nodes to narrative_predictions table
         for (const narrative of narratives) {
-          const predNodes = narrative.nodes.filter(n => n.isPrediction)
-          for (const pred of predNodes) {
+          const forwardNodes = narrative.nodes.filter(n => n.isPrediction || n.isConfirmedEvent)
+          for (const node of forwardNodes) {
             try {
               await supabaseAdmin
                 .from('narrative_predictions')
                 .insert({
                   narrative_topic: narrative.topic,
                   week_number: weekNumber,
-                  title: pred.title,
-                  description: pred.description,
+                  title: node.isConfirmedEvent ? `[确认] ${node.title}` : node.title,
+                  description: node.description,
                   watched: false,
-                  status: 'pending',
+                  status: node.isConfirmedEvent ? 'pending' : 'pending',
                 })
-              logger.log(`  预测写入: ${pred.title.slice(0, 40)}...`, 'info')
+              const tag = node.isConfirmedEvent ? '确认事件' : '预测'
+              logger.log(`  ${tag}写入: ${node.title.slice(0, 40)}...`, 'info')
             } catch { /* ignore duplicates */ }
           }
         }

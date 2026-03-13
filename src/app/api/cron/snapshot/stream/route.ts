@@ -11,6 +11,7 @@ import { generateFactContext } from '@/lib/context-engine'
 import { adversarialCheck } from '@/lib/adversarial-check'
 import { growKnowledgeBase } from '@/lib/knowledge-growth'
 import { verifyAdminToken } from '@/lib/admin-auth'
+import { shiftWeek } from '@/lib/week-utils'
 import type { EmailData, NarrativeForEmail, SignalItem } from '@/lib/email-template'
 
 export const maxDuration = 120
@@ -179,9 +180,9 @@ ${batchInput}`,
           })
         }
 
-        // Step 3: AI select + classify + Context Engine
+        // Step 3: Read narrative timeline data + AI one_liner/signals + Context Engine
         if (resumeStep < 3) {
-          logger.progress('3/5', 'AI 选取 + 上下文引擎...')
+          logger.progress('3/5', '读取叙事 + AI 信号 + 上下文引擎...')
           try {
             const { data: topFacts } = await supabaseAdmin
               .from('atomic_facts')
@@ -192,171 +193,244 @@ ${batchInput}`,
               .limit(60)
 
             if (topFacts && topFacts.length > 0) {
-              // Fetch active narrative threads with their last_week entries
+              // Read stored narratives from Narrative Pipeline (already in snapshot_data)
+              const { data: existingSnapshot } = await supabaseAdmin
+                .from('weekly_snapshots')
+                .select('snapshot_data')
+                .eq('week_number', weekNumber)
+                .single()
+
+              interface StoredNode {
+                id: string; date: string; title: string; description: string
+                significance: 'high' | 'medium' | 'low'
+                factIds: string[]; entityNames: string[]
+                sourceUrl?: string; isExternal?: boolean; externalUrl?: string
+                isPrediction?: boolean; isConfirmedEvent?: boolean; branchId: string
+              }
+              interface StoredNarrative {
+                topic: string; summary: string
+                nodes: StoredNode[]
+                branches: Array<{ id: string; label: string; side: string; color: string }>
+                edges: Array<{ id: string; source: string; target: string; label?: string }>
+              }
+
+              const storedNarratives = ((existingSnapshot?.snapshot_data as Record<string, unknown>)?.narratives ?? []) as StoredNarrative[]
+              const hasRichNarratives = storedNarratives.length > 0 && storedNarratives[0]?.nodes?.length > 0
+
+              logger.log(`  叙事数据: ${hasRichNarratives ? `${storedNarratives.length} 条 (来自 Narrative Pipeline)` : '无，将使用 AI 生成'}`, 'info')
+
+              // Fetch thread week counts
               const { data: activeThreads } = await supabaseAdmin
                 .from('narrative_threads')
-                .select('id, topic, slug, total_weeks, key_entities')
+                .select('topic, total_weeks')
                 .in('status', ['active', 'dormant'])
                 .order('last_updated_week', { ascending: false })
                 .limit(10)
+              const weekCountMap = new Map((activeThreads ?? []).map(t => [t.topic, t.total_weeks as number]))
 
-              // Compute previous week string using proper date arithmetic
-              let prevWeek = ''
-              const wMatch = weekNumber.match(/^(\d{4})-W(\d{2})$/)
-              if (wMatch) {
-                const yr = Number(wMatch[1])
-                const wn = Number(wMatch[2])
-                // Find Monday of current ISO week, then go back 7 days
-                const jan4 = new Date(Date.UTC(yr, 0, 4))
-                const dow = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
-                const monday = new Date(jan4)
-                monday.setUTCDate(jan4.getUTCDate() - (dow - 1) + (wn - 1) * 7)
-                monday.setUTCDate(monday.getUTCDate() - 7) // Go back 1 week
-                // Convert back to ISO week
-                const d = new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate()))
-                const dn = d.getUTCDay() || 7
-                d.setUTCDate(d.getUTCDate() + 4 - dn)
-                const ys = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-                const pwn = Math.ceil((((d.getTime() - ys.getTime()) / 86400000) + 1) / 7)
-                prevWeek = `${d.getUTCFullYear()}-W${String(pwn).padStart(2, '0')}`
-              }
-
-              // Fetch last week's entries for each thread
-              const threadIds = (activeThreads ?? []).map(t => t.id)
-              const { data: prevEntries } = threadIds.length > 0 && prevWeek
-                ? await supabaseAdmin
-                    .from('narrative_thread_entries')
-                    .select('thread_id, summary, next_week_watch')
-                    .eq('week_number', prevWeek)
-                    .in('thread_id', threadIds)
-                : { data: null }
-
-              const prevEntryMap = new Map(
-                (prevEntries ?? []).map(e => [e.thread_id, { summary: e.summary, next_week_watch: e.next_week_watch }])
-              )
-
-              // Build thread info with real last_week data
-              const threadInfoLines = (activeThreads ?? []).map((t, i) => {
-                const prev = prevEntryMap.get(t.id)
-                const lastWeekText = prev ? prev.summary : '(无上周数据)'
-                const watchText = prev?.next_week_watch ? ` | 关注: ${prev.next_week_watch}` : ''
-                return `${i + 1}. ${t.topic} (第${t.total_weeks}周) — 上周: ${lastWeekText}${watchText}`
-              })
-
+              // Generate one_liner, market_line, signals via AI (narratives come from stored data)
               const factsText = topFacts
                 .map((f, i) => `[${i}] [${f.fact_type}] ${f.content_zh || f.content_en} (${String(f.fact_date).split('T')[0]}) [tags: ${f.tags.join(', ')}]${f.source_url ? ` [url: ${f.source_url}]` : ''}`)
                 .join('\n')
 
-              // Phase A: AI 选取 + 分类
+              const narrativeSummaries = hasRichNarratives
+                ? storedNarratives.map(n => `「${n.topic}」: ${n.summary}`).join('\n')
+                : ''
+
               const selectionResult = await callHaikuJSON<{
                 one_liner: string
                 market_line?: string
-                narratives: Array<{
-                  topic: string
-                  week_count?: number
-                  origin?: string
-                  last_week: string
-                  this_week: string
-                  timeline?: string
-                  fact_indices: number[]
-                }>
                 signals: Array<{
-                  category: 'market_structure' | 'product' | 'onchain_data'
+                  category: 'market_structure' | 'product' | 'onchain_data' | 'regulatory' | 'funding'
                   text: string
                   fact_index: number
                 }>
               }>(
-                `你是稳定币行业事实聚合工具。从以下本周事实中选取并组织周报内容。
+                `你是稳定币行业事实聚合工具。从以下本周事实中选取周报摘要和信号。
 
-已有叙事线索（含上周真实进展）:
-${threadInfoLines.length > 0 ? threadInfoLines.join('\n') : '(暂无)'}
-
+${narrativeSummaries ? `本周叙事（已由专门系统生成）:\n${narrativeSummaries}\n` : ''}
 任务:
-1. one_liner: 一句话概括本周（纯事实，如 "Circle S-1 修订提交; GENIUS Act 过委员会"）
+1. one_liner: 一句话概括本周（纯事实，如 "Circle S-1 修订提交; GENIUS Act 过委员会"）${narrativeSummaries ? '，参考上方叙事摘要' : ''}
 2. market_line: 市值数据行（如 "USDC $60.2B (+2.1%) · USDT $144.1B (+0.8%)"），如果本周有市值数据
-3. narratives: 2-3 条叙事追踪（优先匹配已有线索）
-4. signals: 5 条独立事实信号，按 category 分类
-
-叙事字段:
-- topic: 主题名（如 "Circle IPO 进程"）
-- week_count: 追踪第几周（首次=1）
-- origin: 叙事起点（一句话，如 "2026.02.15 Circle 宣布启动 IPO 流程"），首次追踪必填
-- last_week: 上周进展（直接复制上方叙事线索中的"上周"内容，首次写 "首次追踪"。禁止编造上周数据）
-- this_week: 本周进展（1-2句事实）
-- timeline: 关键时间节点（如 "SEC 反馈窗口 3.17 起"），没有则省略
-- fact_indices: 事实编号数组
+3. signals: 5 条独立事实信号，按 category 分类（不要与叙事重叠）
 
 信号字段:
-- category: "market_structure" | "product" | "onchain_data"
-  - market_structure: IPO/并购/融资/监管里程碑
-  - product: 产品发布/集成/合作
-  - onchain_data: 市值/TVL/交易量变化
+- category: "market_structure" | "product" | "onchain_data" | "regulatory" | "funding"
 - text: 一行事实描述，含量化数据
 - fact_index: 来源事实编号
 
-绝对规则:
-- 不做预测、不做评价、不说"值得关注"、不说"可能"
-- 中英文之间加空格
+绝对规则: 不做预测、不做评价、中英文之间加空格
 
 输出严格 JSON:
-{
-  "one_liner": "...",
-  "market_line": "...",
-  "narratives": [...],
-  "signals": [...]
-}
+{ "one_liner": "...", "market_line": "...", "signals": [...] }
 
 本周事实 (共 ${topFacts.length} 条):
 ${factsText}`,
-                { system: '稳定币事实聚合工具。输出严格JSON。不做预测不做评价。narratives 2-3条, signals 5条。', maxTokens: 3000 }
+                { system: '稳定币事实聚合工具。输出严格JSON。不做预测不做评价。signals 5条。', maxTokens: 2000 }
               )
 
-              logger.log(`  选取完成: ${selectionResult.narratives?.length ?? 0} 叙事 + ${selectionResult.signals?.length ?? 0} 信号`, 'success')
+              logger.log(`  AI 选取完成: ${selectionResult.signals?.length ?? 0} 信号`, 'success')
 
-              // Phase B: Context Engine — 为每条叙事和信号生成上下文
-              logger.log('  上下文引擎启动...', 'info')
+              // Build v13 narratives from stored rich data
+              interface V13Event {
+                date: string; title: string; description: string
+                significance: 'high' | 'medium' | 'low'
+                isExternal?: boolean; externalUrl?: string; sourceUrl?: string
+              }
+              interface V13Upcoming {
+                date: string; title: string; description: string
+                type: 'confirmed' | 'prediction'; source?: string
+              }
+              interface V13Narrative {
+                topic: string; summary: string; weekCount?: number
+                events: V13Event[]; upcoming: V13Upcoming[]
+                context?: Array<{ event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string }>
+                facts?: Array<{ content: string; date: string; tags?: string[]; source_url?: string }>
+                last_week?: string; origin?: string
+              }
 
-              const narrativesWithContext: NarrativeForEmail[] = []
-              for (const n of (selectionResult.narratives ?? []).slice(0, 3)) {
-                // 用叙事的 this_week 作为主要事实输入
-                const primaryFact = n.fact_indices?.[0] != null ? topFacts[n.fact_indices[0]] : null
-                const factTags = primaryFact ? (primaryFact.tags as string[]) : []
-                const factDate = primaryFact ? String(primaryFact.fact_date).split('T')[0] : new Date().toISOString().split('T')[0]
+              const v13Narratives: V13Narrative[] = []
 
-                const ctxResult = await generateFactContext({
-                  content: n.this_week,
-                  tags: factTags,
-                  fact_date: factDate,
-                })
+              // Fetch previous week's narrative summaries for "上周" temporal progression
+              const prevWeek = shiftWeek(weekNumber, -1)
+              const prevNarrativeMap = new Map<string, string>()
+              try {
+                const { data: prevSnapshot } = await supabaseAdmin
+                  .from('weekly_snapshots')
+                  .select('snapshot_data')
+                  .eq('week_number', prevWeek)
+                  .single()
+                const prevSummaryData = prevSnapshot?.snapshot_data as Record<string, unknown> | undefined
+                const prevDetailedStr = (prevSummaryData?.weekly_summary_detailed ?? '') as string
+                if (prevDetailedStr) {
+                  const prevParsed = JSON.parse(prevDetailedStr)
+                  for (const pn of (prevParsed.narratives ?? [])) {
+                    if (pn.topic && pn.summary) prevNarrativeMap.set(pn.topic, pn.summary as string)
+                  }
+                }
+              } catch (err) {
+                logger.log(`  上周叙事查询跳过 (${prevWeek}): ${err instanceof Error ? err.message : 'no data'}`, 'info')
+              }
 
-                // Map structured comparisons to NarrativeContext objects
-                const contextItems = ctxResult.comparisons.length > 0
-                  ? ctxResult.comparisons.map(c => ({
-                      event: c.reference_event,
-                      detail: `${c.metric_label} ${c.metric_value} (${c.date_range})`,
-                    }))
-                  : undefined
+              // Fetch narrative thread origins (first entry summary) for multi-week narratives
+              const originMap = new Map<string, string>()
+              try {
+                const { data: threads } = await supabaseAdmin
+                  .from('narrative_threads')
+                  .select('id, topic, first_seen_week, total_weeks')
+                  .in('status', ['active', 'dormant'])
+                  .gt('total_weeks', 1)
+                  .limit(10)
+                if (threads && threads.length > 0) {
+                  const threadIds = threads.map(t => t.id)
+                  const { data: firstEntries } = await supabaseAdmin
+                    .from('narrative_thread_entries')
+                    .select('thread_id, summary, week_number')
+                    .in('thread_id', threadIds)
+                    .order('week_number', { ascending: true })
+                  if (firstEntries) {
+                    // Group by thread_id, take the earliest entry
+                    const firstByThread = new Map<string, string>()
+                    for (const e of firstEntries) {
+                      if (!firstByThread.has(e.thread_id)) firstByThread.set(e.thread_id, e.summary)
+                    }
+                    for (const t of threads) {
+                      const origin = firstByThread.get(t.id)
+                      if (origin) originMap.set(t.topic, origin)
+                    }
+                  }
+                }
+              } catch {
+                // Thread origins unavailable — skip
+              }
 
-                narrativesWithContext.push({
-                  topic: n.topic,
-                  weekCount: n.week_count,
-                  origin: n.origin,
-                  last_week: n.last_week,
-                  this_week: n.this_week,
-                  next_week_watch: n.timeline,
-                  context: contextItems,
-                })
+              if (hasRichNarratives) {
+                // Context Engine on each narrative
+                logger.log('  上下文引擎启动...', 'info')
 
-                if (ctxResult.context_lines.length > 0) {
-                  logger.log(`    "${n.topic}" → ${ctxResult.context_lines.length} 条上下文 (${ctxResult.confidence})`, 'success')
-                } else {
-                  logger.log(`    "${n.topic}" → 无上下文候选`, 'info')
+                for (const sn of storedNarratives.slice(0, 3)) {
+                  // Split nodes into timeline events vs forward-looking
+                  const timelineEvents: V13Event[] = []
+                  const upcoming: V13Upcoming[] = []
+
+                  for (const node of sn.nodes) {
+                    if (node.isPrediction) {
+                      upcoming.push({
+                        date: node.date, title: node.title, description: node.description,
+                        type: 'prediction',
+                      })
+                    } else if (node.isConfirmedEvent) {
+                      upcoming.push({
+                        date: node.date, title: node.title, description: node.description,
+                        type: 'confirmed', source: node.sourceUrl,
+                      })
+                    } else {
+                      timelineEvents.push({
+                        date: node.date, title: node.title, description: node.description,
+                        significance: node.significance,
+                        isExternal: node.isExternal, externalUrl: node.externalUrl,
+                        sourceUrl: node.sourceUrl,
+                      })
+                    }
+                  }
+
+                  // Collect fact details for this narrative
+                  const factIds = sn.nodes.flatMap(n => n.factIds).filter(Boolean)
+                  const narrativeFacts = factIds.length > 0
+                    ? topFacts.filter(f => factIds.includes(f.id)).map(f => ({
+                        content: f.content_zh || f.content_en,
+                        date: String(f.fact_date).split('T')[0],
+                        tags: f.tags as string[],
+                        source_url: f.source_url,
+                      }))
+                    : []
+
+                  // Context engine on narrative summary
+                  const highNodes = sn.nodes.filter(n => n.significance === 'high' && !n.isPrediction && !n.isConfirmedEvent)
+                  const ctxInput = highNodes.length > 0 ? highNodes.map(n => n.title).join('; ') : sn.summary
+                  const ctxTags = [...new Set(sn.nodes.flatMap(n => n.entityNames).filter(Boolean))]
+
+                  let contextItems: Array<{ event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string }> | undefined
+                  try {
+                    const ctxResult = await generateFactContext({
+                      content: ctxInput,
+                      tags: ctxTags.slice(0, 5),
+                      fact_date: new Date().toISOString().split('T')[0],
+                    })
+                    if (ctxResult.comparisons.length > 0) {
+                      contextItems = ctxResult.comparisons.map(c => ({
+                        event: c.reference_event,
+                        detail: `${c.metric_label} ${c.metric_value} (${c.date_range})`,
+                        current_entity: c.current_entity,
+                        current_value: c.current_value,
+                        delta_label: c.delta_label,
+                      }))
+                      logger.log(`    "${sn.topic}" → ${ctxResult.comparisons.length} 条上下文`, 'success')
+                    } else {
+                      logger.log(`    "${sn.topic}" → 无上下文候选`, 'info')
+                    }
+                  } catch {
+                    logger.log(`    "${sn.topic}" → 上下文生成失败`, 'info')
+                  }
+
+                  v13Narratives.push({
+                    topic: sn.topic,
+                    summary: sn.summary,
+                    weekCount: weekCountMap.get(sn.topic) ?? 1,
+                    events: timelineEvents,
+                    upcoming,
+                    context: contextItems,
+                    facts: narrativeFacts,
+                    last_week: prevNarrativeMap.get(sn.topic),
+                    origin: originMap.get(sn.topic),
+                  })
                 }
               }
 
+              // Signals with context
               const signalsWithContext: (SignalItem & { source_url?: string })[] = []
               for (const s of (selectionResult.signals ?? []).slice(0, 5)) {
-                const factRef = s.fact_index != null ? topFacts[s.fact_index] : null
+                const factRef = s.fact_index != null && s.fact_index >= 0 && s.fact_index < topFacts.length ? topFacts[s.fact_index] : null
                 const factTags = factRef ? (factRef.tags as string[]) : []
                 const factDate = factRef ? String(factRef.fact_date).split('T')[0] : new Date().toISOString().split('T')[0]
 
@@ -366,22 +440,30 @@ ${factsText}`,
                   fact_date: factDate,
                 })
 
+                const firstComp = ctxResult.comparisons[0]
                 signalsWithContext.push({
                   category: s.category,
                   text: s.text,
-                  context: ctxResult.context_lines[0], // 信号只取第一条上下文
+                  context: ctxResult.context_lines[0],
+                  structured_context: firstComp ? {
+                    event: firstComp.reference_event,
+                    detail: `${firstComp.metric_label} ${firstComp.metric_value} (${firstComp.date_range})`,
+                    current_entity: firstComp.current_entity,
+                    current_value: firstComp.current_value,
+                    delta_label: firstComp.delta_label,
+                  } : undefined,
                   source_url: factRef?.source_url ?? undefined,
                 })
               }
 
               logger.log(`  上下文引擎完成`, 'success')
 
-              // Phase 2F: Adversarial validation on free-text fields
+              // Adversarial validation
               logger.log('  对抗验证...', 'info')
               try {
                 const fieldsToCheck = [
                   { name: 'one_liner', value: selectionResult.one_liner },
-                  ...narrativesWithContext.map((n, i) => ({ name: `narrative_${i}_this_week`, value: n.this_week })),
+                  ...v13Narratives.map((n, i) => ({ name: `narrative_${i}_summary`, value: n.summary })),
                 ]
                 const checks = await adversarialCheck(fieldsToCheck)
                 let violations = 0
@@ -391,11 +473,11 @@ ${factsText}`,
                     if (check.field === 'one_liner') {
                       selectionResult.one_liner = check.cleaned
                     } else {
-                      const match = check.field.match(/^narrative_(\d+)_this_week$/)
+                      const match = check.field.match(/^narrative_(\d+)_summary$/)
                       if (match) {
                         const idx = parseInt(match[1])
-                        if (narrativesWithContext[idx]) {
-                          narrativesWithContext[idx].this_week = check.cleaned
+                        if (v13Narratives[idx]) {
+                          v13Narratives[idx].summary = check.cleaned
                         }
                       }
                     }
@@ -407,33 +489,17 @@ ${factsText}`,
                 logger.log(`  对抗验证跳过: ${err instanceof Error ? err.message : String(err)}`, 'info')
               }
 
-              // Assemble V12 format
-              const narrativesWithFacts = narrativesWithContext.map((n, idx) => {
-                const origNarr = (selectionResult.narratives ?? [])[idx]
-                return {
-                  ...n,
-                  fact_indices: origNarr?.fact_indices,
-                  facts: (origNarr?.fact_indices ?? [])
-                    .map(fidx => topFacts[fidx])
-                    .filter(Boolean)
-                    .map(f => ({
-                      content: f.content_zh || f.content_en,
-                      date: String(f.fact_date).split('T')[0],
-                      tags: f.tags,
-                      source_url: f.source_url,
-                    })),
-                }
-              })
-
+              // Assemble V13 format
               weeklySummaryDetailed = JSON.stringify({
-                version: 'v12',
+                version: 'v13',
                 oneLiner: selectionResult.one_liner,
                 marketLine: selectionResult.market_line,
-                narratives: narrativesWithFacts,
+                narratives: v13Narratives,
                 signals: signalsWithContext,
+                sourceCount: new Set(topFacts.map((f: { source_url?: string }) => f.source_url).filter(Boolean)).size || totalFacts,
               })
 
-              logger.log(`  V11 周报数据组装完成`, 'success')
+              logger.log(`  V13 周报数据组装完成`, 'success')
             } else {
               logger.log('  本周无事实，跳过', 'info')
             }
@@ -497,24 +563,32 @@ ${factsText}`,
                 weekLabel: weekToDateRange(weekNumber),
                 marketLine: parsed.marketLine,
                 oneLiner: parsed.oneLiner ?? '',
-                narratives: (parsed.narratives ?? []).slice(0, 3).map((n: NarrativeForEmail) => ({
-                  topic: n.topic,
-                  weekCount: n.weekCount,
-                  origin: n.origin,
-                  last_week: n.last_week,
-                  this_week: n.this_week,
-                  next_week_watch: n.next_week_watch,
-                  context: n.context,
-                })),
-                signals: (parsed.signals ?? []).slice(0, 8).map((s: SignalItem) => ({
+                narratives: (parsed.narratives ?? []).slice(0, 3).map((n: { topic: string; summary: string; weekCount?: number; upcoming?: Array<{ date: string; title: string }>; context?: Array<{ event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string }>; last_week?: string; origin?: string }) => {
+                  // Transform V13Narrative → NarrativeForEmail
+                  const upcoming = (n.upcoming ?? [])
+                  const nextWatch = upcoming.length > 0
+                    ? upcoming.map(u => `${u.date}: ${u.title}`).join('; ')
+                    : undefined
+                  return {
+                    topic: n.topic,
+                    weekCount: n.weekCount,
+                    origin: n.origin,
+                    last_week: n.last_week,
+                    this_week: n.summary,
+                    next_week_watch: nextWatch,
+                    context: n.context,
+                  } as NarrativeForEmail
+                }),
+                signals: (parsed.signals ?? []).slice(0, 8).map((s: SignalItem & { source_url?: string }) => ({
                   category: s.category,
                   text: s.text,
                   context: s.context,
+                  structured_context: s.structured_context,
                 })),
                 stats: {
                   factCount: totalFacts,
                   verifiedCount: highCount + mediumCount,
-                  sourceCount: parsed.sourceCount ?? 10,
+                  sourceCount: parsed.sourceCount ?? totalFacts,
                 },
               }
 

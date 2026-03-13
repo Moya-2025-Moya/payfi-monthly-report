@@ -103,14 +103,16 @@ ${factsText}
       metrics: e.metric_key && e.metric_value ? { [e.metric_key]: e.metric_value } : {},
       tags: e.tags,
       auto_generated: true,
+      verified: false,  // Quality gate: auto-generated events start unverified
     }
     if (embeddings?.[i]) {
       row.embedding = JSON.stringify(embeddings[i])
     }
 
+    // Insert only — never overwrite existing entries (protects verified data)
     const { error } = await supabaseAdmin
       .from('reference_events')
-      .upsert(row, { onConflict: 'id' })
+      .upsert(row, { onConflict: 'id', ignoreDuplicates: true })
 
     if (!error) added++
   }

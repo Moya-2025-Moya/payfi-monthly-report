@@ -1,23 +1,9 @@
 import { getCurrentWeekNumber, supabaseAdmin } from '@/db/client'
 import { redirect } from 'next/navigation'
 import { getWeeklyPageData, getKnowledgeGrowthStats } from '@/lib/weekly-data'
+import { parseWeekDateRange, shiftWeek } from '@/lib/week-utils'
 import { ConsoleView } from './ConsoleView'
 import type { Metadata } from 'next'
-
-function parseWeekDateRange(week: string): { display: string } | null {
-  const m = week.match(/^(\d{4})-W(\d{2})$/)
-  if (!m) return null
-  const year = parseInt(m[1], 10)
-  const wNum = parseInt(m[2], 10)
-  const jan4 = new Date(Date.UTC(year, 0, 4))
-  const dow = jan4.getUTCDay() === 0 ? 7 : jan4.getUTCDay()
-  const monday = new Date(jan4)
-  monday.setUTCDate(jan4.getUTCDate() - (dow - 1) + (wNum - 1) * 7)
-  const sunday = new Date(monday)
-  sunday.setUTCDate(monday.getUTCDate() + 6)
-  const fmt = (d: Date) => `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日`
-  return { display: `${fmt(monday)} - ${fmt(sunday)}` }
-}
 
 export async function generateMetadata({ params }: { params: Promise<{ week: string }> }): Promise<Metadata> {
   const { week } = await params
@@ -26,15 +12,6 @@ export async function generateMetadata({ params }: { params: Promise<{ week: str
     title: `Console ${week}${range ? ` | ${range.display}` : ''}`,
     description: `StablePulse Console — ${week}`,
   }
-}
-
-function shiftWeek(week: string, delta: number): string {
-  const [yearStr, wPart] = week.split('-W')
-  const year = Number(yearStr)
-  const num = Number(wPart) + delta
-  if (num < 1) return `${year - 1}-W${String(52 + num).padStart(2, '0')}`
-  if (num > 52) return `${year + 1}-W${String(num - 52).padStart(2, '0')}`
-  return `${year}-W${String(num).padStart(2, '0')}`
 }
 
 export default async function ConsoleWeekPage({ params }: { params: Promise<{ week: string }> }) {
