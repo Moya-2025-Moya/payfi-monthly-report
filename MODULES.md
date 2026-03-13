@@ -1,4 +1,4 @@
-# StablePulse V13 — 产品与技术规范
+# StablePulse V15 — 产品与技术规范
 
 ## 产品定义
 
@@ -85,7 +85,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    StablePulse V13                        │
+│                    StablePulse V15                        │
 │                                                          │
 │  ┌──────────┐   ┌──────────────┐   ┌──────────────────┐ │
 │  │  邮件     │   │  Web 阅读版   │   │  Console 终端    │ │
@@ -94,7 +94,8 @@
 │  │ VC 每周读 │   │ 邮件 CTA 落地 │   │ 你的工具         │ │
 │  │ 3 叙事    │   │ 全量事实      │   │ Depth/Focus/     │ │
 │  │ 5 信号    │   │ 上下文展开    │   │ Entity/TrustSpine│ │
-│  │ 上下文=主角│   │ 来源链接      │   │ 数据质量审查     │ │
+│  │ 5-10 快讯 │   │ 来源链接      │   │ 数据质量审查     │ │
+│  │ 上下文=主角│   │               │   │                  │ │
 │  └──────────┘   └──────────────┘   └──────────────────┘ │
 │  ▲ 唯一产品面     ▲ operator 自用    ▲ operator 自用     │
 │                                                          │
@@ -109,38 +110,41 @@
 
 每周一封。80% 的产品精力在这里。VC 在手机上花 90 秒读完。
 
+**V15 视觉系统**:
+- 品牌色统一: `#ff6d00` 橙色用于所有品牌元素（logo、week badge、delta 差值、CTA 链接）
+- 上下文块中性化: `border-left: #c4c4c4` + `bg: #f5f5f5` — 内容自身说话，不与品牌色竞争
+- Section header 中文化: "本周叙事"、"信号"、"本周快讯"（非全大写英文）
+- "参照对比" → "历史可比": VC 友好的术语
+
 **信息节奏** (从密到疏，像一篇好文章的呼吸):
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 STABLEPULSE                      2026.03.10 - 03.16
-Weekly Stablecoin Intelligence
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-USDC $60.2B (+2.1%)  ·  USDT $144.1B (+0.8%)
+Circle S-1 修订版提交; GENIUS Act 过参议院委员会   ← 20px 加粗，邮件最大字号
 
-Circle S-1 修订版提交; GENIUS Act 过参议院委员会
+USDC $60.2B (+2.1%)  ·  USDT $144.1B (+0.8%)      ← 13px 等宽灰色，辅助数据
 
 ──────────────────────────────────────────────────
 
-NARRATIVES                                    ▎3 条
+本周叙事                                      3 条
 
 ┌─ Circle IPO 进程 ─────────────────── 第4周 ─┐
 │                                              │
+│  起点  Circle 提交 S-1 至 SEC                │
 │  上周  高盛+摩根确认联合承销                 │
 │  本周  S-1 修订版提交                        │
 │                                              │
-│  ┌ 历史对比 ─────────────────────────────┐   │
+│  ┌ 历史可比 ─────────────────────────────┐   │
 │  │                                       │   │
-│  │  Coinbase IPO                         │   │
+│  │  Coinbase 上市                        │   │
 │  │  S-1→上市: 118 天 (2020.12→2021.04)   │   │
-│  │  上市估值: $85.8B                     │   │
 │  │                                       │   │
-│  │  Circle 当前                          │   │
-│  │  启动→S-1 修订: 25 天                 │   │
-│  │  (Coinbase 同阶段: 31 天)             │   │
+│  │  Circle 当前: 25 天 — 快 42%          │   │  ← delta 用橙色 #ff6d00
 │  │                                       │   │
 │  └───────────────────────────────────────┘   │
 │                                              │
@@ -148,17 +152,13 @@ NARRATIVES                                    ▎3 条
 │                                              │
 └──────────────────────────────────────────────┘
 
-┌─ Ethena 增长曲线 ────────────────── 第2周 ─┐
-│  ...                                        │
-└─────────────────────────────────────────────┘
-
 ──────────────────────────────────────────────────
 
-SIGNALS                                       ▎5 条
+信号                                          5 条
 
 市场
 · Ethena USDe TVL 突破 $5B
-  历史对比: DAI 达 $5B 用时 18 个月; USDe 10.5 个月 (-42%)
+  历史可比: DAI 达 $5B 用时 18 个月; USDe 10.5 个月 — 快 42%
 
 产品
 · Fireblocks 新增 USDC 原生铸造 API
@@ -169,21 +169,37 @@ SIGNALS                                       ▎5 条
 
 ──────────────────────────────────────────────────
 
-52 条事实 · 47 条已验证 · 14 个数据源
-AI 多源交叉验证 · 人工审核 · 零观点
+本周快讯
 
-查看完整版 →
+03-12  Tether 在 El Salvador 获得数字资产服务商牌照
+03-13  Paxos 将 BUSD 赎回窗口延长至 2026 年 Q4
+03-14  MakerDAO 将 DSR 从 5% 上调至 8%
+03-11  PayPal PYUSD 铸造量突破 $500M
+...
 
+──────────────────────────────────────────────────
+
+另有 44 条本周事实 →                           ← CTA 具体化
+
+基于 14 个数据源 · 52 条事实 · AI 交叉验证
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STABLEPULSE
+退订
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 **邮件设计原则**:
 
-1. **"历史对比"块是视觉主角**: 有独立背景色（#f0f7ff 浅蓝灰）、左边框（#3b82f6 蓝色 3px）、等宽字体数字。比事实本身更抢眼。这是我们和所有 newsletter 的根本区别。
-2. **信息密度曲线**: 开头密（市值+标题）→ 中段深（叙事+对比）→ 结尾快（信号列表）→ 收尾轻（统计+CTA）。像呼吸。
-3. **叙事卡片有边框**: 每个叙事是一个视觉独立的"故事容器"，不是纯文本列表。
-4. **"第 N 周" 是唯一的 opinion proxy**: 不说重要，但追踪了 4 周 = 暗示持续性。
-5. **Signal 区域紧凑**: 一行事实 + 一行对比 (如有)，不展开。快速扫描。无上下文的 signal 只显示事实本身，不留空位。
+1. **One-liner 是视觉英雄**: 20px 粗体，邮件中最大字号。VC 打开邮件第一眼看到的就是本周核心事实。
+2. **"历史可比"块是内容主角**: 中性背景色（#f5f5f5）+ 灰色左边框（#c4c4c4），等宽字体数字。不争夺品牌注意力，让数据本身发光。Delta 差值用品牌橙色高亮。
+3. **信息密度曲线**: 开头密（标题+市值）→ 中段深（叙事+对比）→ 中快（信号）→ 扫描（快讯）→ 收尾轻（CTA）。像呼吸。
+4. **叙事卡片有边框**: 每个叙事是一个视觉独立的"故事容器"，支持完整时间线（起点→上周→本周→下周关注）。
+5. **"第 N 周" 是唯一的 opinion proxy**: 不说重要，但追踪了 4 周 = 暗示持续性。week badge 用品牌橙色。
+6. **Signal 区域紧凑**: 一行事实 + 一行对比 (如有)，不展开。快速扫描。
+7. **快讯区覆盖长尾**: 叙事和信号之外的零散事实，一句话一条，带日期标签，确保 VC 不遗漏任何重要动态。
+8. **CTA 具体化**: "另有 44 条本周事实 →" 而非模糊的 "查看完整版"——告诉 VC 点过去能得到什么。
+9. **Footer 极简**: 一行数据源说明 + 极淡的品牌/退订。不放假统计，不放重复的 slogan。
 
 **Signal 分类** (固定 5 类，按此顺序显示，空分类不显示):
 1. 市场 (market_structure) — 市值变化、TVL、交易量
@@ -201,13 +217,14 @@ one_liner 是 AI 生成的自由文本 (1 句话，≤ 40 字)，概括本周最
 - 失败回退: 如果对抗性校验不通过，用本周事实数 + 叙事数模板: "本周 52 条事实 · 3 条叙事追踪"
 
 **邮件技术约束**:
-- 纯 `<table>` 布局，不用 `<div>`, `<p>`
-- 浅色背景 (#ffffff body, #f7f7f7 section, #f0f7ff context block)
+- 纯 `<table>` 布局，不用 `<div>`, `<p>` (Preheader 除外)
+- 浅色背景 (#ffffff body, #f7f7f7 outer/footer, #f5f5f5 context block)
+- 品牌色: #ff6d00 (橙), 上下文块: #c4c4c4 border + #f5f5f5 bg
 - 所有颜色 6 位 hex，不用 rgba/hsl
 - font-size >= 13px (Gmail 移动端强制放大阈值)
 - 不用 border-radius, box-shadow, CSS3 属性
 - Outlook MSO 条件注释 fallback
-- Context block: `border-left: 3px solid #3b82f6; background: #f0f7ff; padding: 12px 16px`
+- Hidden preheader div: inbox 预览显示 one-liner 内容
 
 ### Surface 2: Web 阅读版 = 邮件做不到的事 (pull)
 
@@ -364,7 +381,7 @@ one_liner 是 AI 生成的自由文本 (1 句话，≤ 40 字)，概括本周最
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        StablePulse V13                          │
+│                        StablePulse V15                          │
 ├───────────┬──────────────┬──────────────┬───────────┬──────────┤
 │  Layer 1  │   Layer 2    │   Layer 3    │  Layer 4  │ Layer 5  │
 │  采集     │ 原子化+验证   │ 上下文引擎   │  选取+分发 │ 基础设施  │
@@ -580,7 +597,7 @@ Step 1: 统计事实 + 置信度分布
 Step 2: 跨周矛盾检测 (4 周历史, Haiku batch)
 Step 3: AI 选取 + Context Engine
   3A. 从 narrative_thread_entries 读上周数据 (不让 AI 编 last_week)
-  3B. AI 选取 3 narratives + 5 signals + one_liner + market_line
+  3B. AI 选取 3 narratives + 5 signals + 5-10 briefs + one_liner + market_line
       叙事选取标准 (按优先级排序):
         i.   持续性: 跨周叙事优先于新叙事 (第4周 > 第1周)
         ii.  上下文密度: 有更多历史对比的优先
@@ -609,26 +626,38 @@ narrative_thread_entries 表
 ```
 src/lib/email-template.ts
 
-输入: EmailData (market_line, one_liner, narratives with context, signals with context)
+输入: EmailData {
+  weekLabel, marketLine?, oneLiner,
+  narratives: NarrativeForEmail[] (含 origin, last_week, this_week, next_week_watch, context),
+  signals: SignalItem[] (含 structured_context),
+  briefs?: BriefItem[] (5-10 条零散快讯),
+  stats: { factCount, verifiedCount, sourceCount },
+  weekUrl?
+}
 输出: email-safe HTML
 
-模板结构:
-1. Header strip: STABLEPULSE + date range
-2. Market line: 等宽字体，灰色
-3. One-liner: 最大字号，加粗
-4. Narratives: 带边框卡片，内含"历史对比"蓝色块
-5. Signals: 紧凑列表，内联上下文
-6. Footer: 统计 + CTA + 退订
+V15 模板结构:
+1. Hidden preheader (inbox 预览: one-liner 内容)
+2. Header strip: STABLEPULSE + date range (橙色品牌线)
+3. One-liner: 20px 加粗，邮件最大字号 (hero)
+4. Market line: 13px 等宽灰色 (辅助数据)
+5. 本周叙事: 带边框卡片，内含"历史可比"中性块 + 并排对比 + delta
+6. 信号: 紧凑列表，内联 structured_context
+7. 本周快讯: 5-10 条零散事实，带日期标签 (覆盖长尾)
+8. CTA: 具体化 ("另有 N 条本周事实 →")
+9. Footer: 一行数据源说明 + 极淡品牌/退订
 
-"历史对比"块样式:
-  border-left: 3px solid #3b82f6
-  background: #f0f7ff
+"历史可比"块样式:
+  border-left: 3px solid #c4c4c4
+  background: #f5f5f5
   padding: 12px 16px
   font-family: monospace (数字部分)
+  delta 差值: color #ff6d00 (品牌橙)
 
 约束:
-- 纯 <table> 布局
-- 浅色主题 (#fff/#f7f7f7/#f0f7ff)
+- 纯 <table> 布局 (preheader 用 hidden <div>)
+- 浅色主题 (#fff/#f7f7f7/#f5f5f5)
+- 品牌色: #ff6d00, 上下文块: #c4c4c4/#f5f5f5
 - 6位 hex 颜色
 - font-size >= 13px
 - 无 CSS3 属性
@@ -760,16 +789,17 @@ src/app/
 Console 最大宽度: 1400px (信息密度)
 
 语义颜色:
-  蓝 #3b82f6  = 上下文/历史对比 (产品核心色)
+  橙 #ff6d00  = 品牌色 (logo, week badge, delta 差值, CTA)
   灰阶       = 文本层级 (--fg-title, --fg-secondary, --fg-muted)
   绿 #16a34a  = 已验证 badge
   橙 #d97706  = 部分验证 badge
 
-上下文块 (Context Block) — 全产品统一样式:
-  border-left: 3px solid var(--info)
-  background: var(--context-bg)
+上下文块 (Context Block) — 邮件/Web 统一样式:
+  邮件: border-left: 3px solid #c4c4c4; background: #f5f5f5
+  Web:  border-left: 3px solid var(--info); background: var(--context-bg)
   padding: 12px 16px
   border-radius: 0 (邮件) / 4px (web)
+  标题: "历史可比" (非"参照对比")
 
 导航:
   阅读版 TopBar: Logo [StablePulse] ─── [← 上周] [下周 →] ─── [Console]
@@ -779,7 +809,7 @@ Console 最大宽度: 1400px (信息密度)
 
 ---
 
-## V13 实施路线
+## V15 实施路线
 
 ### Phase 1: 表面分离 (架构重构)
 

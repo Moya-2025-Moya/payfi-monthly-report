@@ -413,18 +413,26 @@ function PipelineTab() {
       <Card>
         <div className="flex items-center justify-between">
           <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>流水线步骤</p>
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <span className="text-[11px]" style={{ color: testMode ? 'var(--accent)' : 'var(--fg-muted)' }}>
-              {testMode ? '测试模式 (每表3条)' : '完整模式'}
-            </span>
+          <div className="flex rounded-md overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
             <button
-              onClick={() => setTestMode(v => !v)}
-              className="relative w-9 h-5 rounded-full transition-colors"
-              style={{ background: testMode ? 'var(--accent)' : 'var(--border)' }}>
-              <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-                style={{ left: testMode ? '18px' : '2px' }} />
+              onClick={() => setTestMode(false)}
+              className="px-3 py-1 text-[11px] font-medium transition-colors"
+              style={{
+                background: !testMode ? 'var(--accent)' : 'transparent',
+                color: !testMode ? '#fff' : 'var(--fg-muted)',
+              }}>
+              完整
             </button>
-          </label>
+            <button
+              onClick={() => setTestMode(true)}
+              className="px-3 py-1 text-[11px] font-medium transition-colors"
+              style={{
+                background: testMode ? 'var(--accent)' : 'transparent',
+                color: testMode ? '#fff' : 'var(--fg-muted)',
+              }}>
+              测试 (每表3条)
+            </button>
+          </div>
         </div>
       </Card>
 
