@@ -260,13 +260,18 @@ ${candidatesText}
 8. current_value 必须包含数字，与 metric_value 同维度，如当前事实无明确数值则省略
 9. delta_label 只写客观差值（禁止"显著""惊人"等评价词），格式: "快/慢/大/小/多/少 + 百分比或倍数"
 10. 三个字段要么全部提供，要么全部省略
+11. **所有字段必须使用中文**（实体名保留英文原名，如 "Circle"/"Coinbase"，但描述文字必须中文）
+    - reference_event: "Coinbase 上市" 而非 "Coinbase IPO"
+    - metric_label: "S-1 提交到上市耗时" 而非 "S-1 to IPO duration"
+    - metric_value: "118 天" 而非 "118 days"
+    - delta_label: "快 42%" 而非 "42% faster"
 
 输出严格 JSON:
 {
   "comparisons": [...],
   "confidence": "high" | "medium" | "low"
 }`,
-    { system: '结构化数据提取工具。输出严格 JSON。只提取事实字段。', maxTokens: 1000 }
+    { system: '结构化数据提取工具。输出严格 JSON。只提取事实字段。所有描述性字段必须用中文（实体名保留英文）。', maxTokens: 1000 }
   )
 
   const comparisons = result.comparisons ?? []
