@@ -1,4 +1,6 @@
-// 参考知识库 — 人工策展的历史事件，为 Context Engine 提供可比数据
+// 参考知识库 V13 — 人工策展的稳定币行业历史事件
+// 每条数据的每个数字必须有 primary source 可追溯
+// 覆盖范围: 稳定币发行商、B2C/B2B 产品、美国上市公司、监管、市场事件
 // AI 无法从训练数据中可靠回忆这些数字，必须结构化存储
 
 export interface Milestone {
@@ -12,7 +14,10 @@ export interface ReferenceEvent {
   type: EventPattern
   milestones: Milestone[]
   metrics: Record<string, string | number>
-  tags: string[]        // 用于检索匹配
+  tags: string[]              // 用于检索匹配
+  source_urls?: string[]       // Primary sources for every number (SEC filing, DeFiLlama, official blog)
+  comparable_events?: string[] // IDs of natural comparison pairs
+  context_summary?: string     // 为什么这个事件适合作为参照 (1-2 句)
 }
 
 export type EventPattern =

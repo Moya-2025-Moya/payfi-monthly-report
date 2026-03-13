@@ -6,15 +6,19 @@ import type { WeeklyStats } from '@/lib/weekly-data'
 
 /* ── Types ── */
 
+// Context can be string[] (legacy) or {event, detail}[] (V12+)
+type ContextItem = string | { event: string; detail: string }
+
 interface NarrativeData {
   topic: string
   last_week: string
   this_week: string
   origin?: string
   timeline?: string
-  context?: string[]
+  context?: ContextItem[]
   weekCount?: number
   next_week?: string
+  next_week_watch?: string
   facts?: { content: string; date: string; tags?: string[]; source_url?: string }[]
 }
 
@@ -48,7 +52,12 @@ const CATEGORY_ORDER = ['market_structure', 'product', 'onchain_data', 'regulato
 
 /* ── Context Block (blue left-border, the product's core visual) ── */
 
-function ContextBlock({ items }: { items: string[] }) {
+function formatContextItem(c: ContextItem): string {
+  if (typeof c === 'string') return c
+  return `${c.event}: ${c.detail}`
+}
+
+function ContextBlock({ items }: { items: ContextItem[] }) {
   if (items.length === 0) return null
   return (
     <div className="mt-2 rounded-r" style={{
@@ -58,7 +67,7 @@ function ContextBlock({ items }: { items: string[] }) {
     }}>
       {items.map((c, i) => (
         <p key={i} className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-secondary)', fontFamily: 'var(--font-mono), monospace' }}>
-          {c}
+          {formatContextItem(c)}
         </p>
       ))}
     </div>
@@ -119,10 +128,10 @@ function NarrativeCard({ narrative, index, expanded, onToggle }: {
           </div>
 
           {/* Next week (if present) */}
-          {n.next_week && (
+          {(n.next_week_watch || n.next_week) && (
             <div className="flex gap-3">
               <span className="text-[12px] font-medium shrink-0 w-16 pt-0.5" style={{ color: 'var(--fg-muted)' }}>下周关注</span>
-              <span style={{ color: 'var(--fg-muted)' }}>{n.next_week}</span>
+              <span style={{ color: 'var(--fg-muted)' }}>{n.next_week_watch || n.next_week}</span>
             </div>
           )}
         </div>
@@ -360,7 +369,7 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
                       </p>
                       {/* Context always visible */}
                       {s.context && (
-                        <ContextBlock items={[s.context]} />
+                        <ContextBlock items={[typeof s.context === 'string' ? s.context : formatContextItem(s.context)]} />
                       )}
                     </div>
                   ))}

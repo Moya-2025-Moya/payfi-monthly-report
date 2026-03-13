@@ -3,15 +3,24 @@
 import { useState } from 'react'
 import { useDepth } from '@/components/depth/DepthProvider'
 
+// Context can be string[] (legacy) or {event, detail}[] (V12+)
+type ContextItem = string | { event: string; detail: string }
+
+function formatContextItem(c: ContextItem): string {
+  if (typeof c === 'string') return c
+  return `${c.event}: ${c.detail}`
+}
+
 interface NarrativeData {
   topic: string
   last_week: string
   this_week: string
   origin?: string
   timeline?: string
-  context?: string[]
+  context?: ContextItem[]
   weekCount?: number
   next_week?: string
+  next_week_watch?: string
   facts?: { content: string; date: string; tags?: string[]; source_url?: string }[]
 }
 
@@ -103,10 +112,10 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                   </>
                 )}
                 <FlowCard label="本周" text={n.this_week} variant="current" style={{ minWidth: '140px' }} />
-                {n.next_week && (
+                {(n.next_week_watch || n.next_week) && (
                   <>
                     <Arrow dashed />
-                    <FlowCard label="下周关注" text={n.next_week} variant="next" />
+                    <FlowCard label="下周关注" text={n.next_week_watch || n.next_week || ''} variant="next" />
                   </>
                 )}
               </div>
@@ -118,7 +127,7 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                     <p className="text-[10px] font-semibold tracking-wider uppercase mb-1" style={{ color: COLOR.context }}>CONTEXT</p>
                     {n.context.map((c, ci) => (
                       <p key={ci} className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
-                        · {c}
+                        · {formatContextItem(c)}
                       </p>
                     ))}
                   </div>

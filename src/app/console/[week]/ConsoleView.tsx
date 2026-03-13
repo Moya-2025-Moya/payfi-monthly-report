@@ -16,15 +16,24 @@ import { ConsoleModal } from '@/components/console/ConsoleModal'
 
 /* ── Types matching V12 format ── */
 
+// Context can be string[] (legacy) or {event, detail}[] (V12+)
+type ContextItem = string | { event: string; detail: string }
+
+function formatCtx(c: ContextItem): string {
+  if (typeof c === 'string') return c
+  return `${c.event}: ${c.detail}`
+}
+
 interface NarrativeData {
   topic: string
   last_week: string
   this_week: string
   origin?: string
   timeline?: string
-  context?: string[]
+  context?: ContextItem[]
   weekCount?: number
   next_week?: string
+  next_week_watch?: string
   facts?: { content: string; date: string; tags?: string[]; source_url?: string }[]
 }
 
