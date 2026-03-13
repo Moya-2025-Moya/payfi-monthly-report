@@ -242,20 +242,19 @@ async function createTimelineAndAssign(
 // ─── Main Export ───
 
 export async function mergeTimeline(
-  factId: string
+  factId: string,
+  cachedTimelines?: TimelineWithContext[]
 ): Promise<{ action: string; timelineId: string | null }> {
-  console.log(`[B3] Processing fact ${factId}`)
+  // 1. Fetch fact + entities in parallel
+  const [fact, entityNames] = await Promise.all([
+    fetchFact(factId),
+    fetchEntityNames(factId),
+  ])
 
-  // 1. Fetch the atomic fact
-  const fact = await fetchFact(factId)
+  // 2. Use cached timelines or fetch fresh
+  const timelines = cachedTimelines ?? await fetchActiveTimelines()
 
-  // 2. Fetch entity names linked to this fact
-  const entityNames = await fetchEntityNames(factId)
-
-  // 3. Fetch all active timelines with context
-  const timelines = await fetchActiveTimelines()
-
-  // 4. Build prompt
+  // 3. Build prompt
   const template = loadPrompt('timeline-merger.md')
   const factDate = fact.fact_date instanceof Date
     ? fact.fact_date.toISOString().split('T')[0]
@@ -263,7 +262,6 @@ export async function mergeTimeline(
 
   const factContent = fact.content_zh || fact.content_en
   if (!factContent) {
-    console.log(`[B3] No content for fact ${factId}, skipping`)
     return { action: 'none', timelineId: null }
   }
 
@@ -273,31 +271,21 @@ export async function mergeTimeline(
     .replace('{entity_names}', entityNames.length > 0 ? entityNames.join(', ') : '（无）')
     .replace('{existing_timelines}', formatTimelinesForPrompt(timelines))
 
-  // 5. Call AI
+  // 4. Call AI
   const aiResult = await callHaikuJSON<AIResponse>(prompt)
-  console.log(`[B3] AI decision for fact ${factId}: action="${aiResult.action}", reason="${aiResult.reason}"`)
 
-  // 6. Handle action
+  // 5. Handle action
   let resolvedTimelineId: string | null = null
 
   if (aiResult.action === 'assign') {
-    if (!aiResult.timeline_id) {
-      console.warn(`[B3] Action is "assign" but no timeline_id provided — skipping`)
-    } else {
+    if (aiResult.timeline_id) {
       await assignToTimeline(aiResult.timeline_id, factId)
       resolvedTimelineId = aiResult.timeline_id
-      console.log(`[B3] Fact ${factId} assigned to existing timeline ${resolvedTimelineId}`)
     }
   } else if (aiResult.action === 'create_new') {
-    if (!aiResult.new_timeline) {
-      console.warn(`[B3] Action is "create_new" but no new_timeline data provided — skipping`)
-    } else {
+    if (aiResult.new_timeline) {
       resolvedTimelineId = await createTimelineAndAssign(aiResult.new_timeline, factId)
-      console.log(`[B3] Fact ${factId} assigned to new timeline ${resolvedTimelineId}`)
     }
-  } else {
-    // action === 'none'
-    console.log(`[B3] Fact ${factId} left standalone — no timeline assigned`)
   }
 
   return { action: aiResult.action, timelineId: resolvedTimelineId }
@@ -313,6 +301,9 @@ export async function mergeTimelinesBatch(
 ): Promise<{ assigned: number; created: number; standalone: number; failed: number }> {
   console.log(`[B3] Starting batch timeline merge for ${factIds.length} fact(s) (concurrency=${B3_CONCURRENCY})`)
 
+  // 预加载时间线列表（避免 N 次重复查询）
+  let cachedTimelines = await fetchActiveTimelines()
+
   let assigned = 0
   let created = 0
   let standalone = 0
@@ -324,18 +315,24 @@ export async function mergeTimelinesBatch(
 
     const batch = factIds.slice(i, i + B3_CONCURRENCY)
     const results = await Promise.allSettled(
-      batch.map(id => mergeTimeline(id))
+      batch.map(id => mergeTimeline(id, cachedTimelines))
     )
 
+    let batchCreated = false
     for (const r of results) {
       if (r.status === 'fulfilled') {
         if (r.value.action === 'assign') assigned++
-        else if (r.value.action === 'create_new') created++
+        else if (r.value.action === 'create_new') { created++; batchCreated = true }
         else standalone++
       } else {
         failed++
         console.error(`[B3] Error:`, r.reason instanceof Error ? r.reason.message : String(r.reason))
       }
+    }
+
+    // 有新建时间线时刷新缓存，让后续批次能看到
+    if (batchCreated) {
+      cachedTimelines = await fetchActiveTimelines()
     }
   }
 
