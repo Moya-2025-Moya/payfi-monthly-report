@@ -262,11 +262,11 @@ ${narrativeSummaries ? `本周叙事（已由专门系统生成）:\n${narrative
 信号字段:
 - category: "market_structure" | "product" | "onchain_data" | "regulatory" | "funding"
 - text: 一行事实描述，含量化数据
-- fact_index: 来源事实编号
+- fact_index: 来源事实编号（强烈优先选择有 [url:] 标记的事实，读者需要点击原文链接）
 
 快讯字段:
 - text: 一句话事实（不要与 signals 或叙事重叠）
-- fact_index: 来源事实编号
+- fact_index: 来源事实编号（强烈优先选择有 [url:] 标记的事实）
 
 绝对规则: 不做预测、不做评价、中英文之间加空格
 

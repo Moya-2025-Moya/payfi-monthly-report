@@ -239,22 +239,33 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                     }}>
                       <p className="text-[10px] font-medium tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>前瞻</p>
                       <div className="space-y-1.5">
-                        {n.upcoming.filter(u => u.type === 'confirmed').map((u, ui) => (
-                          <div key={ui} className="flex items-baseline gap-2 text-[12px]">
-                            <span className="font-mono shrink-0 w-[36px] text-right" style={{ color: 'var(--fg-muted)' }}>
-                              {u.date.slice(5)}
-                            </span>
-                            <span className="flex-1 leading-relaxed" style={{ color: 'var(--fg-body)' }}>
-                              {u.title}
-                            </span>
-                            {u.source && (
-                              <a href={u.source} target="_blank" rel="noopener noreferrer"
-                                className="shrink-0 text-[11px] hover:underline" style={{ color: 'var(--fg-muted)' }}>
-                                ↗
-                              </a>
-                            )}
-                          </div>
-                        ))}
+                        {n.upcoming.filter(u => u.type === 'confirmed').map((u, ui) => {
+                          const sourceUrl = u.source && /^https?:\/\//.test(u.source) ? u.source : undefined
+                          // Format date: "2026-03" → "3月", "2026-03-14" → "3/14", "Q1" → "Q1"
+                          const fmtDate = (d: string) => {
+                            const m = d.match(/^\d{4}-(\d{2})-(\d{2})$/)
+                            if (m) return `${parseInt(m[1])}/${parseInt(m[2])}`
+                            const m2 = d.match(/^\d{4}-(\d{2})$/)
+                            if (m2) return `${parseInt(m2[1])}月`
+                            return d
+                          }
+                          return (
+                            <div key={ui} className="flex items-baseline gap-2 text-[12px]">
+                              <span className="font-mono shrink-0 w-[40px] text-right" style={{ color: 'var(--fg-muted)' }}>
+                                {fmtDate(u.date)}
+                              </span>
+                              <span className="flex-1 leading-relaxed" style={{ color: 'var(--fg-body)' }}>
+                                {u.title}
+                              </span>
+                              {sourceUrl && (
+                                <a href={sourceUrl} target="_blank" rel="noopener noreferrer"
+                                  className="shrink-0 text-[11px] hover:underline" style={{ color: 'var(--fg-muted)' }}>
+                                  ↗
+                                </a>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
