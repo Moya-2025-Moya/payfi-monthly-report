@@ -96,19 +96,34 @@ function isRedundantContext(signalText: string, ctx: { current_value?: string; d
   return false
 }
 
+/* ── Context cleaning ── */
+
+function cleanContextString(ctx: string): string {
+  // Remove multiplier comparisons like "— 小 76.9 倍", "— 大 2.3 倍"
+  let cleaned = ctx.replace(/\s*[—\-–]\s*(小|大)\s*[\d.,]+\s*倍/g, '')
+  // Replace "|" separator with more readable "；" (Chinese semicolon)
+  cleaned = cleaned.replace(/\s*\|\s*/g, '。')
+  // Clean up multiple or trailing punctuation
+  cleaned = cleaned.replace(/[。；]+$/g, '').replace(/。{2,}/g, '。').trim()
+  return cleaned
+}
+
 /* ── Signal Context Inline ── */
 
 function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
-  // Show only factual comparison line, no insight/评价
-  const line = `${ctx.event}${ctx.detail ? ` · ${ctx.detail}` : ''}`
+  // Show only objective factual comparison — no insight, no multiplier
+  const parts: string[] = []
+  if (ctx.event) parts.push(ctx.event)
+  if (ctx.detail) parts.push(ctx.detail)
+  const line = parts.join('，')
   if (!line.trim()) return null
 
   return (
-    <div className="mt-1.5 pl-3 text-[12px] leading-[1.7]" style={{
+    <div className="mt-2 pl-3 text-[12.5px] leading-[1.7]" style={{
       color: 'var(--fg-muted)',
-      borderLeft: '2px solid var(--border)',
+      borderLeft: '2px solid var(--accent-muted, var(--border))',
     }}>
-      <p>{line}</p>
+      <p>交叉验证：{line}</p>
     </div>
   )
 }
@@ -223,12 +238,12 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
                       {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
                         <SignalContextInline ctx={s.structured_context} />
                       ) : s.context && !s.structured_context ? (
-                        <p className="text-[12px] mt-1.5 pl-3 leading-[1.7]" style={{
+                        <div className="mt-2 pl-3 text-[12.5px] leading-[1.7]" style={{
                           color: 'var(--fg-muted)',
-                          borderLeft: '2px solid var(--border)',
+                          borderLeft: '2px solid var(--accent-muted, var(--border))',
                         }}>
-                          {s.context}
-                        </p>
+                          <p>交叉验证：{cleanContextString(s.context)}</p>
+                        </div>
                       ) : null}
                     </div>
                   </div>

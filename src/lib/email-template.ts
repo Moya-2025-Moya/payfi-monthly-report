@@ -218,15 +218,22 @@ function buildSignals(signals: SignalItem[]): string {
       </tr></table>
     </td></tr>`
 
-    // Show only the factual comparison line (context), no insight/评价
+    // Show only objective factual comparison — no multiplier, natural language
     const contextLine = s.context
     if (contextLine) {
-      row += `<tr><td style="padding:2px 0 8px 16px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-          <td width="3" style="background-color:#ff6d00;font-size:1px;line-height:1px;">&nbsp;</td>
-          <td style="background-color:#fffbf5;padding:10px 14px;font-size:13px;color:#6b7280;line-height:1.7;">${esc(contextLine)}</td>
-        </tr></table>
-      </td></tr>`
+      // Remove multiplier comparisons and clean "|" separators
+      let cleaned = contextLine
+        .replace(/\s*[—\-–]\s*(小|大)\s*[\d.,]+\s*倍/g, '')
+        .replace(/\s*\|\s*/g, '。')
+        .replace(/[。；]+$/g, '').replace(/。{2,}/g, '。').trim()
+      if (cleaned) {
+        row += `<tr><td style="padding:2px 0 8px 16px;">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+            <td width="3" style="background-color:#ff6d00;font-size:1px;line-height:1px;">&nbsp;</td>
+            <td style="background-color:#fffbf5;padding:10px 14px;font-size:13px;color:#6b7280;line-height:1.7;">交叉验证：${esc(cleaned)}</td>
+          </tr></table>
+        </td></tr>`
+      }
     }
 
     return row

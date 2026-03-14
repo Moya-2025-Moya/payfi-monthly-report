@@ -194,49 +194,71 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
           </span>
         </span>
       </div>
-      <div className="space-y-4">
+      <div className="space-y-5">
         {narratives.slice(0, 3).map((n, idx) => (
           <div key={idx} className="narrative-card">
-            {/* Top accent bar */}
-            <div className="h-[3px]" style={{ background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT}40)` }} />
-
-            <div className="px-5 py-5">
-              {/* Header */}
-              <div className="flex items-center gap-2.5 mb-3">
-                <h3 className="text-[17px] font-bold leading-tight" style={{ color: 'var(--fg-title)', letterSpacing: '-0.01em' }}>
+            {/* Header bar with topic + week badge */}
+            <div style={{
+              padding: '16px 20px 14px',
+              borderBottom: '1px solid var(--border)',
+              background: `linear-gradient(135deg, ${ACCENT}06, transparent)`,
+            }}>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-[16px] font-bold leading-snug" style={{ color: 'var(--fg-title)', letterSpacing: '-0.01em' }}>
                   {n.topic}
                 </h3>
                 {n.weekCount && n.weekCount > 1 && (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{
+                  <span className="shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-full" style={{
                     color: ACCENT,
                     background: `${ACCENT}0d`,
                     border: `1px solid ${ACCENT}20`,
+                    whiteSpace: 'nowrap',
                   }}>
                     第{n.weekCount}周
                   </span>
                 )}
               </div>
+            </div>
 
+            <div style={{ padding: '16px 20px 20px' }}>
               {isV13(n) ? (
                 <>
                   {/* V13: Summary */}
-                  <p className="text-[14px] leading-[1.75] mb-4" style={{ color: 'var(--fg-body)' }}>
-                    {n.summary}
-                  </p>
+                  {n.summary && (
+                    <p className="text-[13.5px] leading-[1.8] mb-5" style={{ color: 'var(--fg-secondary)' }}>
+                      {n.summary}
+                    </p>
+                  )}
+
+                  {/* V13: This week highlight */}
+                  {n.this_week && (
+                    <div className="mb-5 rounded-lg" style={{
+                      padding: '14px 16px',
+                      background: `${ACCENT}06`,
+                      borderLeft: `3px solid ${ACCENT}`,
+                    }}>
+                      <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-1.5" style={{ color: ACCENT }}>
+                        本周进展
+                      </p>
+                      <p className="text-[13.5px] leading-[1.7] font-medium" style={{ color: 'var(--fg-title)' }}>
+                        {n.this_week}
+                      </p>
+                    </div>
+                  )}
 
                   {/* V13: Timeline */}
                   <TimelineGrouped events={n.events!} />
 
                   {/* V13: Upcoming */}
                   {n.upcoming && n.upcoming.filter(u => u.type === 'confirmed').length > 0 && (
-                    <div className="rounded-lg mb-2" style={{
+                    <div className="mt-4 rounded-lg" style={{
                       background: 'var(--surface-alt)',
-                      padding: '12px 16px',
+                      padding: '14px 16px',
                     }}>
-                      <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-2.5" style={{ color: 'var(--warning)' }}>
+                      <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-3" style={{ color: 'var(--warning)' }}>
                         前瞻
                       </p>
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         {n.upcoming.filter(u => u.type === 'confirmed').map((u, ui) => {
                           const sourceUrl = u.source && /^https?:\/\//.test(u.source) ? u.source : undefined
                           const fmtDate = (d: string) => {
@@ -247,16 +269,16 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                             return d
                           }
                           return (
-                            <div key={ui} className="flex items-baseline gap-3 text-[12px]">
-                              <span className="font-mono shrink-0 min-w-[56px] text-right whitespace-nowrap" style={{ color: 'var(--fg-muted)' }}>
+                            <div key={ui} className="flex items-start gap-3 text-[12.5px]">
+                              <span className="font-mono shrink-0 min-w-[52px] text-right pt-[1px]" style={{ color: 'var(--fg-muted)', whiteSpace: 'nowrap' }}>
                                 {fmtDate(u.date)}
                               </span>
-                              <span className="flex-1 leading-[1.6]" style={{ color: 'var(--fg-body)' }}>
+                              <span className="flex-1 leading-[1.65] break-words" style={{ color: 'var(--fg-body)' }}>
                                 {u.title}
                               </span>
                               {sourceUrl && (
                                 <a href={sourceUrl} target="_blank" rel="noopener noreferrer"
-                                  className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity">
+                                  className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity pt-[1px]">
                                   ↗
                                 </a>
                               )}
@@ -269,26 +291,33 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                 </>
               ) : (
                 <>
-                  {/* V12: Horizontal flow cards */}
-                  <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
+                  {/* V12: Vertical flow instead of horizontal to prevent narrow columns */}
+                  <div className="space-y-0">
                     {n.origin && (
-                      <>
-                        <FlowCard label="起点" text={n.origin} variant="origin" />
-                        <Arrow />
-                      </>
+                      <div className="relative pl-5 pb-4" style={{ borderLeft: `2px solid var(--border)` }}>
+                        <div className="absolute -left-[5px] top-[6px] w-[8px] h-[8px] rounded-full" style={{ background: 'var(--border-hover)' }} />
+                        <p className="text-[10px] font-semibold tracking-[0.05em] uppercase mb-0.5" style={{ color: 'var(--fg-muted)' }}>起点</p>
+                        <p className="text-[13px] leading-[1.65]" style={{ color: 'var(--fg-secondary)' }}>{n.origin}</p>
+                      </div>
                     )}
                     {n.last_week && n.last_week !== '首次追踪' && (
-                      <>
-                        <FlowCard label="上周" text={n.last_week} variant="last" />
-                        <Arrow />
-                      </>
+                      <div className="relative pl-5 pb-4" style={{ borderLeft: `2px solid var(--border)` }}>
+                        <div className="absolute -left-[5px] top-[6px] w-[8px] h-[8px] rounded-full" style={{ background: 'var(--border-hover)' }} />
+                        <p className="text-[10px] font-semibold tracking-[0.05em] uppercase mb-0.5" style={{ color: 'var(--fg-muted)' }}>上周</p>
+                        <p className="text-[13px] leading-[1.65]" style={{ color: 'var(--fg-secondary)' }}>{n.last_week}</p>
+                      </div>
                     )}
-                    <FlowCard label="本周" text={n.this_week ?? ''} variant="current" style={{ minWidth: '140px' }} />
+                    <div className="relative pl-5 pb-4" style={{ borderLeft: `2px solid ${ACCENT}` }}>
+                      <div className="absolute -left-[5px] top-[6px] w-[8px] h-[8px] rounded-full" style={{ background: ACCENT, boxShadow: `0 0 0 3px ${ACCENT}20` }} />
+                      <p className="text-[10px] font-semibold tracking-[0.05em] uppercase mb-0.5" style={{ color: ACCENT }}>本周</p>
+                      <p className="text-[13.5px] leading-[1.65] font-medium" style={{ color: 'var(--fg-title)' }}>{n.this_week ?? ''}</p>
+                    </div>
                     {(n.next_week_watch || n.next_week) && (
-                      <>
-                        <Arrow dashed />
-                        <FlowCard label="下周关注" text={n.next_week_watch || n.next_week || ''} variant="next" />
-                      </>
+                      <div className="relative pl-5" style={{ borderLeft: '2px dashed var(--border)' }}>
+                        <div className="absolute -left-[5px] top-[6px] w-[8px] h-[8px] rounded-full border-2" style={{ borderColor: 'var(--border-hover)', background: 'var(--surface)' }} />
+                        <p className="text-[10px] font-semibold tracking-[0.05em] uppercase mb-0.5" style={{ color: 'var(--fg-muted)' }}>下周关注</p>
+                        <p className="text-[13px] leading-[1.65]" style={{ color: 'var(--fg-muted)' }}>{n.next_week_watch || n.next_week || ''}</p>
+                      </div>
                     )}
                   </div>
                 </>
@@ -297,13 +326,15 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
               {/* Context (depth >= 1) */}
               {n.context && n.context.length > 0 && (
                 <div className="depth-layer-1" data-depth={depth}>
-                  <div className="mt-3 rounded-lg" style={{ background: 'var(--context-bg)', padding: '12px 16px' }}>
-                    <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-2" style={{ color: 'var(--success)' }}>历史可比</p>
-                    {n.context.map((c, ci) => (
-                      <p key={ci} className="text-[12px] leading-[1.7]" style={{ color: 'var(--fg-secondary)' }}>
-                        · {formatContextItem(c)}
-                      </p>
-                    ))}
+                  <div className="mt-4 rounded-lg" style={{ background: 'var(--context-bg)', padding: '14px 16px' }}>
+                    <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-2.5" style={{ color: 'var(--success)' }}>历史可比</p>
+                    <div className="space-y-1.5">
+                      {n.context.map((c, ci) => (
+                        <p key={ci} className="text-[12.5px] leading-[1.7] break-words" style={{ color: 'var(--fg-secondary)' }}>
+                          · {formatContextItem(c)}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -318,11 +349,11 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                     {expanded === idx ? '收起来源' : `查看 ${n.facts.length} 条来源事实`}
                   </button>
                   {expanded === idx && (
-                    <div className="mt-3 pl-3 border-l-2 space-y-2" style={{ borderColor: 'var(--border)' }}>
+                    <div className="mt-3 pl-3 border-l-2 space-y-2.5" style={{ borderColor: 'var(--border)' }}>
                       {n.facts.map((f, fi) => (
-                        <div key={fi} className="text-[13px] leading-[1.6]" style={{ color: 'var(--fg-secondary)' }}>
+                        <div key={fi} className="text-[13px] leading-[1.65]" style={{ color: 'var(--fg-secondary)' }}>
                           <span className="font-mono text-[11px] mr-2" style={{ color: 'var(--fg-muted)' }}>{f.date}</span>
-                          <span>{f.content}</span>
+                          <span className="break-words">{f.content}</span>
                           {f.source_url && (
                             <a href={f.source_url} target="_blank" rel="noopener noreferrer"
                               className="ml-1.5 text-[11px] hover:underline" style={{ color: ACCENT }}>
