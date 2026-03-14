@@ -66,14 +66,15 @@ function esc(text: string): string {
 }
 
 function dedup(text: string): string {
-  // Remove identical consecutive parenthetical: "(2023年) (2023年)" → "(2023年)"
-  let result = text.replace(/(\([^)]+\))\s*\1/g, '$1')
-  // Remove redundant year range after specific date range:
-  // "(2021-07-08 至 2022-12-05) (2021-2022)" → "(2021-07-08 至 2022-12-05)"
-  result = result.replace(/(\(\d{4}-\d{2}-\d{2}\s*至\s*\d{4}-\d{2}-\d{2}\))\s*\(\d{4}-\d{4}年?\)/g, '$1')
-  // Remove redundant year after specific date: "(2024年6月) (2024年)" → "(2024年6月)"
-  result = result.replace(/(\(\d{4}年\d{1,2}月[^)]*\))\s*\(\d{4}年?\)/g, '$1')
-  return result
+  // Aggressively remove redundant consecutive date parentheticals.
+  // When two (...) blocks appear next to each other and both contain date/year info,
+  // keep only the more specific one.
+  return text.replace(/(\([^)]*\))\s*(\([^)]*\))/g, (_match, a: string, b: string) => {
+    const isDateParen = (s: string) => /\d{4}/.test(s)
+    if (!isDateParen(a) || !isDateParen(b)) return `${a} ${b}`
+    // Keep whichever is longer (more specific)
+    return a.length >= b.length ? a : b
+  })
 }
 
 /* ── Category config ── */

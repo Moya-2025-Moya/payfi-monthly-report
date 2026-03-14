@@ -115,10 +115,12 @@ function cleanContextString(ctx: string): string {
   let cleaned = ctx.replace(/\s*[—\-–]\s*(小|大)\s*[\d.,]+\s*倍/g, '')
   cleaned = cleaned.replace(/\s*\|\s*/g, '。')
   cleaned = cleaned.replace(/[。；]+$/g, '').replace(/。{2,}/g, '。').trim()
-  // Dedup redundant date ranges
-  cleaned = cleaned.replace(/(\([^)]+\))\s*\1/g, '$1')
-  cleaned = cleaned.replace(/(\(\d{4}-\d{2}-\d{2}\s*至\s*\d{4}-\d{2}-\d{2}\))\s*\(\d{4}-\d{4}年?\)/g, '$1')
-  cleaned = cleaned.replace(/(\(\d{4}年\d{1,2}月[^)]*\))\s*\(\d{4}年?\)/g, '$1')
+  // Dedup redundant consecutive date parentheticals — keep the more specific one
+  cleaned = cleaned.replace(/(\([^)]*\))\s*(\([^)]*\))/g, (_match, a: string, b: string) => {
+    const isDateParen = (s: string) => /\d{4}/.test(s)
+    if (!isDateParen(a) || !isDateParen(b)) return `${a} ${b}`
+    return a.length >= b.length ? a : b
+  })
   return cleaned
 }
 
