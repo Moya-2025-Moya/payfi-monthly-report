@@ -19,6 +19,8 @@ export interface NarrativeContext {
   delta_label?: string
   comparison_basis?: string
   insight?: string
+  connector?: string     // V17: AI-generated connector word
+  source_url?: string    // V17: external source URL
 }
 
 export interface NarrativeForEmail {
@@ -118,11 +120,6 @@ function sectionLabel(label: string, color = '#9ca3af'): string {
 
 /* ── Signals ── */
 
-const EMAIL_CONTEXT_PREFIXES = [
-  '相比之下，', '此前，', '作为参考，', '历史上，', '值得注意的是，',
-  '类似地，', '与此对照，', '回顾来看，', '同一赛道中，', '从先例看，',
-]
-
 function buildSignals(signals: SignalItem[]): string {
   if (signals.length === 0) return ''
 
@@ -133,27 +130,34 @@ function buildSignals(signals: SignalItem[]): string {
     }
   }
 
-  let prefixIdx = 0
   return sorted.map((s, i) => {
     const isLast = i === sorted.length - 1
+    const hasCtx = s.structured_context || s.context
 
     // Main signal text
-    let html = `<tr><td style="padding:14px 0 ${s.context ? '6' : '14'}px;${!isLast && !s.context ? 'border-bottom:1px solid #f3f4f6;' : ''}">
+    let html = `<tr><td style="padding:14px 0 ${hasCtx ? '6' : '14'}px;${!isLast && !hasCtx ? 'border-bottom:1px solid #f3f4f6;' : ''}">
       <p style="margin:0;font-size:15px;color:#1f2937;line-height:1.75;">${esc(s.text)}</p>
     </td></tr>`
 
-    // Context line
-    if (s.context) {
+    // Context line — V17: use AI-generated connector from structured_context
+    if (s.structured_context) {
+      const sc = s.structured_context as NarrativeContext & { connector?: string; source_url?: string }
+      const connector = sc.connector || '作为参照，'
+      const line = dedup(`${sc.event}，${sc.detail}`)
+      const sourceLink = sc.source_url
+      const sourceHtml = sourceLink ? ` <a href="${esc(sourceLink)}" style="color:#9ca3af;text-decoration:none;">&#8599;</a>` : ''
+      html += `<tr><td style="padding:0 0 14px;${!isLast ? 'border-bottom:1px solid #f3f4f6;' : ''}">
+        <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.7;">${esc(connector)}${esc(line)}${sourceHtml}</p>
+      </td></tr>`
+    } else if (s.context) {
       let cleaned = s.context
         .replace(/\s*[—\-–]\s*(小|大)\s*[\d.,]+\s*倍/g, '')
         .replace(/\s*\|\s*/g, '。')
         .replace(/[。；]+$/g, '').replace(/。{2,}/g, '。').trim()
       cleaned = dedup(cleaned)
       if (cleaned) {
-        const prefix = EMAIL_CONTEXT_PREFIXES[prefixIdx % EMAIL_CONTEXT_PREFIXES.length]
-        prefixIdx++
         html += `<tr><td style="padding:0 0 14px;${!isLast ? 'border-bottom:1px solid #f3f4f6;' : ''}">
-          <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.7;">${esc(prefix + cleaned)}</p>
+          <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.7;">${esc(cleaned)}</p>
         </td></tr>`
       }
     }

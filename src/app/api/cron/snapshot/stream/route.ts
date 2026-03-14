@@ -9,6 +9,7 @@ import { saveCheckpoint, loadCheckpoint, clearCheckpoints } from '@/lib/pipeline
 import { saveWeeklySnapshot } from '@/lib/weekly-data'
 import { generateFactContext } from '@/lib/context-engine'
 import { adversarialCheck } from '@/lib/adversarial-check'
+import { reviewContent } from '@/lib/review-agent'
 import { growKnowledgeBase } from '@/lib/knowledge-growth'
 import { verifyAdminToken } from '@/lib/admin-auth'
 import { shiftWeek } from '@/lib/week-utils'
@@ -476,7 +477,7 @@ ${factsText}`,
                   category: s.category,
                   text: s.text,
                   context: ctxResult.context_lines[0],
-                  structured_context: firstComp ? {
+                  structured_context: firstComp ? ({
                     event: firstComp.reference_event,
                     detail: `${firstComp.metric_label}为 ${cleanMetricValue}（${firstComp.date_range}）`,
                     current_entity: firstComp.current_entity,
@@ -484,8 +485,10 @@ ${factsText}`,
                     delta_label: firstComp.delta_label,
                     comparison_basis: firstComp.comparison_basis,
                     insight: firstComp.insight,
-                  } : undefined,
-                  source_url: factRef?.source_url ?? undefined,
+                    connector: firstComp.connector,
+                    source_url: firstComp.source_url,
+                  }) : undefined,
+                  source_url: factRef?.source_url ?? firstComp?.source_url ?? undefined,
                 })
               }
 
@@ -646,6 +649,47 @@ ${factsText}`,
                   verifiedCount: highCount + mediumCount,
                   sourceCount: parsed.sourceCount ?? totalFacts,
                 },
+              }
+
+              // V17: Review Agent — 审核内容，自动修复小问题
+              logger.log('  审核 Agent 运行中...', 'info')
+              try {
+                const reviewResult = await reviewContent({
+                  oneLiner: emailData.oneLiner,
+                  signals: emailData.signals,
+                  narratives: emailData.narratives.map(n => ({
+                    topic: n.topic,
+                    this_week: n.this_week,
+                    context: n.context?.map(c => ({ event: c.event, detail: c.detail })),
+                  })),
+                  briefs: emailData.briefs,
+                })
+
+                if (reviewResult.issues.length > 0) {
+                  const criticalCount = reviewResult.issues.filter(i => i.severity === 'critical').length
+                  const warningCount = reviewResult.issues.filter(i => i.severity === 'warning').length
+                  logger.log(`  审核发现 ${criticalCount} 个严重问题, ${warningCount} 个警告`, criticalCount > 0 ? 'error' : 'info')
+                  for (const issue of reviewResult.issues) {
+                    logger.log(`    [${issue.severity}] ${issue.location}: ${issue.description}`, issue.severity === 'critical' ? 'error' : 'info')
+                  }
+
+                  // Apply auto-fixes
+                  if (reviewResult.fixed_data) {
+                    const fixed = reviewResult.fixed_data as { signals?: SignalItem[]; narratives?: NarrativeForEmail[] }
+                    if (fixed.signals) emailData.signals = fixed.signals as SignalItem[]
+                    if (fixed.narratives) {
+                      emailData.narratives = (fixed.narratives as NarrativeForEmail[]).map(n => ({
+                        ...n,
+                        this_week: n.this_week ?? '',
+                      }))
+                    }
+                    logger.log(`  已自动修复 ${reviewResult.issues.filter(i => i.fix).length} 个问题`, 'success')
+                  }
+                } else {
+                  logger.log('  审核通过 ✓', 'success')
+                }
+              } catch (err) {
+                logger.log(`  审核 Agent 跳过: ${err instanceof Error ? err.message : String(err)}`, 'info')
               }
 
               const emailHTML = generateEmailHTML(emailData)

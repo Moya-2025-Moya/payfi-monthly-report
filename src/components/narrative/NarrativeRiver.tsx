@@ -56,102 +56,134 @@ function isV13(n: NarrativeData): boolean {
 }
 
 function fmtDate(d: string): string {
-  // YYYY-MM-DD → M月D日
   const m = d.match(/^\d{4}-(\d{2})-(\d{2})$/)
   if (m) return `${parseInt(m[1])}月${parseInt(m[2])}日`
-  // YYYY-MM → M月
   const m2 = d.match(/^\d{4}-(\d{2})$/)
   if (m2) return `${parseInt(m2[1])}月`
-  // YYYY-QN → QN
   const m3 = d.match(/^\d{4}-(Q\d)$/)
   if (m3) return m3[1]
   return d
 }
 
-/* ── Compact Timeline ── */
+/* ── Visual Timeline with nodes ── */
 
-function CompactTimeline({ events }: { events: V13Event[] }) {
-  // Group by date
-  const byDate = new Map<string, V13Event[]>()
-  for (const evt of events) {
-    const arr = byDate.get(evt.date) || []
-    arr.push(evt)
-    byDate.set(evt.date, arr)
-  }
-  const dates = [...byDate.entries()]
-
-  return (
-    <div className="space-y-1">
-      {dates.map(([date, evts], di) => {
-        const highEvt = evts.find(e => e.significance === 'high')
-        const rest = evts.filter(e => e !== highEvt)
-
-        return (
-          <div key={di} className="flex gap-3 py-1.5" style={{ borderBottom: di < dates.length - 1 ? '1px solid var(--border)' : 'none' }}>
-            <span className="shrink-0 w-[52px] text-right text-[11px] font-mono pt-[2px]" style={{ color: 'var(--fg-muted)' }}>
-              {date.slice(5)}
-            </span>
-            <div className="flex-1 min-w-0">
-              {highEvt && (
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[13px] font-medium leading-[1.6]" style={{ color: 'var(--fg-title)' }}>
-                    {highEvt.title}
-                  </span>
-                  {(highEvt.sourceUrl || highEvt.externalUrl) && (
-                    <a href={highEvt.sourceUrl || highEvt.externalUrl} target="_blank" rel="noopener noreferrer"
-                      className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity">↗</a>
-                  )}
-                </div>
-              )}
-              {rest.map((evt, i) => (
-                <div key={i} className="flex items-baseline justify-between gap-2">
-                  <span className="text-[12px] leading-[1.6]" style={{ color: 'var(--fg-secondary)' }}>
-                    {evt.title}
-                  </span>
-                  {(evt.sourceUrl || evt.externalUrl) && (
-                    <a href={evt.sourceUrl || evt.externalUrl} target="_blank" rel="noopener noreferrer"
-                      className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity">↗</a>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-/* ── Upcoming List — only show confirmed items with traceable source ── */
-
-function UpcomingList({ upcoming }: { upcoming?: V13Upcoming[] }) {
-  // Only show confirmed upcoming events that have a source URL
-  const items = (upcoming ?? []).filter(u =>
+function VisualTimeline({ events, upcoming }: { events: V13Event[]; upcoming?: V13Upcoming[] }) {
+  // Merge events and confirmed upcoming into a unified timeline
+  const confirmedUpcoming = (upcoming ?? []).filter(u =>
     u.type === 'confirmed' && u.source && /^https?:\/\//.test(u.source)
   )
 
-  if (items.length === 0) return null
+  interface TimelineNode {
+    date: string
+    title: string
+    description?: string
+    significance: 'high' | 'medium' | 'low'
+    isFuture: boolean
+    sourceUrl?: string
+  }
+
+  const nodes: TimelineNode[] = [
+    ...events.map(e => ({
+      date: e.date,
+      title: e.title,
+      description: e.description !== e.title ? e.description : undefined,
+      significance: e.significance,
+      isFuture: false,
+      sourceUrl: e.sourceUrl || e.externalUrl,
+    })),
+    ...confirmedUpcoming.map(u => ({
+      date: u.date,
+      title: u.title,
+      description: u.description !== u.title ? u.description : undefined,
+      significance: 'medium' as const,
+      isFuture: true,
+      sourceUrl: u.source,
+    })),
+  ]
+
+  // Sort by date
+  nodes.sort((a, b) => a.date.localeCompare(b.date))
+
+  // Deduplicate by title similarity
+  const deduped: TimelineNode[] = []
+  for (const node of nodes) {
+    const isDupe = deduped.some(d =>
+      d.title === node.title ||
+      (d.date === node.date && d.title.substring(0, 15) === node.title.substring(0, 15))
+    )
+    if (!isDupe) deduped.push(node)
+  }
+
+  if (deduped.length === 0) return null
 
   return (
-    <div className="rounded-lg" style={{ background: 'var(--surface-alt)', padding: '12px 16px' }}>
-      <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-2.5" style={{ color: 'var(--warning)' }}>
-        前瞻
-      </p>
-      <div className="space-y-2">
-        {items.map((u, i) => (
-          <div key={i} className="flex items-start gap-3 text-[12.5px]">
-            <span className="shrink-0 w-[52px] text-right font-mono pt-[1px]" style={{
-              color: 'var(--fg-muted)', whiteSpace: 'nowrap', fontSize: '11px',
+    <div className="relative pl-5">
+      {/* Vertical line */}
+      <div className="absolute left-[7px] top-[6px] bottom-[6px] w-[2px]" style={{
+        background: 'linear-gradient(to bottom, var(--border), var(--accent-muted, var(--border)))',
+      }} />
+
+      <div className="space-y-0">
+        {deduped.map((node, i) => {
+          const isHigh = node.significance === 'high'
+          const isLast = i === deduped.length - 1
+
+          return (
+            <div key={i} className="relative flex gap-3" style={{
+              paddingBottom: isLast ? '0' : '16px',
             }}>
-              {fmtDate(u.date)}
-            </span>
-            <span className="flex-1 leading-[1.65] break-words" style={{ color: 'var(--fg-body)' }}>
-              {u.title}
-            </span>
-            <a href={u.source!} target="_blank" rel="noopener noreferrer"
-              className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity pt-[1px]">↗</a>
-          </div>
-        ))}
+              {/* Node dot */}
+              <div className="absolute shrink-0" style={{
+                left: '-17px',
+                top: '5px',
+                width: isHigh ? '10px' : '8px',
+                height: isHigh ? '10px' : '8px',
+                borderRadius: '50%',
+                background: node.isFuture
+                  ? 'transparent'
+                  : isHigh
+                    ? ACCENT
+                    : 'var(--fg-muted)',
+                border: node.isFuture
+                  ? `2px dashed var(--fg-muted)`
+                  : isHigh
+                    ? `2px solid ${ACCENT}`
+                    : '2px solid var(--fg-muted)',
+                marginLeft: isHigh ? '-1px' : '0',
+              }} />
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="shrink-0 text-[11px] font-mono" style={{
+                    color: node.isFuture ? 'var(--warning)' : 'var(--fg-muted)',
+                  }}>
+                    {fmtDate(node.date)}
+                  </span>
+                  {node.isFuture && (
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded" style={{
+                      color: 'var(--warning)',
+                      background: 'var(--surface-alt)',
+                    }}>
+                      前瞻
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline justify-between gap-2 mt-0.5">
+                  <p className={`flex-1 text-[13px] leading-[1.6] break-words ${isHigh ? 'font-medium' : ''}`} style={{
+                    color: isHigh ? 'var(--fg-title)' : 'var(--fg-secondary)',
+                  }}>
+                    {node.title}
+                  </p>
+                  {node.sourceUrl && (
+                    <a href={node.sourceUrl} target="_blank" rel="noopener noreferrer"
+                      className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity">↗</a>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -178,6 +210,9 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
       <div className="space-y-5">
         {narratives.slice(0, 3).map((n, idx) => {
           const v13 = isV13(n)
+
+          // Build timeline nodes from facts for V12 narratives
+          const hasTimeline = v13 || (n.facts && n.facts.length >= 2)
 
           return (
             <div key={idx} className="narrative-card" style={{ overflow: 'hidden', borderRadius: '12px' }}>
@@ -210,50 +245,57 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                 )}
 
                 {v13 ? (
-                  <>
-                    {/* V13: Compact timeline table */}
-                    <div className="mb-4">
-                      <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>
-                        事件线
-                      </p>
-                      <CompactTimeline events={n.events!} />
-                    </div>
-
-                    {/* V13: Upcoming — only confirmed with source */}
-                    <div className="mb-4">
-                      <UpcomingList upcoming={n.upcoming} />
-                    </div>
-                  </>
+                  /* V13: Visual timeline with nodes + upcoming merged */
+                  <div className="mb-4">
+                    <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
+                      时间线
+                    </p>
+                    <VisualTimeline events={n.events!} upcoming={n.upcoming} />
+                  </div>
+                ) : hasTimeline && n.facts ? (
+                  /* V12 with facts: build timeline from facts */
+                  <div className="mb-4">
+                    <p className="text-[10px] font-semibold tracking-[0.08em] uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
+                      时间线
+                    </p>
+                    <VisualTimeline
+                      events={n.facts.slice(0, 8).map(f => ({
+                        date: f.date,
+                        title: f.content,
+                        description: f.content,
+                        significance: 'medium' as const,
+                        sourceUrl: f.source_url,
+                      }))}
+                    />
+                  </div>
                 ) : (
-                  <>
-                    {/* V12: Vertical progress */}
-                    <div className="mb-4">
-                      {[
-                        n.origin && { label: '起点', text: n.origin, muted: true },
-                        n.last_week && n.last_week !== '首次追踪' && { label: '上周', text: n.last_week, muted: true },
-                        { label: '本周', text: n.this_week ?? '', accent: true },
-                        (n.next_week_watch || n.next_week) && { label: '下周关注', text: n.next_week_watch || n.next_week || '', muted: true, dashed: true },
-                      ].filter(Boolean).map((step, i) => {
-                        const s = step as { label: string; text: string; muted?: boolean; accent?: boolean; dashed?: boolean }
-                        return (
-                          <div key={i} className="flex gap-3 py-2" style={{
-                            borderBottom: '1px solid var(--border)',
+                  /* V12 without timeline: vertical progress */
+                  <div className="mb-4">
+                    {[
+                      n.origin && { label: '起点', text: n.origin, muted: true },
+                      n.last_week && n.last_week !== '首次追踪' && { label: '上周', text: n.last_week, muted: true },
+                      { label: '本周', text: n.this_week ?? '', accent: true },
+                      (n.next_week_watch || n.next_week) && { label: '下周关注', text: n.next_week_watch || n.next_week || '', muted: true, dashed: true },
+                    ].filter(Boolean).map((step, i) => {
+                      const s = step as { label: string; text: string; muted?: boolean; accent?: boolean; dashed?: boolean }
+                      return (
+                        <div key={i} className="flex gap-3 py-2" style={{
+                          borderBottom: '1px solid var(--border)',
+                        }}>
+                          <span className="shrink-0 w-[52px] text-right text-[10px] font-semibold tracking-[0.05em] uppercase pt-[3px]" style={{
+                            color: s.accent ? ACCENT : 'var(--fg-muted)',
                           }}>
-                            <span className="shrink-0 w-[52px] text-right text-[10px] font-semibold tracking-[0.05em] uppercase pt-[3px]" style={{
-                              color: s.accent ? ACCENT : 'var(--fg-muted)',
-                            }}>
-                              {s.label}
-                            </span>
-                            <p className={`flex-1 min-w-0 text-[13px] leading-[1.65] break-words ${s.accent ? 'font-medium' : ''}`} style={{
-                              color: s.accent ? 'var(--fg-title)' : s.dashed ? 'var(--fg-muted)' : 'var(--fg-secondary)',
-                            }}>
-                              {s.text}
-                            </p>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </>
+                            {s.label}
+                          </span>
+                          <p className={`flex-1 min-w-0 text-[13px] leading-[1.65] break-words ${s.accent ? 'font-medium' : ''}`} style={{
+                            color: s.accent ? 'var(--fg-title)' : s.dashed ? 'var(--fg-muted)' : 'var(--fg-secondary)',
+                          }}>
+                            {s.text}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
 
                 {/* Context / 历史可比 */}
@@ -272,8 +314,8 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                   </div>
                 )}
 
-                {/* Expandable facts */}
-                {n.facts && n.facts.length > 0 && (
+                {/* Expandable facts (only show if no timeline, to avoid duplication) */}
+                {n.facts && n.facts.length > 0 && !hasTimeline && (
                   <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
                     <button
                       onClick={() => setExpanded(expanded === idx ? null : idx)}
