@@ -413,15 +413,19 @@ ${factsText}`,
                       fact_date: new Date().toISOString().split('T')[0],
                     })
                     if (ctxResult.comparisons.length > 0) {
-                      contextItems = ctxResult.comparisons.map(c => ({
-                        event: c.reference_event,
-                        detail: `${c.metric_label} ${c.metric_value} (${c.date_range})`,
-                        current_entity: c.current_entity,
-                        current_value: c.current_value,
-                        delta_label: c.delta_label,
-                        comparison_basis: c.comparison_basis,
-                        insight: c.insight,
-                      }))
+                      contextItems = ctxResult.comparisons.map(c => {
+                        // V16: Clean metric_value to avoid date duplication with date_range
+                        const cleanVal = c.metric_value.replace(/\s*\(?\d{4}[年.]?\d{0,2}[月.]?\d{0,2}日?\)?/g, '').trim() || c.metric_value
+                        return {
+                          event: c.reference_event,
+                          detail: `${c.metric_label}为 ${cleanVal}（${c.date_range}）`,
+                          current_entity: c.current_entity,
+                          current_value: c.current_value,
+                          delta_label: c.delta_label,
+                          comparison_basis: c.comparison_basis,
+                          insight: c.insight,
+                        }
+                      })
                       logger.log(`    "${sn.topic}" → ${ctxResult.comparisons.length} 条上下文`, 'success')
                     } else {
                       logger.log(`    "${sn.topic}" → 无上下文候选`, 'info')
@@ -444,8 +448,9 @@ ${factsText}`,
                 }
               }
 
-              // Signals with context
+              // Signals with context — V16: cross-signal dedup via shared usedRefIds
               const signalsWithContext: (SignalItem & { source_url?: string })[] = []
+              const usedRefIds = new Set<string>()
               for (const s of (selectionResult.signals ?? []).slice(0, 5)) {
                 const factRef = s.fact_index != null && s.fact_index >= 0 && s.fact_index < topFacts.length ? topFacts[s.fact_index] : null
                 const factTags = factRef ? (factRef.tags as string[]) : []
@@ -455,16 +460,25 @@ ${factsText}`,
                   content: s.text,
                   tags: factTags,
                   fact_date: factDate,
-                })
+                }, usedRefIds)
+
+                // Track used references to prevent reuse across signals
+                for (const refId of ctxResult.used_reference_ids) {
+                  usedRefIds.add(refId)
+                }
 
                 const firstComp = ctxResult.comparisons[0]
+                // V16: Clean metric_value — strip any date info that duplicates date_range
+                const cleanMetricValue = firstComp
+                  ? firstComp.metric_value.replace(/\s*\(?\d{4}[年.]?\d{0,2}[月.]?\d{0,2}日?\)?/g, '').trim() || firstComp.metric_value
+                  : undefined
                 signalsWithContext.push({
                   category: s.category,
                   text: s.text,
                   context: ctxResult.context_lines[0],
                   structured_context: firstComp ? {
                     event: firstComp.reference_event,
-                    detail: `${firstComp.metric_label} ${firstComp.metric_value} (${firstComp.date_range})`,
+                    detail: `${firstComp.metric_label}为 ${cleanMetricValue}（${firstComp.date_range}）`,
                     current_entity: firstComp.current_entity,
                     current_value: firstComp.current_value,
                     delta_label: firstComp.delta_label,

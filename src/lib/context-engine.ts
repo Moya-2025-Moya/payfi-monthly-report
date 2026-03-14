@@ -1,4 +1,4 @@
-// Context Engine V13 — 结构化输出 + 模板组装 + Gate 3 Insight 校验
+// Context Engine V16 — 维度匹配 + 跨信号去重 + 日期去重
 // AI 只填 JSON 字段（日期、数字、实体名），代码组装句子
 // 这彻底消除了 AI 注入主观意见的可能性
 
@@ -16,18 +16,19 @@ import {
 // ── Types ──
 
 export interface ContextComparison {
-  reference_event: string   // e.g. "Coinbase IPO"
-  metric_label: string      // e.g. "S-1 提交到上市"
-  metric_value: string      // e.g. "118 天"
-  date_range: string        // e.g. "2020.12→2021.04"
+  reference_event: string   // e.g. "Coinbase 上市"
+  metric_label: string      // e.g. "S-1 提交到上市耗时"
+  metric_value: string      // e.g. "118 天" (纯数值，禁止包含日期)
+  date_range: string        // e.g. "2020年12月→2021年4月"
   used_candidate_index: number
+  metric_dimension: string  // V16: 维度标签 (交易量/市值/融资规模/市场份额/...)
   // V14: 当前 vs 历史并排对比
   current_entity?: string     // e.g. "Circle"
   current_value?: string      // e.g. "25 天"
   delta_label?: string        // e.g. "快 42%" or "大 1.7x"
   // V15: 对比说明
   comparison_basis?: string   // e.g. "同为稳定币发行方 IPO，对比上市进程速度"
-  insight?: string            // e.g. "Circle 进程比 Coinbase 快 42%，可能受益于更友好的监管环境"
+  insight?: string            // e.g. null (不再需要)
 }
 
 export interface ContextResult {
@@ -220,77 +221,110 @@ async function retrieveCandidates(
   return candidates
 }
 
-// ── Stage 3: AI 结构化提取 (V13 格式) ──
+// ── Stage 3: AI 结构化提取 (V16 格式) ──
+// SOP: 1) 识别当前事实的核心指标维度 2) 只从候选中找同维度数据 3) 填充结构化字段
 
 async function generateStructuredContext(
   fact: FactInput,
   eventType: EventPattern | null,
   candidates: CandidateContext[],
+  excludeReferenceIds?: Set<string>,
 ): Promise<{ comparisons: ContextComparison[]; confidence: 'high' | 'medium' | 'low'; usedRefs: string[] }> {
-  const candidatesText = candidates
+  // Pre-filter: remove candidates whose reference_id is already used by other signals
+  const filteredCandidates = excludeReferenceIds
+    ? candidates.filter(c => !c.reference_id || !excludeReferenceIds.has(c.reference_id))
+    : candidates
+
+  if (filteredCandidates.length === 0) {
+    return { comparisons: [], confidence: 'low', usedRefs: [] }
+  }
+
+  const candidatesText = filteredCandidates
     .map((c, i) => `[${i}] ${c.content}`)
     .join('\n')
+
+  // Detect the core metric dimension of the fact for the prompt
+  const factDimension = classifyMetricDimension(fact.content)
 
   const result = await callHaikuJSON<{
     comparisons: ContextComparison[]
     confidence: 'high' | 'medium' | 'low'
   }>(
-    `你是结构化数据提取工具。从候选材料中提取可与当前事实对比的历史数据点。
+    `你是结构化数据提取工具。严格按以下 SOP 操作。
 
-当前事实:
-"${fact.content}"
+═══════════════════════════════════
+SOP 第一步：识别当前事实的核心指标维度
+═══════════════════════════════════
+当前事实: "${fact.content}"
 事件类型: ${eventType ?? '未分类'}
 日期: ${fact.fact_date}
+${factDimension ? `系统预判维度: ${factDimension}` : ''}
 
-候选历史材料 (${candidates.length} 条):
+指标维度定义表（必须选择其中一个）:
+- 交易量: 链上交易量、转账量、结算量、处理量（单位: 美元/笔数）
+- 市值: 市值、总供应量、流通市值（单位: 美元）
+- 市场份额: 占比、份额、比例（单位: %）
+- 融资规模: 融资金额、估值（单位: 美元）
+- TVL: 锁仓量、TVL（单位: 美元）
+- 上市进程: IPO、S-1、上市耗时（单位: 天/月）
+- 监管处罚: 罚款金额、和解金额（单位: 美元）
+- 用户增长: 用户数、账户数（单位: 人/个）
+
+═══════════════════════════════════
+SOP 第二步：从候选中筛选同维度数据
+═══════════════════════════════════
+候选历史材料 (${filteredCandidates.length} 条):
 ${candidatesText}
 
-提取 1-3 个对比数据点。每个数据点必须是以下结构:
+⚠️ 核心约束: 只能选择与当前事实**完全相同指标维度**的候选。
+例：当前事实讲「交易量」→ 只能对比其他「交易量」数据
+     当前事实讲「市值」→ 只能对比其他「市值」数据
+     绝对禁止: 交易量 vs 市值、融资 vs 上市、市场份额 vs 交易量
+
+如果候选中没有同维度数据 → 直接返回空数组 {"comparisons": [], "confidence": "low"}
+
+═══════════════════════════════════
+SOP 第三步：填充结构化字段
+═══════════════════════════════════
+每个对比数据点:
 {
-  "reference_event": "被比较的历史事件名",
-  "metric_label": "对比维度 (如 '估值' '融资规模' '上市耗时')",
-  "metric_value": "历史数值 (必须包含数字)",
-  "date_range": "历史时间范围 (必须包含年份)",
-  "used_candidate_index": 候选材料编号,
-  "current_entity": "当前事实的实体名 (从当前事实中提取，可省略)",
-  "current_value": "当前事实在同一维度的数值 (可省略)",
-  "delta_label": "差值 (如 '快 42%' 或 '大 1.7x'，可省略)",
-  "comparison_basis": "为什么这两者可比 (一句话，如 '同为加密支付公司融资，对比融资估值规模')",
-  "insight": "null (不再需要，留空即可)"
+  "reference_event": "历史事件简称（中文，实体名保留英文）",
+  "metric_label": "对比维度名（纯中文，如 '链上交易量' '稳定币市值'）",
+  "metric_value": "历史数值（必须含数字，禁止包含日期年份）",
+  "date_range": "历史时间范围（必须含年份，如 '2024年3月' '2021年→2022年'）",
+  "metric_dimension": "维度标签（从上面的维度定义表中选一个）",
+  "used_candidate_index": 候选编号,
+  "current_entity": "当前事实实体名（可省略）",
+  "current_value": "当前事实同维度数值（可省略）",
+  "delta_label": "差值（可省略，格式: 快/慢/大/小/多/少 + 百分比或倍数）",
+  "comparison_basis": "可比性依据（一句话）",
+  "insight": null
 }
 
-绝对规则:
-1. 只能使用上面的候选材料，禁止使用外部知识
-2. reference_event 用简短事件名，不加评价词
-3. metric_label 只写客观维度名 (禁止"重大""关键""值得")
-4. metric_value 必须包含数字
-5. date_range 必须包含年份
-6. 如果候选材料不足以形成有意义的对比，返回空数组
-**最重要：对比必须在同一主题维度上。例如，"交易量超越"只能对比其他交易量事件，"融资"只能对比同类融资，"上市"只能对比其他上市。禁止跨主题对比（如用 IPO 对比交易量）。如果候选材料中没有同主题的可比对象，返回空数组。**
-7. current_entity 从当前事实中提取实体名，如无法确定则省略此字段
-8. current_value 必须包含数字，与 metric_value 同维度，如当前事实无明确数值则省略
-9. delta_label 只写客观差值（禁止"显著""惊人"等评价词），格式: "快/慢/大/小/多/少 + 百分比或倍数"
-10. current_entity/current_value/delta_label 三个字段要么全部提供，要么全部省略
-11. comparison_basis 必须提供，说明可比性依据 (行业/规模/阶段相似)
-12. insight 字段留空 (设为 null)，不做任何评价或推导
-13. **所有字段必须使用中文**（实体名保留英文原名，如 "Circle"/"Coinbase"，但描述文字必须中文）
-    - reference_event: "Coinbase 上市" 而非 "Coinbase IPO"
-    - metric_label: "S-1 提交到上市耗时" 而非 "S-1 to IPO duration"
-    - metric_value: "118 天" 而非 "118 days"
-    - delta_label: "快 42%" 而非 "42% faster"
+═══════════════════════════════════
+绝对规则
+═══════════════════════════════════
+1. 只能使用上面的候选材料，禁止外部知识
+2. ⚠️ metric_value 只放数值，禁止包含年份/日期（日期放 date_range）
+   ✓ 正确: metric_value="100 亿美元", date_range="2024年3月"
+   ✗ 错误: metric_value="100 亿美元 (2024年3月)"
+3. ⚠️ metric_dimension 必须与当前事实的核心维度完全一致
+4. reference_event 用简短事件名，禁止评价词
+5. 如果候选材料不足以形成同维度对比，必须返回空数组
+6. current_entity/current_value/delta_label 三个字段要么全部提供，要么全部省略
+7. delta_label 禁止评价词（"显著""惊人"），只写 "快/慢/大/小/多/少 + 数值"
+8. 所有描述字段用中文，实体名保留英文
+9. 提取 1-2 个（不超过 2 个）对比数据点
 
 输出严格 JSON:
-{
-  "comparisons": [...],
-  "confidence": "high" | "medium" | "low"
-}`,
-    { system: '结构化数据提取工具。输出严格 JSON。只提取事实字段。所有描述性字段必须用中文（实体名保留英文）。', maxTokens: 1000 }
+{"comparisons": [...], "confidence": "high"|"medium"|"low"}`,
+    { system: '结构化数据提取工具。输出严格 JSON。只提取事实字段。所有描述性字段必须用中文（实体名保留英文）。禁止跨维度对比。', maxTokens: 1000 }
   )
 
   const comparisons = result.comparisons ?? []
   const usedRefs = comparisons
-    .filter(c => c.used_candidate_index >= 0 && c.used_candidate_index < candidates.length && candidates[c.used_candidate_index].reference_id)
-    .map(c => candidates[c.used_candidate_index].reference_id!)
+    .filter(c => c.used_candidate_index >= 0 && c.used_candidate_index < filteredCandidates.length && filteredCandidates[c.used_candidate_index].reference_id)
+    .map(c => filteredCandidates[c.used_candidate_index].reference_id!)
 
   return {
     comparisons,
@@ -300,13 +334,14 @@ ${candidatesText}
 }
 
 // ── Template assembly: structured fields → context line ──
+// V16: 自然语言组装，避免日期重复，不使用 | 分隔符
 
 function assembleContextLine(comp: ContextComparison): string {
-  let line = `${comp.reference_event}: ${comp.metric_label} ${comp.metric_value} (${comp.date_range})`
-  if (comp.current_entity && comp.current_value) {
-    line += ` | ${comp.current_entity} 当前: ${comp.current_value}`
-    if (comp.delta_label) line += ` — ${comp.delta_label}`
-  }
+  // 格式: "{事件}，{维度}为 {数值}（{时间}）"
+  // 避免 metric_value 中重复出现的日期信息
+  const cleanValue = comp.metric_value.replace(/\s*\(?\d{4}[年.]?\d{0,2}[月.]?\d{0,2}日?\)?/g, '').trim()
+  const value = cleanValue || comp.metric_value
+  let line = `${comp.reference_event}，${comp.metric_label}为 ${value}（${comp.date_range}）`
   return line
 }
 
@@ -391,16 +426,44 @@ function validateDelta(comp: ContextComparison): ContextComparison {
   return comp
 }
 
+// ── Metric Dimension Classification ──
+// 硬编码维度分组 — 用于 Gate 2.9 维度匹配校验和 prompt 增强
+
+type MetricDimension = '交易量' | '市值' | '市场份额' | '融资规模' | 'TVL' | '上市进程' | '监管处罚' | '用户增长' | null
+
+const DIMENSION_KEYWORDS: { dimension: MetricDimension & string; keywords: string[] }[] = [
+  { dimension: '交易量', keywords: ['交易量', '转账量', '结算量', '处理量', '交易额', '转账额', 'volume', 'transaction'] },
+  { dimension: '市值', keywords: ['市值', '总供应', '流通', 'market cap', '供应量', '总量'] },
+  { dimension: '市场份额', keywords: ['市场份额', '占比', '份额', '比例', 'share', 'dominance'] },
+  { dimension: '融资规模', keywords: ['融资', '估值', '领投', 'series', '轮', 'funding', 'valuation', '募资'] },
+  { dimension: 'TVL', keywords: ['tvl', '锁仓', '总锁定', 'locked'] },
+  { dimension: '上市进程', keywords: ['ipo', 's-1', '上市', '公开发行', '招股', 'listing'] },
+  { dimension: '监管处罚', keywords: ['罚款', '和解', '处罚', '执法', 'fine', 'settlement', 'penalty'] },
+  { dimension: '用户增长', keywords: ['用户', '账户', '地址数', 'users', 'accounts', 'addresses', '活跃'] },
+]
+
+function classifyMetricDimension(text: string): MetricDimension {
+  const lower = text.toLowerCase()
+  let best: MetricDimension = null
+  let bestHits = 0
+
+  for (const { dimension, keywords } of DIMENSION_KEYWORDS) {
+    const hits = keywords.filter(kw => lower.includes(kw)).length
+    if (hits > bestHits) {
+      bestHits = hits
+      best = dimension
+    }
+  }
+
+  return best
+}
+
 // ── Quality Gate 2.8: Relevance check ──
 // The comparison must be topically related to the original fact.
-// If they share zero entity/topic overlap, it's a nonsensical comparison.
 
 function extractKeywords(text: string): Set<string> {
-  // Extract entities and key nouns — lowercase, split on common delimiters
   const words = new Set<string>()
-  // Extract English entities (capitalized words, acronyms)
   for (const m of text.matchAll(/[A-Z][a-zA-Z0-9]+/g)) words.add(m[0].toLowerCase())
-  // Extract Chinese key terms (2-4 char segments that appear meaningful)
   const cnTerms = ['交易量', '市值', '融资', '上市', '稳定币', '支付', '结算', '监管',
     '牌照', '合规', '合作', '收购', '发行', 'IPO', 'TVL', '锁仓', '罚款', '和解',
     '法案', '估值', '利润', '收入', '用户', '市场份额', '增长', '跨境', '汇款',
@@ -416,18 +479,41 @@ function validateRelevance(comp: ContextComparison, fact: FactInput): boolean {
   const factKw = extractKeywords(fact.content)
   const refKw = extractKeywords(`${comp.reference_event} ${comp.metric_label}`)
 
-  // Must share at least 1 keyword
   let overlap = 0
   for (const w of refKw) {
     if (factKw.has(w)) overlap++
   }
-
-  // Also check entity overlap in tags
   for (const tag of fact.tags) {
     if (comp.reference_event.toLowerCase().includes(tag.toLowerCase())) overlap++
   }
 
   return overlap >= 1
+}
+
+// ── Quality Gate 2.9: Metric Dimension Match ──
+// 核心守门: 事实的指标维度必须与对比的指标维度一致
+// 例如: 交易量 只能对比 交易量，市值 只能对比 市值
+
+function validateMetricDimension(comp: ContextComparison, fact: FactInput): boolean {
+  const factDim = classifyMetricDimension(fact.content)
+  if (!factDim) return true // 无法判断维度时放行，依赖其他 gate
+
+  // 优先使用 AI 返回的 metric_dimension 字段
+  const compDimFromAI = comp.metric_dimension?.trim()
+  if (compDimFromAI) {
+    // AI 返回的维度必须与事实维度一致
+    if (compDimFromAI === factDim) return true
+    // 模糊匹配: 检查是否包含关键词
+    const compDimClassified = classifyMetricDimension(compDimFromAI)
+    if (compDimClassified === factDim) return true
+    return false
+  }
+
+  // Fallback: 从 metric_label 推断维度
+  const compDim = classifyMetricDimension(`${comp.metric_label} ${comp.reference_event}`)
+  if (!compDim) return true // 无法判断时放行
+
+  return compDim === factDim
 }
 
 // ── Quality Gate 3: Insight 校验 (V13 新增) ──
@@ -463,7 +549,10 @@ function validateInsight(comp: ContextComparison, fact: FactInput): boolean {
 
 // ── 主入口 ──
 
-export async function generateFactContext(fact: FactInput): Promise<ContextResult> {
+export async function generateFactContext(
+  fact: FactInput,
+  excludeReferenceIds?: Set<string>,
+): Promise<ContextResult> {
   const eventType = classifyEvent(fact)
   const candidates = await retrieveCandidates(fact, eventType)
 
@@ -473,7 +562,7 @@ export async function generateFactContext(fact: FactInput): Promise<ContextResul
   }
 
   try {
-    const { comparisons, confidence, usedRefs } = await generateStructuredContext(fact, eventType, candidates)
+    const { comparisons, confidence, usedRefs } = await generateStructuredContext(fact, eventType, candidates, excludeReferenceIds)
 
     // Gate 2: Schema 校验
     const schemaValid = comparisons.filter(c => validateComparison(c, candidates.length))
@@ -484,15 +573,18 @@ export async function generateFactContext(fact: FactInput): Promise<ContextResul
     // Gate 2.8: Relevance — comparison must be topically related to the fact
     const relevanceValid = deltaValidated.filter(c => validateRelevance(c, fact))
 
+    // Gate 2.9: Metric Dimension Match — 交易量只能对比交易量，市值只能对比市值
+    const dimensionValid = relevanceValid.filter(c => validateMetricDimension(c, fact))
+
     // Gate 3: Insight 校验
-    const insightValid = relevanceValid.filter(c => validateInsight(c, fact))
+    const insightValid = dimensionValid.filter(c => validateInsight(c, fact))
 
     if (confidence === 'low' && insightValid.length === 0) {
       return { context_lines: [], comparisons: [], event_type: eventType, used_reference_ids: [], confidence: 'low' }
     }
 
-    // Template assembly
-    const finalComparisons = insightValid.slice(0, 3)
+    // Template assembly — limit to 2 comparisons max
+    const finalComparisons = insightValid.slice(0, 2)
     const contextLines = finalComparisons.map(assembleContextLine)
 
     return {
@@ -508,14 +600,23 @@ export async function generateFactContext(fact: FactInput): Promise<ContextResul
 }
 
 /**
- * 批量为多条事实生成上下文 (串行，避免 rate limit)
+ * 批量为多条事实生成上下文 (串行 + 跨信号去重)
+ * V16: 每个信号使用的 reference_id 不会被后续信号重复使用
  */
 export async function generateBatchContext(
   facts: FactInput[],
 ): Promise<Map<number, ContextResult>> {
   const results = new Map<number, ContextResult>()
+  const usedRefIds = new Set<string>()
+
   for (let i = 0; i < facts.length; i++) {
-    results.set(i, await generateFactContext(facts[i]))
+    const result = await generateFactContext(facts[i], usedRefIds)
+    results.set(i, result)
+
+    // Track used references to prevent reuse across signals
+    for (const refId of result.used_reference_ids) {
+      usedRefIds.add(refId)
+    }
   }
   return results
 }
