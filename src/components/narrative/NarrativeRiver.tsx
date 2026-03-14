@@ -47,28 +47,22 @@ function isV13(n: NarrativeData): boolean {
   return Array.isArray(n.events) && n.events.length > 0
 }
 
-/* ── Parse semicolon-separated upcoming string into items ── */
-function parseUpcomingString(str: string): { date: string; title: string }[] {
-  return str.split(/;\s*/).filter(Boolean).map(item => {
-    const m = item.match(/^(\d{4}-\d{2}-\d{2}|\d{4}-\d{2}|\d{4}-Q\d|[\d/]+月?):\s*(.+)$/)
-    if (m) return { date: m[1], title: m[2].trim() }
-    return { date: '', title: item.trim() }
-  }).filter(u => u.title)
-}
-
 function fmtDate(d: string): string {
+  // YYYY-MM-DD → M月D日
   const m = d.match(/^\d{4}-(\d{2})-(\d{2})$/)
-  if (m) return `${parseInt(m[1])}/${parseInt(m[2])}`
+  if (m) return `${parseInt(m[1])}月${parseInt(m[2])}日`
+  // YYYY-MM → M月
   const m2 = d.match(/^\d{4}-(\d{2})$/)
   if (m2) return `${parseInt(m2[1])}月`
+  // YYYY-QN → QN
+  const m3 = d.match(/^\d{4}-(Q\d)$/)
+  if (m3) return m3[1]
   return d
 }
 
 /* ── Compact Timeline ── */
 
 function CompactTimeline({ events }: { events: V13Event[] }) {
-  const [showAll, setShowAll] = useState(false)
-
   // Group by date
   const byDate = new Map<string, V13Event[]>()
   for (const evt of events) {
@@ -78,23 +72,17 @@ function CompactTimeline({ events }: { events: V13Event[] }) {
   }
   const dates = [...byDate.entries()]
 
-  // Show top 4 dates by default, expand for more
-  const visible = showAll ? dates : dates.slice(0, 4)
-  const hasMore = dates.length > 4
-
   return (
     <div className="space-y-1">
-      {visible.map(([date, evts], di) => {
+      {dates.map(([date, evts], di) => {
         const highEvt = evts.find(e => e.significance === 'high')
         const rest = evts.filter(e => e !== highEvt)
 
         return (
-          <div key={di} className="flex gap-3 py-1.5" style={{ borderBottom: di < visible.length - 1 ? '1px solid var(--border)' : 'none' }}>
-            {/* Date column */}
+          <div key={di} className="flex gap-3 py-1.5" style={{ borderBottom: di < dates.length - 1 ? '1px solid var(--border)' : 'none' }}>
             <span className="shrink-0 w-[52px] text-right text-[11px] font-mono pt-[2px]" style={{ color: 'var(--fg-muted)' }}>
               {date.slice(5)}
             </span>
-            {/* Events column */}
             <div className="flex-1 min-w-0">
               {highEvt && (
                 <div className="flex items-baseline justify-between gap-2">
@@ -122,29 +110,17 @@ function CompactTimeline({ events }: { events: V13Event[] }) {
           </div>
         )
       })}
-      {hasMore && !showAll && (
-        <button onClick={() => setShowAll(true)}
-          className="text-[11px] font-medium pt-1" style={{ color: ACCENT }}>
-          展开全部 {dates.length} 天
-        </button>
-      )}
     </div>
   )
 }
 
-/* ── Upcoming List (handles both array and semicolon string) ── */
+/* ── Upcoming List — only show confirmed items with traceable source ── */
 
-function UpcomingList({ upcoming, watchStr }: { upcoming?: V13Upcoming[]; watchStr?: string }) {
-  // Merge: prefer structured upcoming array, fallback to parsing the string
-  const confirmedArr = (upcoming ?? []).filter(u => u.type === 'confirmed')
-  const predictionArr = (upcoming ?? []).filter(u => u.type === 'prediction')
-  const parsedFromStr = watchStr ? parseUpcomingString(watchStr) : []
-
-  // Use structured data if available, otherwise parsed string
-  const items = confirmedArr.length > 0 || predictionArr.length > 0
-    ? [...confirmedArr.map(u => ({ date: u.date, title: u.title, type: 'confirmed' as const })),
-       ...predictionArr.map(u => ({ date: u.date, title: u.title, type: 'prediction' as const }))]
-    : parsedFromStr.map(u => ({ ...u, type: 'prediction' as const }))
+function UpcomingList({ upcoming }: { upcoming?: V13Upcoming[] }) {
+  // Only show confirmed upcoming events that have a source URL
+  const items = (upcoming ?? []).filter(u =>
+    u.type === 'confirmed' && u.source && /^https?:\/\//.test(u.source)
+  )
 
   if (items.length === 0) return null
 
@@ -161,12 +137,11 @@ function UpcomingList({ upcoming, watchStr }: { upcoming?: V13Upcoming[]; watchS
             }}>
               {fmtDate(u.date)}
             </span>
-            <span className="flex-1 leading-[1.65] break-words" style={{
-              color: 'var(--fg-body)',
-              fontStyle: u.type === 'prediction' ? 'italic' : 'normal',
-            }}>
+            <span className="flex-1 leading-[1.65] break-words" style={{ color: 'var(--fg-body)' }}>
               {u.title}
             </span>
+            <a href={u.source!} target="_blank" rel="noopener noreferrer"
+              className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity pt-[1px]">↗</a>
           </div>
         ))}
       </div>
@@ -236,9 +211,9 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                       <CompactTimeline events={n.events!} />
                     </div>
 
-                    {/* V13: Upcoming / predictions */}
+                    {/* V13: Upcoming — only confirmed with source */}
                     <div className="mb-4">
-                      <UpcomingList upcoming={n.upcoming} watchStr={n.next_week_watch} />
+                      <UpcomingList upcoming={n.upcoming} />
                     </div>
                   </>
                 ) : (

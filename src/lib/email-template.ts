@@ -139,60 +139,56 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
 
   return narratives.slice(0, 3).map((n) => {
     const weekBadge = n.weekCount && n.weekCount > 1
-      ? `<td align="right" valign="middle" style="font-size:11px;color:#ff6d00;font-weight:bold;white-space:nowrap;">&#9679; 第${n.weekCount}周</td>`
+      ? ` &nbsp;<span style="font-size:11px;color:#ff6d00;font-weight:bold;">第${n.weekCount}周</span>`
       : ''
 
-    const timelineRows: string[] = []
+    // Build simple text rows — no table hacks, just <p> tags
+    const rows: string[] = []
 
-    if (n.origin) {
-      timelineRows.push(`<tr>
-        <td width="2" valign="top" style="padding:4px 0;"><table cellpadding="0" cellspacing="0" border="0"><tr><td style="width:2px;height:100%;background-color:#e5e7eb;font-size:1px;">&nbsp;</td></tr></table></td>
-        <td style="padding:3px 0 3px 14px;font-size:13px;color:#c4c4c4;line-height:1.7;">${esc(n.origin)}</td>
-      </tr>`)
+    // This week (most important)
+    if (n.this_week) {
+      rows.push(`<p style="margin:0 0 8px;font-size:14px;color:#111827;line-height:1.7;font-weight:600;">本周：${esc(n.this_week)}</p>`)
     }
 
-    if (n.last_week && n.last_week !== '首次追踪') {
-      timelineRows.push(`<tr>
-        <td width="2" valign="top" style="padding:4px 0;"><table cellpadding="0" cellspacing="0" border="0"><tr><td style="width:2px;height:100%;background-color:#e5e7eb;font-size:1px;">&nbsp;</td></tr></table></td>
-        <td style="padding:3px 0 3px 14px;font-size:13px;color:#9ca3af;line-height:1.7;">${esc(n.last_week)}</td>
-      </tr>`)
+    // Origin + last week as one-line context
+    if (n.origin || (n.last_week && n.last_week !== '首次追踪')) {
+      const parts: string[] = []
+      if (n.origin) parts.push(`起点：${esc(n.origin)}`)
+      if (n.last_week && n.last_week !== '首次追踪') parts.push(`上周：${esc(n.last_week)}`)
+      rows.push(`<p style="margin:0 0 8px;font-size:13px;color:#9ca3af;line-height:1.7;">${parts.join('&nbsp;&nbsp;/&nbsp;&nbsp;')}</p>`)
     }
 
-    timelineRows.push(`<tr>
-      <td width="2" valign="top" style="padding:6px 0;"><table cellpadding="0" cellspacing="0" border="0"><tr><td style="width:2px;height:100%;background-color:#ff6d00;font-size:1px;">&nbsp;</td></tr></table></td>
-      <td style="padding:6px 0 4px 14px;font-size:15px;color:#111827;line-height:1.5;font-weight:bold;">${esc(n.this_week)}</td>
-    </tr>`)
-
+    // Next week watch — split semicolons into separate lines
     if (n.next_week_watch) {
-      timelineRows.push(`<tr>
-        <td width="2" valign="top" style="padding:4px 0;"><table cellpadding="0" cellspacing="0" border="0"><tr><td style="width:2px;height:100%;background-color:#e5e7eb;font-size:1px;border-style:dashed;">&nbsp;</td></tr></table></td>
-        <td style="padding:3px 0 3px 14px;font-size:13px;color:#6b7280;line-height:1.7;font-style:italic;">&#9654; ${esc(n.next_week_watch)}</td>
-      </tr>`)
+      const items = n.next_week_watch.split(/;\s*/).filter(Boolean)
+      if (items.length <= 2) {
+        rows.push(`<p style="margin:0 0 4px;font-size:13px;color:#6b7280;line-height:1.7;">前瞻：${items.map(i => esc(i)).join('；')}</p>`)
+      } else {
+        rows.push(`<p style="margin:0 0 4px;font-size:13px;color:#6b7280;line-height:1.7;">前瞻：</p>`)
+        for (const item of items) {
+          rows.push(`<p style="margin:0 0 2px;font-size:13px;color:#6b7280;line-height:1.7;padding-left:16px;">· ${esc(item)}</p>`)
+        }
+      }
     }
 
-    const contextHtml = n.context && n.context.length > 0
-      ? buildContextBlock(n.context)
-      : ''
+    // Context — simple bullet list
+    if (n.context && n.context.length > 0) {
+      rows.push(`<p style="margin:8px 0 4px;font-size:11px;color:#9ca3af;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">历史可比</p>`)
+      for (const c of n.context) {
+        const line = `${c.event}${c.detail ? `，${c.detail}` : ''}`
+        rows.push(`<p style="margin:0 0 2px;font-size:12px;color:#9ca3af;line-height:1.7;">· ${esc(line)}</p>`)
+      }
+    }
 
     return `<tr><td style="padding:0 0 20px;">
-      <!--[if mso]><table cellpadding="0" cellspacing="0" border="1" bordercolor="#e5e7eb" width="100%"><tr><td style="padding:0;"><![endif]-->
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e5e7eb;">
-        <!-- Card header -->
-        <tr><td style="padding:22px 24px 6px;">
-          <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-            <td style="font-size:16px;font-weight:bold;color:#111827;line-height:1.3;letter-spacing:-0.01em;">${esc(n.topic)}</td>
-            ${weekBadge}
-          </tr></table>
+        <tr><td style="padding:18px 24px 4px;">
+          <p style="margin:0;font-size:16px;font-weight:bold;color:#111827;line-height:1.4;">${esc(n.topic)}${weekBadge}</p>
         </td></tr>
-        <!-- Timeline body -->
-        <tr><td style="padding:4px 24px 22px;">
-          <table cellpadding="0" cellspacing="0" border="0" width="100%">
-            ${timelineRows.join('\n')}
-            ${contextHtml}
-          </table>
+        <tr><td style="padding:8px 24px 18px;">
+          ${rows.join('\n          ')}
         </td></tr>
       </table>
-      <!--[if mso]></td></tr></table><![endif]-->
     </td></tr>`
   }).join('\n')
 }

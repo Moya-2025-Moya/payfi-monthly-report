@@ -592,11 +592,14 @@ ${factsText}`,
                 weekLabel: weekToDateRange(weekNumber),
                 marketLine: parsed.marketLine,
                 oneLiner: parsed.oneLiner ?? '',
-                narratives: (parsed.narratives ?? []).slice(0, 3).map((n: { topic: string; summary: string; weekCount?: number; upcoming?: Array<{ date: string; title: string }>; events?: Array<{ title: string; description?: string; significance?: string }>; context?: Array<{ event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string }>; last_week?: string; origin?: string }) => {
+                narratives: (parsed.narratives ?? []).slice(0, 3).map((n: { topic: string; summary: string; weekCount?: number; upcoming?: Array<{ date: string; title: string; type?: string; source?: string }>; events?: Array<{ title: string; description?: string; significance?: string }>; context?: Array<{ event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string }>; last_week?: string; origin?: string }) => {
                   // Transform V13Narrative → NarrativeForEmail
-                  const upcoming = (n.upcoming ?? [])
-                  const nextWatch = upcoming.length > 0
-                    ? upcoming.map(u => `${u.date}: ${u.title}`).join('; ')
+                  // Only include confirmed upcoming with traceable source URL
+                  const confirmed = (n.upcoming ?? []).filter(u =>
+                    u.type === 'confirmed' && u.source && /^https?:\/\//.test(u.source)
+                  )
+                  const nextWatch = confirmed.length > 0
+                    ? confirmed.map(u => `${u.date}: ${u.title}`).join('; ')
                     : undefined
                   // Extract this_week from highest-significance event title (specific fact),
                   // NOT the AI summary (which is a generic narrative overview)
