@@ -86,13 +86,6 @@ function ContextBlock({ items }: { items: ContextItem[] }) {
               {c.event}{c.detail ? `  ·  ${c.detail}` : ''}
             </p>
 
-            {/* Current value */}
-            {c.current_entity && c.current_value ? (
-              <p className="text-[13px]" style={{ color: 'var(--fg-secondary)' }}>
-                {c.current_entity}: {c.current_value}
-              </p>
-            ) : null}
-
             {/* Insight — what this comparison reveals */}
             {c.insight && (
               <p className="text-[12px] mt-1" style={{ color: 'var(--fg-secondary)' }}>
@@ -152,14 +145,6 @@ function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; c
       ) : (
         <p>
           {ctx.event}{ctx.detail ? ` · ${ctx.detail}` : ''}
-          {useful && ctx.current_value && (
-            <span>
-              {' → '}<span style={{ color: 'var(--fg-secondary)' }}>{ctx.current_entity}: {ctx.current_value}</span>
-              {ctx.delta_label && (
-                <span className="font-medium" style={{ color: 'var(--accent)' }}> {ctx.delta_label}</span>
-              )}
-            </span>
-          )}
         </p>
       )}
     </div>

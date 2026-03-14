@@ -85,11 +85,6 @@ function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; c
       ) : (
         <p>
           {ctx.event}{ctx.detail ? ` · ${ctx.detail}` : ''}
-          {useful && ctx.current_value && (
-            <span>
-              {' → '}<span style={{ color: 'var(--fg-secondary)' }}>{ctx.current_entity}: {ctx.current_value}</span>
-            </span>
-          )}
         </p>
       )}
     </div>

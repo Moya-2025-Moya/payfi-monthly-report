@@ -98,11 +98,7 @@ function buildContextBlock(items: NarrativeContext[]): string {
     // Reference event — subdued, providing historical context
     const refRow = `<tr><td style="padding:0 0 2px;font-size:13px;color:#888888;line-height:1.6;">${esc(c.event)}${c.detail ? ` &middot; ${esc(c.detail)}` : ''}</td></tr>`
 
-    // Current value — subdued, no bold comparison
-    let compRow = ''
-    if (c.current_entity && c.current_value) {
-      compRow = `<tr><td style="padding:2px 0 0;font-size:13px;color:#888888;line-height:1.6;">${esc(c.current_entity)}: ${esc(c.current_value)}</td></tr>`
-    }
+    const compRow = ''
 
     // Insight — what this comparison reveals
     const insightRow = c.insight
@@ -216,9 +212,6 @@ function buildSignals(signals: SignalItem[]): string {
     // Context — prefer structured
     if (s.structured_context) {
       const sc = s.structured_context
-      const isInvalidDelta = sc.delta_label && /无.*对比|不同维度|不适用/.test(sc.delta_label)
-      const pctMatch = sc.delta_label?.match(/(\d+)%/)
-      const isExtremeDelta = pctMatch && parseInt(pctMatch[1]) > 80
 
       if (sc.comparison_basis || sc.insight) {
         // Prefer insight-based rendering
@@ -232,9 +225,8 @@ function buildSignals(signals: SignalItem[]): string {
             <td style="background-color:#f5f5f5;padding:10px 14px;font-size:13px;color:#666666;line-height:1.7;">${ctxHtml}</td>
           </tr></table>
         </td></tr>`
-      } else if (sc.current_entity && sc.current_value && !isInvalidDelta && !isExtremeDelta) {
-        let ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
-        ctxHtml += `<br><span style="font-size:13px;color:#888888;">${esc(sc.current_entity)}: ${esc(sc.current_value)}</span>`
+      } else {
+        const ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
 
         row += `<tr><td style="padding:2px 0 6px;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
