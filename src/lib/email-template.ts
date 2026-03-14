@@ -82,15 +82,13 @@ function buildContextBlock(items: NarrativeContext[]): string {
       ? '<tr><td style="padding:6px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #e8e8e8;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>'
       : ''
 
-    // Reference event — subdued, providing historical context
-    const refRow = `<tr><td style="padding:0 0 2px;font-size:13px;color:#888888;line-height:1.6;">${esc(c.event)}${c.detail ? ` &middot; ${esc(c.detail)}` : ''}</td></tr>`
-
-    // Insight — what this comparison reveals
+    // Skip comparison_basis — only show insight (the useful part)
+    // If insight exists, show it as primary; event/detail as supporting
     const insightRow = c.insight
-      ? `<tr><td style="padding:3px 0 0;font-size:13px;color:#666666;line-height:1.5;">${esc(c.insight)}</td></tr>`
-      : ''
+      ? `<tr><td style="padding:0 0 2px;font-size:13px;color:#555555;line-height:1.6;">${esc(c.insight)}</td></tr>`
+      : `<tr><td style="padding:0 0 2px;font-size:13px;color:#888888;line-height:1.6;">${esc(c.event)}${c.detail ? ` &middot; ${esc(c.detail)}` : ''}</td></tr>`
 
-    return `${separator}${refRow}${insightRow}`
+    return `${separator}${insightRow}`
   }).join('')
 
   return `<tr><td style="padding:10px 0 4px;">
@@ -140,12 +138,24 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
       ? buildContextBlock(n.context)
       : ''
 
-    // Next week — dashed top border, muted
-    const nextWeekRow = n.next_week_watch
-      ? `<tr><td style="padding:8px 0 0;border-top:1px dashed #e0e0e0;font-size:13px;color:#999999;line-height:1.6;">
-          下周关注: ${esc(n.next_week_watch)}
+    // Next week — dashed top border, split semicolons into bullet list
+    let nextWeekRow = ''
+    if (n.next_week_watch) {
+      const items = n.next_week_watch.split(/;\s*/).filter(Boolean)
+      if (items.length <= 1) {
+        nextWeekRow = `<tr><td style="padding:8px 0 0;border-top:1px dashed #e0e0e0;font-size:13px;color:#999999;line-height:1.6;">
+          下周关注: ${esc(items[0] || n.next_week_watch)}
         </td></tr>`
-      : ''
+      } else {
+        const bulletItems = items.map(item => `<tr><td style="padding:1px 0;font-size:13px;color:#999999;line-height:1.6;">&middot;&nbsp; ${esc(item)}</td></tr>`).join('\n')
+        nextWeekRow = `<tr><td style="padding:8px 0 0;border-top:1px dashed #e0e0e0;">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            <tr><td style="padding:0 0 4px;font-size:12px;color:#bbbbbb;font-weight:bold;letter-spacing:0.5px;">下周关注</td></tr>
+            ${bulletItems}
+          </table>
+        </td></tr>`
+      }
+    }
 
     return `<tr><td style="padding:0 0 20px;">
       <!--[if mso]><table cellpadding="0" cellspacing="0" border="1" bordercolor="#e0e0e0" width="100%"><tr><td style="padding:0;"><![endif]-->
@@ -196,14 +206,13 @@ function buildSignals(signals: SignalItem[]): string {
     let row = `<tr><td style="padding:3px 0;font-size:14px;color:#333333;line-height:1.7;">&middot;&nbsp; ${esc(s.text)}${sourceLink}</td></tr>`
 
     // Context — prefer structured, with left-border accent
+    // Skip comparison_basis ("两者均为xxx") — it's noise. Only show insight.
     if (s.structured_context) {
       const sc = s.structured_context
 
       let ctxHtml = ''
-      if (sc.comparison_basis || sc.insight) {
-        if (sc.comparison_basis) ctxHtml += `<span style="color:#999999;font-size:13px;">${esc(sc.comparison_basis)}</span><br>`
-        if (sc.insight) ctxHtml += `<span style="color:#666666;font-size:13px;">${esc(sc.insight)}</span>`
-        if (!ctxHtml) ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
+      if (sc.insight) {
+        ctxHtml = `<span style="color:#555555;font-size:13px;">${esc(sc.insight)}</span>`
       } else {
         ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
       }
@@ -233,10 +242,13 @@ function buildBriefs(briefs: BriefItem[]): string {
   if (!briefs || briefs.length === 0) return ''
 
   return briefs.slice(0, 10).map(b => {
-    const dateTag = b.date
-      ? `<span style="color:#999999;font-size:13px;font-weight:bold;">${esc(b.date)}</span>&nbsp;&nbsp;`
-      : ''
-    return `<tr><td style="padding:4px 0;font-size:14px;color:#555555;line-height:1.7;">${dateTag}${esc(b.text)}</td></tr>`
+    if (b.date) {
+      return `<tr>
+        <td width="48" valign="top" style="padding:5px 0;font-size:13px;color:#999999;font-weight:bold;font-family:monospace;white-space:nowrap;">${esc(b.date)}</td>
+        <td valign="top" style="padding:5px 0 5px 8px;font-size:14px;color:#444444;line-height:1.6;">${esc(b.text)}</td>
+      </tr>`
+    }
+    return `<tr><td colspan="2" style="padding:5px 0;font-size:14px;color:#444444;line-height:1.6;">${esc(b.text)}</td></tr>`
   }).join('\n')
 }
 

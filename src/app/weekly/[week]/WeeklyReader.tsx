@@ -69,27 +69,16 @@ function ContextBlock({ items }: { items: ContextItem[] }) {
           )
         }
 
-        const hasDelta = c.current_entity && c.current_value && c.delta_label
-        const useful = isUsefulDelta(c.delta_label)
-
         return (
           <div key={i} className={i > 0 ? 'mt-3 pt-3 border-t' : ''} style={{ borderColor: 'var(--border)' }}>
-            {/* Comparison basis — why these two are comparable */}
-            {c.comparison_basis && (
-              <p className="text-[11px] mb-1" style={{ color: 'var(--fg-muted)' }}>
-                {c.comparison_basis}
-              </p>
-            )}
-
-            {/* Reference event */}
-            <p className="text-[12px] leading-relaxed mb-1" style={{ color: 'var(--fg-muted)' }}>
-              {c.event}{c.detail ? `  ·  ${c.detail}` : ''}
-            </p>
-
-            {/* Insight — what this comparison reveals */}
-            {c.insight && (
-              <p className="text-[12px] mt-1" style={{ color: 'var(--fg-secondary)' }}>
+            {/* Insight is primary — skip comparison_basis ("两者均为xxx") */}
+            {c.insight ? (
+              <p className="text-[12px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
                 {c.insight}
+              </p>
+            ) : (
+              <p className="text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+                {c.event}{c.detail ? `  ·  ${c.detail}` : ''}
               </p>
             )}
           </div>
@@ -116,32 +105,12 @@ function isRedundantContext(signalText: string, ctx: { current_value?: string; d
 
 /* ── Signal Context Inline (compact, filters junk deltas) ── */
 
-function isUsefulDelta(delta: string | undefined): boolean {
-  if (!delta) return false
-  // Filter out: 无对比, 不同维度, 不适用
-  if (/无.*对比|不同维度|不适用/.test(delta)) return false
-  // Filter extreme deltas (>80%) — meaningless comparison
-  const pctMatch = delta.match(/(\d+)%/)
-  if (pctMatch && parseInt(pctMatch[1]) > 80) return false
-  return true
-}
-
 function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
-  const useful = isUsefulDelta(ctx.delta_label)
-  // Use insight if available, otherwise fall back to raw fields
-  const hasInsight = ctx.insight || ctx.comparison_basis
-
+  // Only show insight (skip comparison_basis like "两者均为xxx" — it's noise)
   return (
     <div className="mt-1.5 pl-3 text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
-      {hasInsight ? (
-        <>
-          {ctx.comparison_basis && (
-            <p>{ctx.comparison_basis}</p>
-          )}
-          {ctx.insight && (
-            <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>
-          )}
-        </>
+      {ctx.insight ? (
+        <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>
       ) : (
         <p>
           {ctx.event}{ctx.detail ? ` · ${ctx.detail}` : ''}
