@@ -189,28 +189,34 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
           <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
             本周精选
           </h2>
-          <div className="space-y-1.5">
+          <div className="space-y-3">
             {CATEGORY_ORDER.filter(cat => grouped[cat]?.length).flatMap(cat =>
-              grouped[cat]!.map((s, si) => (
-                <div key={`${cat}-${si}`}>
-                  <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
-                    · {s.text}
-                    {s.source_url && (
-                      <a href={s.source_url} target="_blank" rel="noopener noreferrer"
-                        className="ml-1 text-[11px] hover:underline" style={{ color: 'var(--info)' }}>
-                        [来源]
-                      </a>
-                    )}
-                  </p>
-                  {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
-                    <SignalContextInline ctx={s.structured_context} />
-                  ) : s.context && !s.structured_context ? (
-                    <p className="text-[12px] mt-0.5 pl-3" style={{ color: 'var(--fg-muted)' }}>
-                      {s.context}
-                    </p>
-                  ) : null}
-                </div>
-              ))
+              grouped[cat]!.map((s, si) => {
+                return (
+                  <div key={`${cat}-${si}`} className="pb-3 border-b last:border-b-0" style={{ borderColor: 'var(--border)' }}>
+                    {/* Signal headline + source link */}
+                    <div className="flex items-baseline gap-2">
+                      <p className="flex-1 text-[14px] font-medium leading-relaxed" style={{ color: 'var(--fg-title)' }}>
+                        {s.text}
+                      </p>
+                      {s.source_url && (
+                        <a href={s.source_url} target="_blank" rel="noopener noreferrer"
+                          className="shrink-0 text-[11px] hover:underline" style={{ color: 'var(--fg-muted)' }}>
+                          ↗
+                        </a>
+                      )}
+                    </div>
+                    {/* Context — indented, muted */}
+                    {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
+                      <SignalContextInline ctx={s.structured_context} />
+                    ) : s.context && !s.structured_context ? (
+                      <p className="text-[12px] mt-1.5 pl-3 leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+                        {s.context}
+                      </p>
+                    ) : null}
+                  </div>
+                )
+              })
             )}
           </div>
         </div>

@@ -230,8 +230,8 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                   {/* V13: Timeline events — grouped by date, B+D hierarchy */}
                   <TimelineGrouped events={n.events!} />
 
-                  {/* V13: Upcoming — structured list */}
-                  {n.upcoming && n.upcoming.length > 0 && (
+                  {/* V13: Upcoming — only confirmed items */}
+                  {n.upcoming && n.upcoming.filter(u => u.type === 'confirmed').length > 0 && (
                     <div className="rounded-r mb-2" style={{
                       borderLeft: '3px solid var(--warning, #f59e0b)',
                       background: 'var(--surface-alt)',
@@ -239,20 +239,20 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                     }}>
                       <p className="text-[10px] font-medium tracking-wider uppercase mb-2" style={{ color: 'var(--fg-muted)' }}>前瞻</p>
                       <div className="space-y-1.5">
-                        {n.upcoming.map((u, ui) => (
+                        {n.upcoming.filter(u => u.type === 'confirmed').map((u, ui) => (
                           <div key={ui} className="flex items-baseline gap-2 text-[12px]">
                             <span className="font-mono shrink-0 w-[36px] text-right" style={{ color: 'var(--fg-muted)' }}>
-                              {u.type === 'confirmed' ? u.date.slice(5) : ''}
+                              {u.date.slice(5)}
                             </span>
                             <span className="flex-1 leading-relaxed" style={{ color: 'var(--fg-body)' }}>
                               {u.title}
-                              {u.type === 'confirmed' && (
-                                <span className="text-[9px] ml-1 px-1 py-0.5 rounded"
-                                  style={{ color: 'var(--success, #22c55e)', background: 'var(--success-soft, #f0fdf4)' }}>
-                                  已确认
-                                </span>
-                              )}
                             </span>
+                            {u.source && (
+                              <a href={u.source} target="_blank" rel="noopener noreferrer"
+                                className="shrink-0 text-[11px] hover:underline" style={{ color: 'var(--fg-muted)' }}>
+                                ↗
+                              </a>
+                            )}
                           </div>
                         ))}
                       </div>

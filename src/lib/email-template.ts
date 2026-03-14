@@ -138,25 +138,6 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
       ? buildContextBlock(n.context)
       : ''
 
-    // Next week — dashed top border, split semicolons into bullet list
-    let nextWeekRow = ''
-    if (n.next_week_watch) {
-      const items = n.next_week_watch.split(/;\s*/).filter(Boolean)
-      if (items.length <= 1) {
-        nextWeekRow = `<tr><td style="padding:8px 0 0;border-top:1px dashed #e0e0e0;font-size:13px;color:#999999;line-height:1.6;">
-          下周关注: ${esc(items[0] || n.next_week_watch)}
-        </td></tr>`
-      } else {
-        const bulletItems = items.map(item => `<tr><td style="padding:1px 0;font-size:13px;color:#999999;line-height:1.6;">&middot;&nbsp; ${esc(item)}</td></tr>`).join('\n')
-        nextWeekRow = `<tr><td style="padding:8px 0 0;border-top:1px dashed #e0e0e0;">
-          <table cellpadding="0" cellspacing="0" border="0" width="100%">
-            <tr><td style="padding:0 0 4px;font-size:12px;color:#bbbbbb;font-weight:bold;letter-spacing:0.5px;">下周关注</td></tr>
-            ${bulletItems}
-          </table>
-        </td></tr>`
-      }
-    }
-
     return `<tr><td style="padding:0 0 20px;">
       <!--[if mso]><table cellpadding="0" cellspacing="0" border="1" bordercolor="#e0e0e0" width="100%"><tr><td style="padding:0;"><![endif]-->
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e0e0e0;border-top:2px solid #cccccc;">
@@ -172,7 +153,6 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             ${timelineRows.join('\n')}
             ${contextHtml}
-            ${nextWeekRow}
           </table>
         </td></tr>
       </table>
@@ -199,11 +179,7 @@ function buildSignals(signals: SignalItem[]): string {
     .flatMap(cat => grouped[cat]!)
 
   return allItems.map(s => {
-    const sourceLink = s.source_url
-      ? ` <a href="${esc(s.source_url)}" target="_blank" style="color:#999999;font-size:11px;text-decoration:none;">&#x2197;</a>`
-      : ''
-
-    let row = `<tr><td style="padding:3px 0;font-size:14px;color:#333333;line-height:1.7;">&middot;&nbsp; ${esc(s.text)}${sourceLink}</td></tr>`
+    let row = `<tr><td style="padding:3px 0;font-size:14px;color:#333333;line-height:1.7;">&middot;&nbsp; ${esc(s.text)}</td></tr>`
 
     // Context — prefer structured, with left-border accent
     // Skip comparison_basis ("两者均为xxx") — it's noise. Only show insight.
