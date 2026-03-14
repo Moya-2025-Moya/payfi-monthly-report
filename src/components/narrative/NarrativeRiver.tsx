@@ -5,9 +5,14 @@ import { useDepth } from '@/components/depth/DepthProvider'
 
 type ContextItem = string | { event: string; detail: string }
 
+function dedup(text: string): string {
+  // Remove consecutive duplicate parenthetical like "(2023年) (2023年)" → "(2023年)"
+  return text.replace(/(\([^)]+\))\s*\1/g, '$1')
+}
+
 function formatContextItem(c: ContextItem): string {
-  if (typeof c === 'string') return c
-  return `${c.event}: ${c.detail}`
+  if (typeof c === 'string') return dedup(c)
+  return dedup(`${c.event}，${c.detail}`)
 }
 
 interface V13Event {

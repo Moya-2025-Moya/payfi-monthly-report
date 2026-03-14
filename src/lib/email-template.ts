@@ -1,14 +1,11 @@
-// StablePulse Weekly Email — V18 Premium Redesign
+// StablePulse Weekly Email — V19 Clean Typography
 // Design principles:
-//   1. 640px width (optimal for modern email clients)
-//   2. Confident hero → structured scan → strong CTA → minimal footer
-//   3. Single accent color (orange #ff6d00) — no competing hues
-//   4. Generous whitespace signals premium quality
-//   5. Category badges for instant scanability
-//   6. Section dividers: thin rule + label pattern
-//   7. Zero CSS3 (no border-radius, no rgba, no box-shadow) for email safety
-//   8. font-size >= 13px (Gmail mobile threshold)
-//   9. Pure <table> layout with MSO conditional comments
+//   1. 640px width, 40px horizontal padding → 560px content
+//   2. Typography-first: clear hierarchy, generous line-height
+//   3. Single accent (#ff6d00), three grays (#111827, #6b7280, #9ca3af)
+//   4. Whitespace as structure — no boxes, no borders except section dividers
+//   5. Zero CSS3 for email safety; font-size >= 13px
+//   6. Pure <table> layout with MSO conditional comments
 
 const SITE_URL = 'https://payfi-monthly-report.vercel.app'
 
@@ -68,6 +65,10 @@ function esc(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function dedup(text: string): string {
+  return text.replace(/(\([^)]+\))\s*\1/g, '$1')
+}
+
 /* ── Category config ── */
 
 const CATEGORY_ORDER: Array<SignalItem['category']> = [
@@ -90,110 +91,24 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   funding: { bg: '#ede9fe', text: '#5b21b6' },
 }
 
-/* ── Context block — refined left-border accent ── */
+/* ── Thin horizontal rule ── */
 
-function buildContextBlock(items: NarrativeContext[]): string {
-  if (!items || items.length === 0) return ''
+function hr(topPad = 0, bottomPad = 0): string {
+  return `<tr><td style="padding:${topPad}px 0 ${bottomPad}px;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #e5e7eb;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>`
+}
 
-  const rows = items.map((c, i) => {
-    const separator = i > 0
-      ? '<tr><td style="padding:4px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #f3f4f6;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>'
-      : ''
+/* ── Section label ── */
 
-    // Only show factual comparison line, no insight/评价
-    const insightRow = `<tr><td style="padding:0 0 2px;font-size:13px;color:#6b7280;line-height:1.7;">${esc(c.event)}${c.detail ? ` &middot; ${esc(c.detail)}` : ''}</td></tr>`
-
-    return `${separator}${insightRow}`
-  }).join('')
-
-  return `<tr><td style="padding:12px 0 4px;">
+function sectionLabel(label: string, color = '#9ca3af'): string {
+  return `<tr><td style="padding:0 0 20px;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-      <td width="3" style="background-color:#ff6d00;font-size:1px;line-height:1px;">&nbsp;</td>
-      <td style="background-color:#fffbf5;padding:14px 18px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%">
-          ${rows}
-        </table>
-      </td>
+      <td style="font-size:12px;font-weight:700;letter-spacing:2px;color:${color};white-space:nowrap;padding-right:14px;">${label}</td>
+      <td width="100%" style="border-top:1px solid #e5e7eb;font-size:1px;line-height:1px;">&nbsp;</td>
     </tr></table>
   </td></tr>`
 }
 
-/* ── Section header with line ── */
-
-function sectionHeader(label: string, color?: string): string {
-  const labelColor = color || '#9ca3af'
-  return `<tr><td style="padding:0 0 16px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr>
-        <td style="font-size:11px;font-weight:bold;letter-spacing:2.5px;color:${labelColor};text-transform:uppercase;white-space:nowrap;padding-right:16px;">${label}</td>
-        <td width="100%" style="border-top:1px solid #e5e7eb;font-size:1px;line-height:1px;">&nbsp;</td>
-      </tr>
-    </table>
-  </td></tr>`
-}
-
-/* ── Narrative cards ── */
-
-function buildNarratives(narratives: NarrativeForEmail[]): string {
-  if (narratives.length === 0) return ''
-
-  return narratives.slice(0, 3).map((n) => {
-    const weekBadge = n.weekCount && n.weekCount > 1
-      ? ` &nbsp;<span style="font-size:11px;color:#ff6d00;font-weight:bold;">第${n.weekCount}周</span>`
-      : ''
-
-    // Build simple text rows — no table hacks, just <p> tags
-    const rows: string[] = []
-
-    // This week (most important)
-    if (n.this_week) {
-      rows.push(`<p style="margin:0 0 8px;font-size:14px;color:#111827;line-height:1.7;font-weight:600;">本周：${esc(n.this_week)}</p>`)
-    }
-
-    // Origin + last week as one-line context
-    if (n.origin || (n.last_week && n.last_week !== '首次追踪')) {
-      const parts: string[] = []
-      if (n.origin) parts.push(`起点：${esc(n.origin)}`)
-      if (n.last_week && n.last_week !== '首次追踪') parts.push(`上周：${esc(n.last_week)}`)
-      rows.push(`<p style="margin:0 0 8px;font-size:13px;color:#9ca3af;line-height:1.7;">${parts.join('&nbsp;&nbsp;/&nbsp;&nbsp;')}</p>`)
-    }
-
-    // Next week watch — split semicolons into separate lines
-    if (n.next_week_watch) {
-      const items = n.next_week_watch.split(/;\s*/).filter(Boolean)
-      if (items.length <= 2) {
-        rows.push(`<p style="margin:0 0 4px;font-size:13px;color:#6b7280;line-height:1.7;">前瞻：${items.map(i => esc(i)).join('；')}</p>`)
-      } else {
-        rows.push(`<p style="margin:0 0 4px;font-size:13px;color:#6b7280;line-height:1.7;">前瞻：</p>`)
-        for (const item of items) {
-          rows.push(`<p style="margin:0 0 2px;font-size:13px;color:#6b7280;line-height:1.7;padding-left:16px;">· ${esc(item)}</p>`)
-        }
-      }
-    }
-
-    // Context — simple bullet list
-    if (n.context && n.context.length > 0) {
-      rows.push(`<p style="margin:8px 0 4px;font-size:11px;color:#9ca3af;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">历史可比</p>`)
-      for (const c of n.context) {
-        const line = `${c.event}${c.detail ? `，${c.detail}` : ''}`
-        rows.push(`<p style="margin:0 0 2px;font-size:12px;color:#9ca3af;line-height:1.7;">· ${esc(line)}</p>`)
-      }
-    }
-
-    return `<tr><td style="padding:0 0 20px;">
-      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e5e7eb;">
-        <tr><td style="padding:18px 24px 4px;">
-          <p style="margin:0;font-size:16px;font-weight:bold;color:#111827;line-height:1.4;">${esc(n.topic)}${weekBadge}</p>
-        </td></tr>
-        <tr><td style="padding:8px 24px 18px;">
-          ${rows.join('\n          ')}
-        </td></tr>
-      </table>
-    </td></tr>`
-  }).join('\n')
-}
-
-/* ── Signals with category badges ── */
+/* ── Signals ── */
 
 const EMAIL_CONTEXT_PREFIXES = [
   '相比之下，', '此前，', '作为参考，', '历史上，', '值得注意的是，',
@@ -203,7 +118,6 @@ const EMAIL_CONTEXT_PREFIXES = [
 function buildSignals(signals: SignalItem[]): string {
   if (signals.length === 0) return ''
 
-  // Sort by category order internally, but render as flat list without category labels
   const sorted: SignalItem[] = []
   for (const cat of CATEGORY_ORDER) {
     for (const s of signals) {
@@ -212,37 +126,84 @@ function buildSignals(signals: SignalItem[]): string {
   }
 
   let prefixIdx = 0
-  const itemRows = sorted.map(s => {
-    let row = `<tr><td style="padding:6px 0;font-size:14px;color:#1f2937;line-height:1.75;">
-      <table cellpadding="0" cellspacing="0" border="0"><tr>
-        <td valign="top" style="padding-right:8px;font-size:14px;color:#d1d5db;line-height:1.75;">&bull;</td>
-        <td style="font-size:14px;color:#1f2937;line-height:1.75;">${esc(s.text)}</td>
-      </tr></table>
+  return sorted.map((s, i) => {
+    const isLast = i === sorted.length - 1
+
+    // Main signal text
+    let html = `<tr><td style="padding:14px 0 ${s.context ? '6' : '14'}px;${!isLast && !s.context ? 'border-bottom:1px solid #f3f4f6;' : ''}">
+      <p style="margin:0;font-size:15px;color:#1f2937;line-height:1.75;">${esc(s.text)}</p>
     </td></tr>`
 
-    // Show only objective factual comparison — no multiplier, natural language prefix
-    const contextLine = s.context
-    if (contextLine) {
-      let cleaned = contextLine
+    // Context line
+    if (s.context) {
+      let cleaned = s.context
         .replace(/\s*[—\-–]\s*(小|大)\s*[\d.,]+\s*倍/g, '')
         .replace(/\s*\|\s*/g, '。')
         .replace(/[。；]+$/g, '').replace(/。{2,}/g, '。').trim()
+      cleaned = dedup(cleaned)
       if (cleaned) {
         const prefix = EMAIL_CONTEXT_PREFIXES[prefixIdx % EMAIL_CONTEXT_PREFIXES.length]
         prefixIdx++
-        row += `<tr><td style="padding:2px 0 8px 16px;">
-          <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-            <td width="3" style="background-color:#ff6d00;font-size:1px;line-height:1px;">&nbsp;</td>
-            <td style="background-color:#fffbf5;padding:10px 14px;font-size:13px;color:#6b7280;line-height:1.7;">${esc(prefix + cleaned)}</td>
-          </tr></table>
+        html += `<tr><td style="padding:0 0 14px;${!isLast ? 'border-bottom:1px solid #f3f4f6;' : ''}">
+          <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.7;">${esc(prefix + cleaned)}</p>
         </td></tr>`
       }
     }
 
-    return row
+    return html
   }).join('\n')
+}
 
-  return itemRows
+/* ── Narratives ── */
+
+function buildNarratives(narratives: NarrativeForEmail[]): string {
+  if (narratives.length === 0) return ''
+
+  return narratives.slice(0, 3).map((n, ni) => {
+    const weekTag = n.weekCount && n.weekCount > 1
+      ? `<span style="color:#ff6d00;font-size:12px;font-weight:700;">&nbsp;&middot;&nbsp;第${n.weekCount}周</span>`
+      : ''
+
+    const lines: string[] = []
+
+    // This week — the lead
+    if (n.this_week) {
+      lines.push(`<p style="margin:0 0 10px;font-size:15px;color:#111827;line-height:1.75;">${esc(n.this_week)}</p>`)
+    }
+
+    // Background (origin / last week) — compact, one line
+    const bg: string[] = []
+    if (n.origin) bg.push(esc(n.origin))
+    if (n.last_week && n.last_week !== '首次追踪') bg.push(esc(n.last_week))
+    if (bg.length > 0) {
+      lines.push(`<p style="margin:0 0 10px;font-size:13px;color:#9ca3af;line-height:1.7;">${bg.join(' &rarr; ')}</p>`)
+    }
+
+    // Forward look — only if available
+    if (n.next_week_watch) {
+      const items = n.next_week_watch.split(/;\s*/).filter(Boolean)
+      const formatted = items.map(item => esc(item)).join('<br>')
+      lines.push(`<p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:1px;color:#d97706;">&#9654; 前瞻</p>`)
+      lines.push(`<p style="margin:0 0 4px;font-size:13px;color:#6b7280;line-height:1.8;">${formatted}</p>`)
+    }
+
+    // Context
+    if (n.context && n.context.length > 0) {
+      lines.push(`<p style="margin:10px 0 4px;font-size:11px;font-weight:700;letter-spacing:1px;color:#9ca3af;">历史可比</p>`)
+      for (const c of n.context) {
+        const line = dedup(`${c.event}${c.detail ? `，${c.detail}` : ''}`)
+        lines.push(`<p style="margin:0 0 2px;font-size:13px;color:#9ca3af;line-height:1.7;">${esc(line)}</p>`)
+      }
+    }
+
+    const isLast = ni === Math.min(narratives.length, 3) - 1
+
+    return `<tr><td style="padding:0 0 ${isLast ? '0' : '28'}px;">
+      <p style="margin:0 0 12px;font-size:17px;font-weight:700;color:#111827;line-height:1.35;">${esc(n.topic)}${weekTag}</p>
+      ${lines.join('\n      ')}
+      ${!isLast ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:28px;"><tr><td style="border-top:1px solid #f3f4f6;font-size:1px;line-height:1px;">&nbsp;</td></tr></table>` : ''}
+    </td></tr>`
+  }).join('\n')
 }
 
 /* ── Briefs ── */
@@ -253,8 +214,8 @@ function buildBriefs(briefs: BriefItem[]): string {
   return briefs.slice(0, 10).map((b, i) => {
     const num = String(i + 1).padStart(2, '0')
     return `<tr>
-      <td width="32" valign="top" style="padding:8px 0;font-size:12px;color:#9ca3af;font-family:monospace;white-space:nowrap;">${num}</td>
-      <td valign="top" style="padding:8px 0 8px 8px;font-size:13px;color:#374151;line-height:1.7;">${esc(b.text)}</td>
+      <td width="28" valign="top" style="padding:10px 0;font-size:13px;color:#d1d5db;font-family:'SF Mono',Menlo,monospace;white-space:nowrap;">${num}</td>
+      <td valign="top" style="padding:10px 0 10px 10px;font-size:14px;color:#374151;line-height:1.75;border-bottom:1px solid #f3f4f6;">${esc(b.text)}</td>
     </tr>`
   }).join('\n')
 }
@@ -273,41 +234,30 @@ export function generateEmailHTML(data: EmailData): string {
   const hasNarratives = narratives.length > 0
   const hasBriefs = (briefs ?? []).length > 0
 
-  const ctaText = '阅读完整周报 &rarr;'
-
   const sections: string[] = []
 
   if (hasSignals) {
-    sections.push(`<!-- ━━━ SIGNALS ━━━ -->
-  <tr><td style="padding:0 40px;">
+    sections.push(`<tr><td style="padding:0 40px;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      ${sectionHeader('本周精选')}
+      ${sectionLabel('本周精选')}
       ${signalsHTML}
     </table>
   </td></tr>`)
   }
 
   if (hasNarratives) {
-    if (sections.length > 0) {
-      sections.push(`<tr><td style="padding:24px 0;"></td></tr>`)
-    }
-    sections.push(`<!-- ━━━ NARRATIVES ━━━ -->
-  <tr><td style="padding:0 40px;">
+    sections.push(`<tr><td style="padding:${hasSignals ? '32' : '0'}px 40px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      ${sectionHeader('叙事追踪', '#ff6d00')}
+      ${sectionLabel('叙事追踪', '#ff6d00')}
       ${narrativesHTML}
     </table>
   </td></tr>`)
   }
 
   if (hasBriefs) {
-    if (sections.length > 0) {
-      sections.push(`<tr><td style="padding:24px 0;"></td></tr>`)
-    }
-    sections.push(`<!-- ━━━ BRIEFS ━━━ -->
-  <tr><td style="padding:0 40px;">
+    sections.push(`<tr><td style="padding:32px 40px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      ${sectionHeader('新闻速览')}
+      ${sectionLabel('新闻速览')}
       ${briefsHTML}
     </table>
   </td></tr>`)
@@ -325,64 +275,63 @@ export function generateEmailHTML(data: EmailData): string {
   <style type="text/css">table{border-collapse:collapse;}td{font-family:Arial,sans-serif;}</style>
   <![endif]-->
 </head>
-<body style="margin:0;padding:0;background-color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<body style="margin:0;padding:0;background-color:#f5f5f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 
 <!-- Preheader -->
-<div style="display:none;font-size:1px;color:#f0f0f0;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+<div style="display:none;font-size:1px;color:#f5f5f4;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
   ${esc(oneLiner)} &mdash; StablePulse ${esc(weekLabel)}
 </div>
 
-<!-- Outer wrapper -->
 <!--[if mso]><table cellpadding="0" cellspacing="0" border="0" width="640" align="center"><tr><td><![endif]-->
-<table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f0f0f0;">
-<tr><td align="center" style="padding:32px 16px;">
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f5f5f4;">
+<tr><td align="center" style="padding:40px 16px;">
 
-<!-- Inner container: 640px -->
 <table cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;background-color:#ffffff;">
 
-  <!-- ━━ Orange accent strip (top edge) ━━ -->
-  <tr><td style="background-color:#ff6d00;font-size:1px;line-height:4px;height:4px;">&nbsp;</td></tr>
+  <!-- Top accent -->
+  <tr><td style="background-color:#ff6d00;font-size:1px;line-height:3px;height:3px;">&nbsp;</td></tr>
 
-  <!-- ━━ Brand header ━━ -->
-  <tr><td style="padding:32px 40px 0;">
+  <!-- Header -->
+  <tr><td style="padding:36px 40px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-      <td valign="middle">
-        <table cellpadding="0" cellspacing="0" border="0"><tr>
-          <td style="font-size:14px;font-weight:bold;letter-spacing:4px;color:#111827;">STABLEPULSE</td>
-        </tr></table>
-      </td>
-      <td align="right" style="font-size:12px;color:#9ca3af;letter-spacing:0.5px;">${esc(weekLabel)}</td>
+      <td style="font-size:13px;font-weight:700;letter-spacing:3.5px;color:#111827;">STABLEPULSE</td>
+      <td align="right" style="font-size:12px;color:#9ca3af;font-family:'SF Mono',Menlo,monospace;">${esc(weekLabel)}</td>
     </tr></table>
   </td></tr>
 
-  <!-- ━━ One-liner (HERO) ━━ -->
-  <tr><td style="padding:32px 40px 12px;font-size:26px;font-weight:bold;color:#111827;line-height:1.3;letter-spacing:-0.02em;">
-    ${esc(oneLiner)}
+  <!-- Hero headline -->
+  <tr><td style="padding:28px 40px 0;">
+    <p style="margin:0;font-size:24px;font-weight:700;color:#111827;line-height:1.35;letter-spacing:-0.02em;">
+      ${esc(oneLiner)}
+    </p>
   </td></tr>
 
-  <!-- Market line -->
-  ${marketLine ? `<tr><td style="padding:0 40px 0;font-size:13px;color:#9ca3af;line-height:1.6;font-family:monospace;">${esc(marketLine)}</td></tr>` : ''}
+  <!-- Market line + stats -->
+  <tr><td style="padding:12px 40px 0;">
+    <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.6;font-family:'SF Mono',Menlo,monospace;">
+      ${marketLine ? esc(marketLine) : ''}${marketLine && stats.factCount > 0 ? '&nbsp;&nbsp;&middot;&nbsp;&nbsp;' : ''}${stats.factCount > 0 ? `${stats.factCount} facts &middot; ${stats.verifiedCount} verified` : ''}
+    </p>
+  </td></tr>
 
-  <!-- Breathing space -->
-  <tr><td style="padding:20px 40px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:2px solid #111827;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
-  <tr><td style="padding:24px 0;"></td></tr>
+  <!-- Divider -->
+  <tr><td style="padding:28px 40px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:2px solid #111827;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
+
+  <!-- Spacer -->
+  <tr><td style="padding:28px 0 0;"></td></tr>
 
   ${sections.join('\n\n  ')}
 
-  <!-- ━━━ CTA + Footer ━━━ -->
-  <tr><td style="padding:36px 40px 0;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr><td style="border-top:1px solid #e5e7eb;font-size:1px;line-height:1px;">&nbsp;</td></tr>
-    </table>
-  </td></tr>
-  <tr><td style="padding:20px 40px 28px;" align="center">
-    <table cellpadding="0" cellspacing="0" border="0"><tr>
-      <td style="font-size:13px;color:#9ca3af;line-height:1.6;" align="center">
-        <a href="${esc(webLink)}" target="_blank" style="color:#ff6d00;text-decoration:none;font-weight:500;">阅读完整周报 &rarr;</a>
-        &nbsp;&nbsp;&middot;&nbsp;&nbsp;
-        <a href="{{unsubscribe_url}}" style="color:#9ca3af;text-decoration:underline;font-size:12px;">退订</a>
-      </td>
-    </tr></table>
+  <!-- Footer -->
+  <tr><td style="padding:40px 40px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #e5e7eb;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
+  <tr><td style="padding:24px 40px 36px;" align="center">
+    <p style="margin:0 0 8px;font-size:13px;">
+      <a href="${esc(webLink)}" target="_blank" style="color:#ff6d00;text-decoration:none;font-weight:600;">阅读完整周报 &rarr;</a>
+    </p>
+    <p style="margin:0;font-size:12px;color:#d1d5db;">
+      AI 多源交叉验证 &middot; 零观点
+      &nbsp;&nbsp;|&nbsp;&nbsp;
+      <a href="{{unsubscribe_url}}" style="color:#d1d5db;text-decoration:underline;">退订</a>
+    </p>
   </td></tr>
 
 </table>
