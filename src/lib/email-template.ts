@@ -66,7 +66,14 @@ function esc(text: string): string {
 }
 
 function dedup(text: string): string {
-  return text.replace(/(\([^)]+\))\s*\1/g, '$1')
+  // Remove identical consecutive parenthetical: "(2023年) (2023年)" → "(2023年)"
+  let result = text.replace(/(\([^)]+\))\s*\1/g, '$1')
+  // Remove redundant year range after specific date range:
+  // "(2021-07-08 至 2022-12-05) (2021-2022)" → "(2021-07-08 至 2022-12-05)"
+  result = result.replace(/(\(\d{4}-\d{2}-\d{2}\s*至\s*\d{4}-\d{2}-\d{2}\))\s*\(\d{4}-\d{4}年?\)/g, '$1')
+  // Remove redundant year after specific date: "(2024年6月) (2024年)" → "(2024年6月)"
+  result = result.replace(/(\(\d{4}年\d{1,2}月[^)]*\))\s*\(\d{4}年?\)/g, '$1')
+  return result
 }
 
 /* ── Category config ── */
@@ -211,11 +218,9 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
 function buildBriefs(briefs: BriefItem[]): string {
   if (!briefs || briefs.length === 0) return ''
 
-  return briefs.slice(0, 10).map((b, i) => {
-    const num = String(i + 1).padStart(2, '0')
+  return briefs.slice(0, 10).map((b) => {
     return `<tr>
-      <td width="28" valign="top" style="padding:10px 0;font-size:13px;color:#d1d5db;font-family:'SF Mono',Menlo,monospace;white-space:nowrap;">${num}</td>
-      <td valign="top" style="padding:10px 0 10px 10px;font-size:14px;color:#374151;line-height:1.75;border-bottom:1px solid #f3f4f6;">${esc(b.text)}</td>
+      <td style="padding:8px 0;font-size:14px;color:#374151;line-height:1.7;border-bottom:1px solid #f3f4f6;">&bull;&nbsp;&nbsp;${esc(b.text)}</td>
     </tr>`
   }).join('\n')
 }

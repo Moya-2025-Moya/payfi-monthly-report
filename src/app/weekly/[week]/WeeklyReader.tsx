@@ -112,12 +112,13 @@ const CONTEXT_PREFIXES = [
 ]
 
 function cleanContextString(ctx: string): string {
-  // Remove multiplier comparisons like "— 小 76.9 倍", "— 大 2.3 倍"
   let cleaned = ctx.replace(/\s*[—\-–]\s*(小|大)\s*[\d.,]+\s*倍/g, '')
-  // Replace "|" separator with natural sentence flow
   cleaned = cleaned.replace(/\s*\|\s*/g, '。')
-  // Clean up multiple or trailing punctuation
   cleaned = cleaned.replace(/[。；]+$/g, '').replace(/。{2,}/g, '。').trim()
+  // Dedup redundant date ranges
+  cleaned = cleaned.replace(/(\([^)]+\))\s*\1/g, '$1')
+  cleaned = cleaned.replace(/(\(\d{4}-\d{2}-\d{2}\s*至\s*\d{4}-\d{2}-\d{2}\))\s*\(\d{4}-\d{4}年?\)/g, '$1')
+  cleaned = cleaned.replace(/(\(\d{4}年\d{1,2}月[^)]*\))\s*\(\d{4}年?\)/g, '$1')
   return cleaned
 }
 

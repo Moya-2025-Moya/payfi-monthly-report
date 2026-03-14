@@ -6,8 +6,10 @@ import { useDepth } from '@/components/depth/DepthProvider'
 type ContextItem = string | { event: string; detail: string }
 
 function dedup(text: string): string {
-  // Remove consecutive duplicate parenthetical like "(2023年) (2023年)" → "(2023年)"
-  return text.replace(/(\([^)]+\))\s*\1/g, '$1')
+  let result = text.replace(/(\([^)]+\))\s*\1/g, '$1')
+  result = result.replace(/(\(\d{4}-\d{2}-\d{2}\s*至\s*\d{4}-\d{2}-\d{2}\))\s*\(\d{4}-\d{4}年?\)/g, '$1')
+  result = result.replace(/(\(\d{4}年\d{1,2}月[^)]*\))\s*\(\d{4}年?\)/g, '$1')
+  return result
 }
 
 function formatContextItem(c: ContextItem): string {
