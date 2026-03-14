@@ -100,18 +100,15 @@ function isRedundantContext(signalText: string, ctx: { current_value?: string; d
 /* ── Signal Context Inline ── */
 
 function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
+  // Only show insight — skip comparison_basis and event/detail fallback (noise like "两者均为xxx")
+  if (!ctx.insight) return null
+
   return (
     <div className="mt-1.5 pl-3 text-[12px] leading-[1.7]" style={{
       color: 'var(--fg-muted)',
       borderLeft: '2px solid var(--border)',
     }}>
-      {ctx.insight ? (
-        <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>
-      ) : (
-        <p>
-          {ctx.event}{ctx.detail ? ` · ${ctx.detail}` : ''}
-        </p>
-      )}
+      <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>
     </div>
   )
 }

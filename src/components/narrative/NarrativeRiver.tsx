@@ -248,7 +248,7 @@ export function NarrativeRiver({ narratives }: NarrativeRiverProps) {
                           }
                           return (
                             <div key={ui} className="flex items-baseline gap-3 text-[12px]">
-                              <span className="font-mono shrink-0 w-[40px] text-right" style={{ color: 'var(--fg-muted)' }}>
+                              <span className="font-mono shrink-0 min-w-[56px] text-right whitespace-nowrap" style={{ color: 'var(--fg-muted)' }}>
                                 {fmtDate(u.date)}
                               </span>
                               <span className="flex-1 leading-[1.6]" style={{ color: 'var(--fg-body)' }}>
