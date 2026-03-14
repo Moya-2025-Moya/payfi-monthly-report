@@ -206,36 +206,29 @@ export function WeeklyMirror({ summaryDetailed, stats, allFacts, snapshotData, k
             本周精选
           </h2>
           <div className="rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-            <div className="px-4 py-3 space-y-4">
-              {categoryOrder.filter(cat => grouped[cat]?.length).map(cat => (
-                <div key={cat}>
-                  <p className="text-[14px] font-semibold mb-1.5" style={{ color: 'var(--fg-muted)' }}>
-                    {CATEGORY_LABELS[cat]}:
-                  </p>
-                  <div className="space-y-1.5">
-                    {grouped[cat]!.map((s, si) => (
-                      <div key={`${cat}-${si}`}>
-                        <p className="text-[14px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
-                          · {s.text}
-                          {s.source_url && (
-                            <a href={s.source_url} target="_blank" rel="noopener noreferrer"
-                              className="ml-1 text-[11px] hover:underline" style={{ color: 'var(--accent)' }}>
-                              [来源]
-                            </a>
-                          )}
+            <div className="px-4 py-3 space-y-1.5">
+              {categoryOrder.filter(cat => grouped[cat]?.length).flatMap(cat =>
+                grouped[cat]!.map((s, si) => (
+                  <div key={`${cat}-${si}`}>
+                    <p className="text-[14px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
+                      · {s.text}
+                      {s.source_url && (
+                        <a href={s.source_url} target="_blank" rel="noopener noreferrer"
+                          className="ml-1 text-[11px] hover:underline" style={{ color: 'var(--accent)' }}>
+                          [来源]
+                        </a>
+                      )}
+                    </p>
+                    {s.context && (
+                      <div className="depth-layer-1" data-depth={depth}>
+                        <p className="text-[12px] pl-3 mt-0.5" style={{ color: COLOR.context }}>
+                          {s.context}
                         </p>
-                        {s.context && (
-                          <div className="depth-layer-1" data-depth={depth}>
-                            <p className="text-[12px] pl-3 mt-0.5" style={{ color: COLOR.context }}>
-                              {s.context}
-                            </p>
-                          </div>
-                        )}
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>

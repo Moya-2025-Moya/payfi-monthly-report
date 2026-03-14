@@ -234,10 +234,7 @@ function buildSignals(signals: SignalItem[]): string {
         </td></tr>`
       } else if (sc.current_entity && sc.current_value && !isInvalidDelta && !isExtremeDelta) {
         let ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
-        const delta = sc.delta_label
-          ? `<span style="color:#ff6d00;font-weight:bold;">&nbsp;&nbsp;${esc(sc.delta_label)}</span>`
-          : ''
-        ctxHtml += `<br><span style="font-size:14px;color:#1a1a1a;font-weight:bold;">${esc(sc.current_entity)}: ${esc(sc.current_value)}${delta}</span>`
+        ctxHtml += `<br><span style="font-size:13px;color:#888888;">${esc(sc.current_entity)}: ${esc(sc.current_value)}</span>`
 
         row += `<tr><td style="padding:2px 0 6px;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>

@@ -238,11 +238,11 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
         </div>
       )}
 
-      {/* ── 1. 本周亮点 (Signals — no category labels) ── */}
+      {/* ── 1. 本周精选 (Signals — no category labels) ── */}
       {signals.length > 0 && (
         <div>
           <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
-            本周亮点
+            本周精选
           </h2>
           <div className="space-y-1.5">
             {CATEGORY_ORDER.filter(cat => grouped[cat]?.length).flatMap(cat =>
@@ -274,11 +274,11 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
       {/* ── 2. 本周叙事 (NarrativeRiver) ── */}
       <NarrativeRiver narratives={narratives} />
 
-      {/* ── 3. 本周速报 (Top 10 facts, then full browser) ── */}
+      {/* ── 3. 新闻速览 (Top 10 facts, then full browser) ── */}
       {allFacts && allFacts.length > 0 && (
         <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
           <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
-            本周速报
+            新闻速览
           </h2>
 
           {/* Search + tag filter */}
