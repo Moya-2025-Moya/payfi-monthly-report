@@ -1,6 +1,7 @@
 import { getCurrentWeekNumber } from '@/db/client'
-import { redirect } from 'next/navigation'
+import { Landing } from './Landing'
 
 export default function HomePage() {
-  redirect(`/weekly/${getCurrentWeekNumber()}`)
+  const currentWeek = getCurrentWeekNumber()
+  return <Landing currentWeek={currentWeek} />
 }

@@ -925,35 +925,90 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'subscribers', label: '订阅者' },
 ]
 
+const ADMIN_PASSWORD = 'ZIAN'
+
+function AdminGate({ children }: { children: React.ReactNode }) {
+  const [unlocked, setUnlocked] = useState(false)
+  const [input, setInput] = useState('')
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    if (sessionStorage.getItem('admin-unlocked') === '1') setUnlocked(true)
+  }, [])
+
+  if (unlocked) return <>{children}</>
+
+  return (
+    <div className="flex items-center justify-center" style={{ minHeight: '60vh' }}>
+      <div className="w-[320px] text-center">
+        <div className="w-10 h-10 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: 'var(--surface-alt)' }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--fg-muted)" strokeWidth="2" strokeLinecap="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        </div>
+        <p className="text-[14px] font-medium mb-4" style={{ color: 'var(--fg-secondary)' }}>输入密码访问管理后台</p>
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (input === ADMIN_PASSWORD) {
+            sessionStorage.setItem('admin-unlocked', '1')
+            setUnlocked(true)
+          } else {
+            setError(true)
+            setInput('')
+          }
+        }}>
+          <input
+            type="password"
+            value={input}
+            onChange={(e) => { setInput(e.target.value); setError(false) }}
+            placeholder="Password"
+            autoFocus
+            className="w-full px-4 py-2.5 text-[14px] rounded-lg border text-center outline-none transition-colors"
+            style={{
+              borderColor: error ? '#ef4444' : 'var(--border)',
+              background: 'var(--surface)',
+              color: 'var(--fg-title)',
+            }}
+          />
+          {error && <p className="text-[12px] mt-2" style={{ color: '#ef4444' }}>密码错误</p>}
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('pipeline')
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-[18px] font-bold" style={{ color: 'var(--fg-title)' }}>管理后台</h1>
-      </div>
+    <AdminGate>
+      <div>
+        <div className="mb-6">
+          <h1 className="text-[18px] font-bold" style={{ color: 'var(--fg-title)' }}>管理后台</h1>
+        </div>
 
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 mb-6 border-b" style={{ borderColor: 'var(--border)' }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className="px-4 py-2 text-[13px] font-medium transition-colors"
-            style={{
-              color: tab === t.key ? 'var(--accent)' : 'var(--fg-muted)',
-              borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
-              marginBottom: '-1px',
-            }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+        {/* Tab bar */}
+        <div className="flex items-center gap-1 mb-6 border-b" style={{ borderColor: 'var(--border)' }}>
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className="px-4 py-2 text-[13px] font-medium transition-colors"
+              style={{
+                color: tab === t.key ? 'var(--accent)' : 'var(--fg-muted)',
+                borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
+                marginBottom: '-1px',
+              }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-      {/* Tab content */}
-      {tab === 'pipeline' && <PipelineTab />}
-      {tab === 'quality' && <DataQualityTab />}
-      {tab === 'preview' && <PreviewTab />}
-      {tab === 'subscribers' && <SubscribersTab />}
-    </div>
+        {/* Tab content */}
+        {tab === 'pipeline' && <PipelineTab />}
+        {tab === 'quality' && <DataQualityTab />}
+        {tab === 'preview' && <PreviewTab />}
+        {tab === 'subscribers' && <SubscribersTab />}
+      </div>
+    </AdminGate>
   )
 }
