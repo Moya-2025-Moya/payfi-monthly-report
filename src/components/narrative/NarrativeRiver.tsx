@@ -68,25 +68,29 @@ function fmtDate(d: string): string {
 /* ── Visual Timeline with nodes ── */
 
 function VisualTimeline({ events, upcoming }: { events: V13Event[]; upcoming?: V13Upcoming[] }) {
-  // Merge events and confirmed upcoming into a unified timeline
   const confirmedUpcoming = (upcoming ?? []).filter(u =>
     u.type === 'confirmed' && u.source && /^https?:\/\//.test(u.source)
   )
 
-  interface TimelineNode {
-    date: string
+  interface EventItem {
     title: string
-    description?: string
     significance: 'high' | 'medium' | 'low'
     isFuture: boolean
     sourceUrl?: string
   }
 
-  const nodes: TimelineNode[] = [
+  interface DateGroup {
+    date: string
+    items: EventItem[]
+    hasHigh: boolean
+    isFuture: boolean
+  }
+
+  // Collect all items
+  const allItems: (EventItem & { date: string })[] = [
     ...events.map(e => ({
       date: e.date,
       title: e.title,
-      description: e.description !== e.title ? e.description : undefined,
       significance: e.significance,
       isFuture: false,
       sourceUrl: e.sourceUrl || e.externalUrl,
@@ -94,27 +98,29 @@ function VisualTimeline({ events, upcoming }: { events: V13Event[]; upcoming?: V
     ...confirmedUpcoming.map(u => ({
       date: u.date,
       title: u.title,
-      description: u.description !== u.title ? u.description : undefined,
       significance: 'medium' as const,
       isFuture: true,
       sourceUrl: u.source,
     })),
   ]
 
-  // Sort by date
-  nodes.sort((a, b) => a.date.localeCompare(b.date))
-
-  // Deduplicate by title similarity
-  const deduped: TimelineNode[] = []
-  for (const node of nodes) {
-    const isDupe = deduped.some(d =>
-      d.title === node.title ||
-      (d.date === node.date && d.title.substring(0, 15) === node.title.substring(0, 15))
-    )
-    if (!isDupe) deduped.push(node)
+  // Group by date
+  const groupMap = new Map<string, DateGroup>()
+  for (const item of allItems) {
+    let group = groupMap.get(item.date)
+    if (!group) {
+      group = { date: item.date, items: [], hasHigh: false, isFuture: item.isFuture }
+      groupMap.set(item.date, group)
+    }
+    // Dedup by title within same date
+    if (group.items.some(i => i.title === item.title)) continue
+    group.items.push(item)
+    if (item.significance === 'high') group.hasHigh = true
+    if (item.isFuture) group.isFuture = true
   }
 
-  if (deduped.length === 0) return null
+  const groups = [...groupMap.values()].sort((a, b) => a.date.localeCompare(b.date))
+  if (groups.length === 0) return null
 
   return (
     <div className="relative pl-5">
@@ -124,43 +130,42 @@ function VisualTimeline({ events, upcoming }: { events: V13Event[]; upcoming?: V
       }} />
 
       <div className="space-y-0">
-        {deduped.map((node, i) => {
-          const isHigh = node.significance === 'high'
-          const isLast = i === deduped.length - 1
+        {groups.map((group, gi) => {
+          const isLast = gi === groups.length - 1
 
           return (
-            <div key={i} className="relative flex gap-3" style={{
+            <div key={gi} className="relative flex gap-3" style={{
               paddingBottom: isLast ? '0' : '16px',
             }}>
               {/* Node dot */}
               <div className="absolute shrink-0" style={{
                 left: '-17px',
                 top: '5px',
-                width: isHigh ? '10px' : '8px',
-                height: isHigh ? '10px' : '8px',
+                width: group.hasHigh ? '10px' : '8px',
+                height: group.hasHigh ? '10px' : '8px',
                 borderRadius: '50%',
-                background: node.isFuture
+                background: group.isFuture
                   ? 'transparent'
-                  : isHigh
+                  : group.hasHigh
                     ? ACCENT
                     : 'var(--fg-muted)',
-                border: node.isFuture
-                  ? `2px dashed var(--fg-muted)`
-                  : isHigh
+                border: group.isFuture
+                  ? '2px dashed var(--fg-muted)'
+                  : group.hasHigh
                     ? `2px solid ${ACCENT}`
                     : '2px solid var(--fg-muted)',
-                marginLeft: isHigh ? '-1px' : '0',
+                marginLeft: group.hasHigh ? '-1px' : '0',
               }} />
 
               {/* Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
                   <span className="shrink-0 text-[11px] font-mono" style={{
-                    color: node.isFuture ? 'var(--warning)' : 'var(--fg-muted)',
+                    color: group.isFuture ? 'var(--warning)' : 'var(--fg-muted)',
                   }}>
-                    {fmtDate(node.date)}
+                    {fmtDate(group.date)}
                   </span>
-                  {node.isFuture && (
+                  {group.isFuture && (
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded" style={{
                       color: 'var(--warning)',
                       background: 'var(--surface-alt)',
@@ -169,17 +174,22 @@ function VisualTimeline({ events, upcoming }: { events: V13Event[]; upcoming?: V
                     </span>
                   )}
                 </div>
-                <div className="flex items-baseline justify-between gap-2 mt-0.5">
-                  <p className={`flex-1 text-[13px] leading-[1.6] break-words ${isHigh ? 'font-medium' : ''}`} style={{
-                    color: isHigh ? 'var(--fg-title)' : 'var(--fg-secondary)',
-                  }}>
-                    {node.title}
-                  </p>
-                  {node.sourceUrl && (
-                    <a href={node.sourceUrl} target="_blank" rel="noopener noreferrer"
-                      className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity">↗</a>
-                  )}
-                </div>
+                {group.items.map((item, ii) => {
+                  const isHigh = item.significance === 'high'
+                  return (
+                    <div key={ii} className="flex items-baseline justify-between gap-2 mt-0.5">
+                      <p className={`flex-1 text-[13px] leading-[1.6] break-words ${isHigh ? 'font-medium' : ''}`} style={{
+                        color: isHigh ? 'var(--fg-title)' : 'var(--fg-secondary)',
+                      }}>
+                        {item.title}
+                      </p>
+                      {item.sourceUrl && (
+                        <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer"
+                          className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity">↗</a>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )
