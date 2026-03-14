@@ -122,49 +122,39 @@ function TimelineGrouped({ events }: { events: V13Event[] }) {
   return (
     <div className="relative pl-4 mb-2" style={{ borderLeft: '2px solid var(--border)' }}>
       {groups.map((group, gi) => (
-        <div key={gi} className={`relative ${gi < groups.length - 1 ? 'pb-2' : ''}`}>
-          {/* Date label + primary events */}
+        <div key={gi} className={`relative ${gi < groups.length - 1 ? 'pb-3' : ''}`}>
+          {/* One node per date */}
+          <div className="absolute -left-[calc(1rem+5px)] top-[6px] w-[8px] h-[8px] rounded-full"
+            style={{ background: group.primary.length > 0 ? COLOR.narrative : 'var(--fg-muted)' }} />
+
+          {/* Date label */}
+          <span className="text-[12px] font-mono" style={{ color: 'var(--fg-muted)' }}>
+            {group.date.slice(5)}
+          </span>
+
+          {/* Primary event (high) — bold */}
           {group.primary.map((evt, i) => (
-            <div key={`p-${i}`} className="relative pb-1.5">
-              <div className="absolute -left-[calc(1rem+5px)] top-[6px] w-[8px] h-[8px] rounded-full"
-                style={{ background: COLOR.narrative }} />
-              <div className="flex items-baseline gap-2">
-                {i === 0 && (
-                  <span className="text-[12px] font-mono shrink-0" style={{ color: 'var(--fg-muted)' }}>
-                    {evt.date.slice(5)}
-                  </span>
+            <div key={`p-${i}`} className="mt-0.5">
+              <span className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>
+                {evt.title}
+                {evt.isExternal && (
+                  <span className="text-[10px] ml-1 px-1 py-0.5 rounded"
+                    style={{ color: 'var(--fg-muted)', background: 'var(--surface-alt)' }}>外部</span>
                 )}
-                {i > 0 && <span className="w-[3.5ch] shrink-0" />}
-                <span className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>
-                  {evt.title}
-                  {evt.isExternal && (
-                    <span className="text-[10px] ml-1 px-1 py-0.5 rounded"
-                      style={{ color: 'var(--fg-muted)', background: 'var(--surface-alt)' }}>外部</span>
-                  )}
-                </span>
-              </div>
+              </span>
             </div>
           ))}
 
-          {/* Secondary events (medium) — indented, smaller */}
+          {/* Secondary events (medium) — gray, no separate node */}
           {group.secondary.map((evt, i) => (
-            <div key={`s-${i}`} className="relative pb-1 pl-[3.5ch]">
-              <div className="absolute -left-[calc(1rem+5px)] top-[5px] w-[6px] h-[6px] rounded-full"
-                style={{ background: 'transparent', border: '1.5px solid var(--fg-muted)' }} />
-              <div className="flex items-baseline gap-2">
-                {group.primary.length === 0 && i === 0 && (
-                  <span className="text-[12px] font-mono shrink-0 -ml-[3.5ch]" style={{ color: 'var(--fg-muted)' }}>
-                    {evt.date.slice(5)}
-                  </span>
+            <div key={`s-${i}`} className="mt-0.5">
+              <span className="text-[12px]" style={{ color: 'var(--fg-muted)' }}>
+                {evt.title}
+                {evt.isExternal && (
+                  <span className="text-[10px] ml-1 px-1 py-0.5 rounded"
+                    style={{ color: 'var(--fg-muted)', background: 'var(--surface-alt)' }}>外部</span>
                 )}
-                <span className="text-[12px]" style={{ color: 'var(--fg-secondary)' }}>
-                  {evt.title}
-                  {evt.isExternal && (
-                    <span className="text-[10px] ml-1 px-1 py-0.5 rounded"
-                      style={{ color: 'var(--fg-muted)', background: 'var(--surface-alt)' }}>外部</span>
-                  )}
-                </span>
-              </div>
+              </span>
             </div>
           ))}
 
@@ -173,7 +163,7 @@ function TimelineGrouped({ events }: { events: V13Event[] }) {
             <>
               <button
                 onClick={() => toggleCollapsed(group.date)}
-                className="pl-[3.5ch] text-[11px] transition-colors"
+                className="mt-0.5 text-[11px] transition-colors block"
                 style={{ color: 'var(--fg-muted)' }}
               >
                 {expandedDates.has(group.date)
@@ -181,7 +171,7 @@ function TimelineGrouped({ events }: { events: V13Event[] }) {
                   : `+${group.collapsed.length}条`}
               </button>
               {expandedDates.has(group.date) && group.collapsed.map((evt, i) => (
-                <div key={`c-${i}`} className="relative pb-1 pl-[3.5ch]">
+                <div key={`c-${i}`} className="mt-0.5">
                   <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
                     {evt.title}
                   </span>

@@ -86,17 +86,8 @@ function ContextBlock({ items }: { items: ContextItem[] }) {
               {c.event}{c.detail ? `  ·  ${c.detail}` : ''}
             </p>
 
-            {/* Current value + delta */}
-            {hasDelta && useful ? (
-              <div className="flex items-baseline gap-3 flex-wrap">
-                <p className="text-[14px] font-semibold" style={{ color: 'var(--fg-title)' }}>
-                  {c.current_entity}: {c.current_value}
-                </p>
-                <span className="text-[14px] font-bold" style={{ color: 'var(--accent)' }}>
-                  {c.delta_label}
-                </span>
-              </div>
-            ) : c.current_entity && c.current_value ? (
+            {/* Current value */}
+            {c.current_entity && c.current_value ? (
               <p className="text-[13px]" style={{ color: 'var(--fg-secondary)' }}>
                 {c.current_entity}: {c.current_value}
               </p>

@@ -98,21 +98,10 @@ function buildContextBlock(items: NarrativeContext[]): string {
     // Reference event — subdued, providing historical context
     const refRow = `<tr><td style="padding:0 0 2px;font-size:13px;color:#888888;line-height:1.6;">${esc(c.event)}${c.detail ? ` &middot; ${esc(c.detail)}` : ''}</td></tr>`
 
-    // Current value + delta — the punchline
+    // Current value — subdued, no bold comparison
     let compRow = ''
     if (c.current_entity && c.current_value) {
-      const isInvalidDelta = c.delta_label && /无.*对比|不同维度|不适用/.test(c.delta_label)
-      const pctMatch = c.delta_label?.match(/(\d+)%/)
-      const isExtremeDelta = pctMatch && parseInt(pctMatch[1]) > 80
-      if (isInvalidDelta || isExtremeDelta) {
-        // Weak/extreme comparison — render subdued without delta
-        compRow = `<tr><td style="padding:2px 0 0;font-size:13px;color:#888888;line-height:1.6;">${esc(c.current_entity)}: ${esc(c.current_value)}</td></tr>`
-      } else {
-        const delta = c.delta_label
-          ? `<span style="color:#ff6d00;font-weight:bold;font-size:15px;letter-spacing:0.02em;">&nbsp;&nbsp;${esc(c.delta_label)}</span>`
-          : ''
-        compRow = `<tr><td style="padding:3px 0 0;font-size:15px;color:#1a1a1a;line-height:1.5;font-weight:bold;">${esc(c.current_entity)}: ${esc(c.current_value)}${delta}</td></tr>`
-      }
+      compRow = `<tr><td style="padding:2px 0 0;font-size:13px;color:#888888;line-height:1.6;">${esc(c.current_entity)}: ${esc(c.current_value)}</td></tr>`
     }
 
     // Insight — what this comparison reveals
@@ -349,12 +338,12 @@ export function generateEmailHTML(data: EmailData): string {
   <!-- Market line -->
   ${marketLine ? `<tr><td style="padding:0 40px 20px;font-size:14px;color:#999999;line-height:1.6;">${esc(marketLine)}</td></tr>` : '<tr><td style="padding:0 0 12px;"></td></tr>'}
 
-  <!-- ━━━━━━ 本周亮点 (SIGNALS) ━━━━━━ -->
+  <!-- ━━━━━━ 本周精选 (SIGNALS) ━━━━━━ -->
   <tr><td style="padding:0 40px;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr><td style="padding:0 0 12px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-          <td style="font-size:13px;font-weight:bold;color:#1a1a1a;">本周亮点</td>
+          <td style="font-size:13px;font-weight:bold;color:#1a1a1a;">本周精选</td>
           <td align="right" style="font-size:12px;color:#bbbbbb;">${signals.length} 条</td>
         </tr></table>
       </td></tr>
@@ -382,10 +371,10 @@ export function generateEmailHTML(data: EmailData): string {
   <!-- Divider -->
   <tr><td style="padding:0 40px;">${divider().replace(/<tr><td[^>]*>/, '').replace(/<\/td><\/tr>$/, '')}</td></tr>
 
-  <!-- ━━━━━━ 本周速报 (BRIEFS) ━━━━━━ -->
+  <!-- ━━━━━━ 新闻速览 (BRIEFS) ━━━━━━ -->
   <tr><td style="padding:4px 40px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr><td style="padding:0 0 8px;font-size:13px;font-weight:bold;color:#1a1a1a;">本周速报</td></tr>
+      <tr><td style="padding:0 0 8px;font-size:13px;font-weight:bold;color:#1a1a1a;">新闻速览</td></tr>
       ${briefsHTML}
     </table>
   </td></tr>` : ''}

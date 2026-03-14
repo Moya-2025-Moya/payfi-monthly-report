@@ -88,9 +88,6 @@ function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; c
           {useful && ctx.current_value && (
             <span>
               {' → '}<span style={{ color: 'var(--fg-secondary)' }}>{ctx.current_entity}: {ctx.current_value}</span>
-              {ctx.delta_label && (
-                <span className="font-medium" style={{ color: 'var(--accent)' }}> {ctx.delta_label}</span>
-              )}
             </span>
           )}
         </p>
