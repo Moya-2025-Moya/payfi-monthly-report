@@ -37,18 +37,35 @@ function groupEventsByDate(events: V13Event[]): DateGroup[] {
     else if (evt.significance === 'medium') group.secondary.push(evt)
     else group.collapsed.push(evt)
   }
-  // Enforce: exactly 1 primary per date group
-  for (const group of map.values()) {
-    if (group.primary.length === 0 && group.secondary.length > 0) {
-      // No high → promote first medium
-      group.primary.push(group.secondary.shift()!)
-    } else if (group.primary.length > 1) {
-      // Multiple high → keep first (most important by AI order), demote rest
-      group.secondary.unshift(...group.primary.splice(1))
+  const groups = [...map.values()]
+
+  // Enforce: exactly 1 primary across the ENTIRE timeline
+  // 1. Flatten: demote all but the first high-significance event globally
+  let foundPrimary = false
+  for (const group of groups) {
+    if (!foundPrimary && group.primary.length > 0) {
+      // Keep only the first primary, demote the rest
+      if (group.primary.length > 1) {
+        group.secondary.unshift(...group.primary.splice(1))
+      }
+      foundPrimary = true
+    } else if (foundPrimary && group.primary.length > 0) {
+      // Already have a primary → demote all in this group
+      group.secondary.unshift(...group.primary.splice(0))
     }
   }
 
-  return [...map.values()]
+  // 2. If no high at all, promote first medium from first group that has one
+  if (!foundPrimary) {
+    for (const group of groups) {
+      if (group.secondary.length > 0) {
+        group.primary.push(group.secondary.shift()!)
+        break
+      }
+    }
+  }
+
+  return groups
 }
 interface V13Upcoming {
   date: string; title: string; description: string
