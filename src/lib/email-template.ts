@@ -100,9 +100,8 @@ function buildContextBlock(items: NarrativeContext[]): string {
       ? '<tr><td style="padding:4px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #f3f4f6;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>'
       : ''
 
-    const insightRow = c.insight
-      ? `<tr><td style="padding:0 0 2px;font-size:13px;color:#4b5563;line-height:1.7;">${esc(c.insight)}</td></tr>`
-      : `<tr><td style="padding:0 0 2px;font-size:13px;color:#9ca3af;line-height:1.7;">${esc(c.event)}${c.detail ? ` &middot; ${esc(c.detail)}` : ''}</td></tr>`
+    // Only show factual comparison line, no insight/评价
+    const insightRow = `<tr><td style="padding:0 0 2px;font-size:13px;color:#6b7280;line-height:1.7;">${esc(c.event)}${c.detail ? ` &middot; ${esc(c.detail)}` : ''}</td></tr>`
 
     return `${separator}${insightRow}`
   }).join('')
@@ -219,18 +218,13 @@ function buildSignals(signals: SignalItem[]): string {
       </tr></table>
     </td></tr>`
 
-    if (s.structured_context?.insight) {
+    // Show only the factual comparison line (context), no insight/评价
+    const contextLine = s.context
+    if (contextLine) {
       row += `<tr><td style="padding:2px 0 8px 16px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
           <td width="3" style="background-color:#ff6d00;font-size:1px;line-height:1px;">&nbsp;</td>
-          <td style="background-color:#fffbf5;padding:10px 14px;font-size:13px;color:#4b5563;line-height:1.7;">${esc(s.structured_context.insight)}</td>
-        </tr></table>
-      </td></tr>`
-    } else if (s.context) {
-      row += `<tr><td style="padding:2px 0 8px 16px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-          <td width="3" style="background-color:#d1d5db;font-size:1px;line-height:1px;">&nbsp;</td>
-          <td style="background-color:#f9fafb;padding:8px 14px;font-size:13px;color:#6b7280;line-height:1.7;">${esc(s.context)}</td>
+          <td style="background-color:#fffbf5;padding:10px 14px;font-size:13px;color:#6b7280;line-height:1.7;">${esc(contextLine)}</td>
         </tr></table>
       </td></tr>`
     }
@@ -246,14 +240,12 @@ function buildSignals(signals: SignalItem[]): string {
 function buildBriefs(briefs: BriefItem[]): string {
   if (!briefs || briefs.length === 0) return ''
 
-  return briefs.slice(0, 10).map(b => {
-    if (b.date) {
-      return `<tr>
-        <td width="56" valign="top" style="padding:8px 0;font-size:12px;color:#9ca3af;font-weight:bold;font-family:monospace;white-space:nowrap;">${esc(b.date)}</td>
-        <td valign="top" style="padding:8px 0 8px 12px;font-size:13px;color:#374151;line-height:1.7;">${esc(b.text)}</td>
-      </tr>`
-    }
-    return `<tr><td colspan="2" style="padding:8px 0;font-size:13px;color:#374151;line-height:1.7;">${esc(b.text)}</td></tr>`
+  return briefs.slice(0, 10).map((b, i) => {
+    const num = String(i + 1).padStart(2, '0')
+    return `<tr>
+      <td width="32" valign="top" style="padding:8px 0;font-size:12px;color:#9ca3af;font-family:monospace;white-space:nowrap;">${num}</td>
+      <td valign="top" style="padding:8px 0 8px 8px;font-size:13px;color:#374151;line-height:1.7;">${esc(b.text)}</td>
+    </tr>`
   }).join('\n')
 }
 

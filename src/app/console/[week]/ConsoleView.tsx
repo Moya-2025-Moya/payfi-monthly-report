@@ -61,8 +61,7 @@ function isUsefulDelta(delta: string | undefined): boolean {
   return true
 }
 
-function isRedundantContext(signalText: string, ctx: { current_value?: string; delta_label?: string; insight?: string }): boolean {
-  if (ctx.insight) return false
+function isRedundantContext(signalText: string, ctx: { current_value?: string; delta_label?: string; event?: string }): boolean {
   if (ctx.current_value && signalText.includes(ctx.current_value.replace(/\s/g, ''))) return true
   if (ctx.delta_label) {
     const pct = ctx.delta_label.match(/\d+%/)
@@ -72,20 +71,13 @@ function isRedundantContext(signalText: string, ctx: { current_value?: string; d
 }
 
 function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
-  const useful = isUsefulDelta(ctx.delta_label)
-  const hasInsight = !!ctx.insight
+  // Show only factual comparison line, no insight/评价
+  const line = `${ctx.event}${ctx.detail ? ` · ${ctx.detail}` : ''}`
+  if (!line.trim()) return null
 
   return (
     <div className="mt-1.5 pl-3 text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
-      {hasInsight ? (
-        <>
-          {ctx.insight && <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>}
-        </>
-      ) : (
-        <p>
-          {ctx.event}{ctx.detail ? ` · ${ctx.detail}` : ''}
-        </p>
-      )}
+      <p>{line}</p>
     </div>
   )
 }

@@ -87,8 +87,7 @@ function ContextBlock({ items }: { items: ContextItem[] }) {
 
 /* ── Signal dedup ── */
 
-function isRedundantContext(signalText: string, ctx: { current_value?: string; delta_label?: string; insight?: string }): boolean {
-  if (ctx.insight) return false
+function isRedundantContext(signalText: string, ctx: { current_value?: string; delta_label?: string; event?: string }): boolean {
   if (ctx.current_value && signalText.includes(ctx.current_value.replace(/\s/g, ''))) return true
   if (ctx.delta_label) {
     const pct = ctx.delta_label.match(/\d+%/)
@@ -100,15 +99,16 @@ function isRedundantContext(signalText: string, ctx: { current_value?: string; d
 /* ── Signal Context Inline ── */
 
 function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
-  // Only show insight — skip comparison_basis and event/detail fallback (noise like "两者均为xxx")
-  if (!ctx.insight) return null
+  // Show only factual comparison line, no insight/评价
+  const line = `${ctx.event}${ctx.detail ? ` · ${ctx.detail}` : ''}`
+  if (!line.trim()) return null
 
   return (
     <div className="mt-1.5 pl-3 text-[12px] leading-[1.7]" style={{
       color: 'var(--fg-muted)',
       borderLeft: '2px solid var(--border)',
     }}>
-      <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>
+      <p>{line}</p>
     </div>
   )
 }

@@ -256,7 +256,7 @@ ${candidatesText}
   "current_value": "当前事实在同一维度的数值 (可省略)",
   "delta_label": "差值 (如 '快 42%' 或 '大 1.7x'，可省略)",
   "comparison_basis": "为什么这两者可比 (一句话，如 '同为加密支付公司融资，对比融资估值规模')",
-  "insight": "基于对比的客观推测 (一句话，用'或许''可能'等不确定语气，如 'Airwallex G轮估值接近 Circle 2022年F轮水平，或许说明两者处于相似的发展阶段')"
+  "insight": "null (不再需要，留空即可)"
 }
 
 绝对规则:
@@ -270,9 +270,8 @@ ${candidatesText}
 8. current_value 必须包含数字，与 metric_value 同维度，如当前事实无明确数值则省略
 9. delta_label 只写客观差值（禁止"显著""惊人"等评价词），格式: "快/慢/大/小/多/少 + 百分比或倍数"
 10. current_entity/current_value/delta_label 三个字段要么全部提供，要么全部省略
-11. comparison_basis 和 insight 必须提供
-12. comparison_basis 说明可比性依据 (行业/规模/阶段相似)
-13. insight 必须用不确定语气（"或许""可能""一定程度上"），禁止斩钉截铁的确定性推导（禁止"说明""体现""证明""表明""反映"等断言词）。正确示例: "或许说明直接上市路径效率更高"；错误示例: "说明直接上市路径相比 SPAC 路径效率更高"
+11. comparison_basis 必须提供，说明可比性依据 (行业/规模/阶段相似)
+12. insight 字段留空 (设为 null)，不做任何评价或推导
 13. **所有字段必须使用中文**（实体名保留英文原名，如 "Circle"/"Coinbase"，但描述文字必须中文）
     - reference_event: "Coinbase 上市" 而非 "Coinbase IPO"
     - metric_label: "S-1 提交到上市耗时" 而非 "S-1 to IPO duration"
