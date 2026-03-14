@@ -199,6 +199,11 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
 
 /* ── Signals with category badges ── */
 
+const EMAIL_CONTEXT_PREFIXES = [
+  '相比之下，', '此前，', '作为参考，', '历史上，', '值得注意的是，',
+  '类似地，', '与此对照，', '回顾来看，', '同一赛道中，', '从先例看，',
+]
+
 function buildSignals(signals: SignalItem[]): string {
   if (signals.length === 0) return ''
 
@@ -210,6 +215,7 @@ function buildSignals(signals: SignalItem[]): string {
     }
   }
 
+  let prefixIdx = 0
   const itemRows = sorted.map(s => {
     let row = `<tr><td style="padding:6px 0;font-size:14px;color:#1f2937;line-height:1.75;">
       <table cellpadding="0" cellspacing="0" border="0"><tr>
@@ -218,19 +224,20 @@ function buildSignals(signals: SignalItem[]): string {
       </tr></table>
     </td></tr>`
 
-    // Show only objective factual comparison — no multiplier, natural language
+    // Show only objective factual comparison — no multiplier, natural language prefix
     const contextLine = s.context
     if (contextLine) {
-      // Remove multiplier comparisons and clean "|" separators
       let cleaned = contextLine
         .replace(/\s*[—\-–]\s*(小|大)\s*[\d.,]+\s*倍/g, '')
         .replace(/\s*\|\s*/g, '。')
         .replace(/[。；]+$/g, '').replace(/。{2,}/g, '。').trim()
       if (cleaned) {
+        const prefix = EMAIL_CONTEXT_PREFIXES[prefixIdx % EMAIL_CONTEXT_PREFIXES.length]
+        prefixIdx++
         row += `<tr><td style="padding:2px 0 8px 16px;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
             <td width="3" style="background-color:#ff6d00;font-size:1px;line-height:1px;">&nbsp;</td>
-            <td style="background-color:#fffbf5;padding:10px 14px;font-size:13px;color:#6b7280;line-height:1.7;">交叉验证：${esc(cleaned)}</td>
+            <td style="background-color:#fffbf5;padding:10px 14px;font-size:13px;color:#6b7280;line-height:1.7;">${esc(prefix + cleaned)}</td>
           </tr></table>
         </td></tr>`
       }

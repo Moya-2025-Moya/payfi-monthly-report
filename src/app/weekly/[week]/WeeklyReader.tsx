@@ -98,10 +98,23 @@ function isRedundantContext(signalText: string, ctx: { current_value?: string; d
 
 /* ── Context cleaning ── */
 
+const CONTEXT_PREFIXES = [
+  '相比之下，',
+  '此前，',
+  '作为参考，',
+  '历史上，',
+  '值得注意的是，',
+  '类似地，',
+  '与此对照，',
+  '回顾来看，',
+  '同一赛道中，',
+  '从先例看，',
+]
+
 function cleanContextString(ctx: string): string {
   // Remove multiplier comparisons like "— 小 76.9 倍", "— 大 2.3 倍"
   let cleaned = ctx.replace(/\s*[—\-–]\s*(小|大)\s*[\d.,]+\s*倍/g, '')
-  // Replace "|" separator with more readable "；" (Chinese semicolon)
+  // Replace "|" separator with natural sentence flow
   cleaned = cleaned.replace(/\s*\|\s*/g, '。')
   // Clean up multiple or trailing punctuation
   cleaned = cleaned.replace(/[。；]+$/g, '').replace(/。{2,}/g, '。').trim()
@@ -110,7 +123,7 @@ function cleanContextString(ctx: string): string {
 
 /* ── Signal Context Inline ── */
 
-function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
+function SignalContextInline({ ctx, prefix }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string }; prefix: string }) {
   // Show only objective factual comparison — no insight, no multiplier
   const parts: string[] = []
   if (ctx.event) parts.push(ctx.event)
@@ -123,7 +136,7 @@ function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; c
       color: 'var(--fg-muted)',
       borderLeft: '2px solid var(--accent-muted, var(--border))',
     }}>
-      <p>交叉验证：{line}</p>
+      <p>{prefix}{line}</p>
     </div>
   )
 }
@@ -178,6 +191,22 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
     grouped[cat].push(s)
   }
 
+  // Assign a unique natural-language prefix to each signal that has context
+  const signalPrefixMap = useMemo(() => {
+    const map = new Map<number, string>()
+    let pi = 0
+    const ordered = CATEGORY_ORDER.filter(cat => grouped[cat]?.length).flatMap(cat => grouped[cat]!)
+    for (let i = 0; i < ordered.length; i++) {
+      const s = ordered[i]
+      const hasCtx = (s.structured_context && !isRedundantContext(s.text, s.structured_context)) || (s.context && !s.structured_context)
+      if (hasCtx) {
+        map.set(i, CONTEXT_PREFIXES[pi % CONTEXT_PREFIXES.length])
+        pi++
+      }
+    }
+    return map
+  }, [signals, grouped])
+
   const signalTexts = useMemo(() => new Set(signals.map(s => s.text)), [signals])
   const topFacts = useMemo(() => {
     if (!allFacts) return []
@@ -216,40 +245,47 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
         <section className="mb-10">
           <SectionHeader label="本周精选" count={signals.length} />
           <div>
-            {CATEGORY_ORDER.filter(cat => grouped[cat]?.length).flatMap(cat =>
-              grouped[cat]!.map((s, si) => (
-                <div key={`${cat}-${si}`} className="signal-item">
-                  <div className="flex items-start gap-3">
-                    <span className="mt-[3px] text-[9px] shrink-0 select-none" style={{ color: 'var(--fg-muted)' }}>
-                      {CATEGORY_ICONS[cat] || '·'}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <p className="flex-1 text-[14px] font-medium leading-[1.7]" style={{ color: 'var(--fg-title)' }}>
-                          {s.text}
-                        </p>
-                        {s.source_url && (
-                          <a href={s.source_url} target="_blank" rel="noopener noreferrer"
-                            className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity">
-                            ↗
-                          </a>
-                        )}
-                      </div>
-                      {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
-                        <SignalContextInline ctx={s.structured_context} />
-                      ) : s.context && !s.structured_context ? (
-                        <div className="mt-2 pl-3 text-[12.5px] leading-[1.7]" style={{
-                          color: 'var(--fg-muted)',
-                          borderLeft: '2px solid var(--accent-muted, var(--border))',
-                        }}>
-                          <p>交叉验证：{cleanContextString(s.context)}</p>
+            {(() => {
+              let flatIdx = 0
+              return CATEGORY_ORDER.filter(cat => grouped[cat]?.length).flatMap(cat =>
+                grouped[cat]!.map((s, si) => {
+                  const idx = flatIdx++
+                  const prefix = signalPrefixMap.get(idx) || ''
+                  return (
+                    <div key={`${cat}-${si}`} className="signal-item">
+                      <div className="flex items-start gap-3">
+                        <span className="mt-[3px] text-[9px] shrink-0 select-none" style={{ color: 'var(--fg-muted)' }}>
+                          {CATEGORY_ICONS[cat] || '·'}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2">
+                            <p className="flex-1 text-[14px] font-medium leading-[1.7]" style={{ color: 'var(--fg-title)' }}>
+                              {s.text}
+                            </p>
+                            {s.source_url && (
+                              <a href={s.source_url} target="_blank" rel="noopener noreferrer"
+                                className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity">
+                                ↗
+                              </a>
+                            )}
+                          </div>
+                          {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
+                            <SignalContextInline ctx={s.structured_context} prefix={prefix} />
+                          ) : s.context && !s.structured_context ? (
+                            <div className="mt-2 pl-3 text-[12.5px] leading-[1.7]" style={{
+                              color: 'var(--fg-muted)',
+                              borderLeft: '2px solid var(--accent-muted, var(--border))',
+                            }}>
+                              <p>{prefix}{cleanContextString(s.context)}</p>
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))
-            )}
+                  )
+                })
+              )
+            })()}
           </div>
         </section>
       )}
