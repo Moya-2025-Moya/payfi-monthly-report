@@ -131,8 +131,7 @@ export function ContextCard({ fact, context, focusClassName }: ContextCardProps)
   return (
     <>
       <div
-        className={`rounded-lg border transition-all duration-300 ${focusClassName || ''} ${focusCls}`}
-        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+        className={`card-elevated transition-all duration-300 ${focusClassName || ''} ${focusCls}`}
         data-depth={depth}
       >
         {/* ── Upper half: Fact ── */}

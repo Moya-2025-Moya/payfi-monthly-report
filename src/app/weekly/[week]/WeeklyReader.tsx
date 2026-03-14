@@ -9,7 +9,6 @@ import { FocusOverlay } from '@/components/focus/FocusOverlay'
 
 /* ── Types ── */
 
-// Context can be string[] (legacy) or structured objects (V12+ / V14)
 type ContextItem = string | {
   event: string
   detail: string
@@ -37,17 +36,17 @@ interface Props {
 
 /* ── Constants ── */
 
-const CATEGORY_LABELS: Record<string, string> = {
-  market_structure: '市场',
-  product: '产品',
-  onchain_data: '链上',
-  regulatory: '监管',
-  funding: '融资',
-  milestone: '里程碑',
-  data: '数据',
-}
-
 const CATEGORY_ORDER = ['market_structure', 'product', 'onchain_data', 'regulatory', 'funding', 'milestone', 'data']
+
+const CATEGORY_ICONS: Record<string, string> = {
+  market_structure: '◆',
+  product: '▲',
+  onchain_data: '●',
+  regulatory: '■',
+  funding: '◇',
+  milestone: '★',
+  data: '○',
+}
 
 /* ── Context Block (used by narratives) ── */
 
@@ -55,9 +54,8 @@ function ContextBlock({ items }: { items: ContextItem[] }) {
   if (items.length === 0) return null
 
   return (
-    <div className="mt-3" style={{
+    <div className="mt-3 rounded-lg" style={{
       background: 'var(--context-bg)',
-      borderRadius: '6px',
       padding: '14px 16px',
     }}>
       {items.map((c, i) => {
@@ -71,13 +69,12 @@ function ContextBlock({ items }: { items: ContextItem[] }) {
 
         return (
           <div key={i} className={i > 0 ? 'mt-3 pt-3 border-t' : ''} style={{ borderColor: 'var(--border)' }}>
-            {/* Insight is primary — skip comparison_basis ("两者均为xxx") */}
             {c.insight ? (
-              <p className="text-[12px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
+              <p className="text-[12px] leading-[1.7]" style={{ color: 'var(--fg-secondary)' }}>
                 {c.insight}
               </p>
             ) : (
-              <p className="text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+              <p className="text-[12px] leading-[1.7]" style={{ color: 'var(--fg-muted)' }}>
                 {c.event}{c.detail ? `  ·  ${c.detail}` : ''}
               </p>
             )}
@@ -88,14 +85,11 @@ function ContextBlock({ items }: { items: ContextItem[] }) {
   )
 }
 
-/* ── Signal dedup: skip context if signal text already contains the comparison data ── */
+/* ── Signal dedup ── */
 
 function isRedundantContext(signalText: string, ctx: { current_value?: string; delta_label?: string; insight?: string }): boolean {
-  // If insight exists, always show (it adds new info)
   if (ctx.insight) return false
-  // If the signal text already mentions the current_value, context is redundant
   if (ctx.current_value && signalText.includes(ctx.current_value.replace(/\s/g, ''))) return true
-  // If delta is already in signal text
   if (ctx.delta_label) {
     const pct = ctx.delta_label.match(/\d+%/)
     if (pct && signalText.includes(pct[0])) return true
@@ -103,12 +97,14 @@ function isRedundantContext(signalText: string, ctx: { current_value?: string; d
   return false
 }
 
-/* ── Signal Context Inline (compact, filters junk deltas) ── */
+/* ── Signal Context Inline ── */
 
 function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
-  // Only show insight (skip comparison_basis like "两者均为xxx" — it's noise)
   return (
-    <div className="mt-1.5 pl-3 text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+    <div className="mt-1.5 pl-3 text-[12px] leading-[1.7]" style={{
+      color: 'var(--fg-muted)',
+      borderLeft: '2px solid var(--border)',
+    }}>
       {ctx.insight ? (
         <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>
       ) : (
@@ -120,12 +116,26 @@ function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; c
   )
 }
 
+/* ── Section Header ── */
+
+function SectionHeader({ label, count }: { label: string; count?: number }) {
+  return (
+    <div className="section-divider">
+      <span className="section-label">
+        {label}
+        {count !== undefined && (
+          <span className="ml-2 font-mono text-[10px]" style={{ color: 'var(--fg-muted)', fontWeight: 400 }}>
+            {count}
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
 /* ── Main Component ── */
 
 export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) {
-  // factSearch/factTagFilter removed — replaced by curated 速报 section
-
-  // Parse summary
   let oneLiner = ''
   let marketLine = ''
   let narratives: Record<string, unknown>[] = []
@@ -149,7 +159,6 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
     }
   } catch { /* ignore */ }
 
-  // Group signals
   const grouped: Record<string, SignalData[]> = {}
   for (const s of signals) {
     const cat = s.category || 'onchain_data'
@@ -157,8 +166,6 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
     grouped[cat].push(s)
   }
 
-
-  // Top 10 facts for 速报 section (exclude facts already covered by signals)
   const signalTexts = useMemo(() => new Set(signals.map(s => s.text)), [signals])
   const topFacts = useMemo(() => {
     if (!allFacts) return []
@@ -168,95 +175,113 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
   }, [allFacts, signalTexts])
 
   return (
-    <div className="max-w-[680px] mx-auto space-y-8">
-      {/* ── Header ── */}
-      <div>
+    <div className="max-w-[680px] mx-auto">
+      {/* ── Hero ── */}
+      <div className="mb-10">
         {marketLine && (
-          <p className="text-[13px] font-mono" style={{ color: 'var(--fg-muted)' }}>
+          <p className="text-[12px] font-mono tracking-wide mb-3" style={{ color: 'var(--fg-muted)' }}>
             {marketLine}
           </p>
         )}
         {oneLiner && (
-          <h2 className="text-[20px] font-bold leading-snug mt-2" style={{ color: 'var(--fg-title)' }}>
+          <h1 className="hero-title">
             {oneLiner}
-          </h2>
+          </h1>
         )}
+        {/* Accent line */}
+        <div className="mt-5 flex items-center gap-3">
+          <div className="w-8 h-[3px] rounded-full" style={{ background: 'var(--accent)' }} />
+          {stats && stats.total_facts > 0 && (
+            <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>
+              {stats.total_facts} facts · {stats.total_facts - stats.rejected} verified
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* ── 1. 本周精选 (Signals — no category labels) ── */}
+      {/* ── 1. Signals ── */}
       {signals.length > 0 && (
-        <div>
-          <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
-            本周精选
-          </h2>
-          <div className="space-y-3">
+        <section className="mb-10">
+          <SectionHeader label="本周精选" count={signals.length} />
+          <div>
             {CATEGORY_ORDER.filter(cat => grouped[cat]?.length).flatMap(cat =>
-              grouped[cat]!.map((s, si) => {
-                return (
-                  <div key={`${cat}-${si}`} className="pb-3 border-b last:border-b-0" style={{ borderColor: 'var(--border)' }}>
-                    {/* Signal headline + source link */}
-                    <div className="flex items-baseline gap-2">
-                      <p className="flex-1 text-[14px] font-medium leading-relaxed" style={{ color: 'var(--fg-title)' }}>
-                        {s.text}
-                      </p>
-                      {s.source_url && (
-                        <a href={s.source_url} target="_blank" rel="noopener noreferrer"
-                          className="shrink-0 text-[11px] hover:underline" style={{ color: 'var(--fg-muted)' }}>
-                          ↗
-                        </a>
-                      )}
+              grouped[cat]!.map((s, si) => (
+                <div key={`${cat}-${si}`} className="signal-item">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-[3px] text-[9px] shrink-0 select-none" style={{ color: 'var(--fg-muted)' }}>
+                      {CATEGORY_ICONS[cat] || '·'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <p className="flex-1 text-[14px] font-medium leading-[1.7]" style={{ color: 'var(--fg-title)' }}>
+                          {s.text}
+                        </p>
+                        {s.source_url && (
+                          <a href={s.source_url} target="_blank" rel="noopener noreferrer"
+                            className="shrink-0 text-[11px] opacity-40 hover:opacity-100 transition-opacity">
+                            ↗
+                          </a>
+                        )}
+                      </div>
+                      {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
+                        <SignalContextInline ctx={s.structured_context} />
+                      ) : s.context && !s.structured_context ? (
+                        <p className="text-[12px] mt-1.5 pl-3 leading-[1.7]" style={{
+                          color: 'var(--fg-muted)',
+                          borderLeft: '2px solid var(--border)',
+                        }}>
+                          {s.context}
+                        </p>
+                      ) : null}
                     </div>
-                    {/* Context — indented, muted */}
-                    {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
-                      <SignalContextInline ctx={s.structured_context} />
-                    ) : s.context && !s.structured_context ? (
-                      <p className="text-[12px] mt-1.5 pl-3 leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
-                        {s.context}
-                      </p>
-                    ) : null}
                   </div>
-                )
-              })
+                </div>
+              ))
             )}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* ── 2. 本周叙事 (NarrativeRiver) ── */}
+      {/* ── 2. Narratives ── */}
       {narratives.length > 0 && (
-        <NarrativeRiver narratives={narratives as unknown as Parameters<typeof NarrativeRiver>[0]['narratives']} />
+        <section className="mb-10">
+          <NarrativeRiver narratives={narratives as unknown as Parameters<typeof NarrativeRiver>[0]['narratives']} />
+        </section>
       )}
 
-      {/* ── 3. 新闻速览 (Top 10 facts, compact) ── */}
+      {/* ── 3. News Brief ── */}
       {topFacts.length > 0 && (
-        <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
-            新闻速览
-          </h2>
+        <section className="mb-10">
+          <SectionHeader label="新闻速览" count={topFacts.length} />
           <div className="space-y-2">
             {topFacts.map(f => (
               <ContextCard key={f.id} fact={f} />
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       {/* ── Footer ── */}
-      <footer className="pt-4 pb-8 text-center space-y-2">
-        {stats && stats.total_facts > 0 && (
-          <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
-            {stats.total_facts} 条事实 · {stats.total_facts - stats.rejected} 条已验证 · AI 多源交叉验证 · 人工审核 · 零观点
-          </p>
-        )}
-        <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
-          数据来源: RSS + SEC EDGAR + DeFiLlama
+      <footer className="pt-8 pb-12 text-center">
+        <div className="inline-flex items-center gap-2 mb-4">
+          <div className="w-[4px] h-[12px] rounded-full" style={{ background: 'var(--accent)', opacity: 0.4 }} />
+          <span className="text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: 'var(--fg-muted)' }}>
+            StablePulse
+          </span>
+          <div className="w-[4px] h-[12px] rounded-full" style={{ background: 'var(--accent)', opacity: 0.4 }} />
+        </div>
+        <p className="text-[11px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+          AI 多源交叉验证 · 人工审核 · 零观点
         </p>
-        <a href={`/console/${week}`} className="text-[11px] hover:underline" style={{ color: 'var(--fg-muted)' }}>
+        <p className="text-[11px] mt-1" style={{ color: 'var(--fg-muted)', opacity: 0.6 }}>
+          RSS + SEC EDGAR + DeFiLlama
+        </p>
+        <a href={`/console/${week}`} className="inline-block mt-3 text-[11px] px-4 py-1.5 rounded-full border transition-colors hover:border-[var(--border-hover)]"
+          style={{ borderColor: 'var(--border)', color: 'var(--fg-muted)' }}>
           Console →
         </a>
       </footer>
 
-      {/* Entity Focus Overlay */}
       <FocusOverlay />
     </div>
   )

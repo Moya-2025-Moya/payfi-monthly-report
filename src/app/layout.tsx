@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <FocusLensProvider>
               <ConsoleProvider>
                 <TopBar />
-                <main className="pt-[var(--topbar-h)] px-4 pb-8 md:px-8 mx-auto max-w-[1200px]">
+                <main className="pt-[calc(var(--topbar-h)+12px)] px-4 pb-12 md:px-8 mx-auto max-w-[1200px]">
                   {children}
                 </main>
               </ConsoleProvider>
