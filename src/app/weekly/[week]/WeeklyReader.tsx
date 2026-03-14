@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import type { AtomicFact } from '@/lib/types'
 import type { WeeklyStats } from '@/lib/weekly-data'
 import { ContextCard } from '@/components/facts/ContextCard'
 import { NarrativeRiver } from '@/components/narrative/NarrativeRiver'
-import { DepthControl } from '@/components/depth/DepthControl'
 import { FocusOverlay } from '@/components/focus/FocusOverlay'
 
 /* ── Types ── */
@@ -179,8 +178,7 @@ function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; c
 /* ── Main Component ── */
 
 export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) {
-  const [factSearch, setFactSearch] = useState('')
-  const [factTagFilter, setFactTagFilter] = useState<string | null>(null)
+  // factSearch/factTagFilter removed — replaced by curated 速报 section
 
   // Parse summary
   let oneLiner = ''
@@ -214,28 +212,15 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
     grouped[cat].push(s)
   }
 
-  // Facts search/filter
-  const allTags = useMemo(() => {
-    if (!allFacts) return []
-    const tagSet = new Set<string>()
-    for (const f of allFacts) {
-      for (const t of f.tags ?? []) tagSet.add(t)
-    }
-    return [...tagSet].sort()
-  }, [allFacts])
 
-  const filteredFacts = useMemo(() => {
+  // Top 10 facts for 速报 section (exclude facts already covered by signals)
+  const signalTexts = useMemo(() => new Set(signals.map(s => s.text)), [signals])
+  const topFacts = useMemo(() => {
     if (!allFacts) return []
-    let result = allFacts
-    if (factSearch.trim()) {
-      const q = factSearch.trim().toLowerCase()
-      result = result.filter(f => (f.content_zh || f.content_en).toLowerCase().includes(q))
-    }
-    if (factTagFilter) {
-      result = result.filter(f => f.tags?.includes(factTagFilter))
-    }
-    return result
-  }, [allFacts, factSearch, factTagFilter])
+    return allFacts
+      .filter(f => !signalTexts.has(f.content_zh || f.content_en))
+      .slice(0, 10)
+  }, [allFacts, signalTexts])
 
   return (
     <div className="max-w-[680px] mx-auto space-y-8">
@@ -253,113 +238,54 @@ export function WeeklyReader({ week, summaryDetailed, stats, allFacts }: Props) 
         )}
       </div>
 
-      {/* ── Narratives (NarrativeRiver) ── */}
-      {narratives.length > 0 && (
-        <NarrativeRiver narratives={narratives as unknown as Parameters<typeof NarrativeRiver>[0]['narratives']} />
-      )}
-
-      {/* ── Signals (secondary to narratives) ── */}
+      {/* ── 1. 本周亮点 (Signals — no category labels) ── */}
       {signals.length > 0 && (
-        <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
-            本周信号
+        <div>
+          <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
+            本周亮点
           </h2>
-          <div className="space-y-3">
-            {CATEGORY_ORDER.filter(cat => grouped[cat]?.length).map(cat => (
-              <div key={cat}>
-                <p className="text-[11px] font-medium mb-1" style={{ color: 'var(--fg-muted)' }}>
-                  {CATEGORY_LABELS[cat] || cat}
-                </p>
-                <div className="space-y-1.5">
-                  {grouped[cat]!.map((s, si) => (
-                    <div key={`${cat}-${si}`}>
-                      <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
-                        · {s.text}
-                        {s.source_url && (
-                          <a href={s.source_url} target="_blank" rel="noopener noreferrer"
-                            className="ml-1 text-[11px] hover:underline" style={{ color: 'var(--info)' }}>
-                            [来源]
-                          </a>
-                        )}
-                      </p>
-                      {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
-                        <SignalContextInline ctx={s.structured_context} />
-                      ) : s.context && !s.structured_context ? (
-                        <p className="text-[12px] mt-0.5 pl-3" style={{ color: 'var(--fg-muted)' }}>
-                          {s.context}
-                        </p>
-                      ) : null}
-                    </div>
-                  ))}
+          <div className="space-y-1.5">
+            {CATEGORY_ORDER.filter(cat => grouped[cat]?.length).flatMap(cat =>
+              grouped[cat]!.map((s, si) => (
+                <div key={`${cat}-${si}`}>
+                  <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
+                    · {s.text}
+                    {s.source_url && (
+                      <a href={s.source_url} target="_blank" rel="noopener noreferrer"
+                        className="ml-1 text-[11px] hover:underline" style={{ color: 'var(--info)' }}>
+                        [来源]
+                      </a>
+                    )}
+                  </p>
+                  {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
+                    <SignalContextInline ctx={s.structured_context} />
+                  ) : s.context && !s.structured_context ? (
+                    <p className="text-[12px] mt-0.5 pl-3" style={{ color: 'var(--fg-muted)' }}>
+                      {s.context}
+                    </p>
+                  ) : null}
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}
 
-      {/* ── Full Facts (ContextCard + TrustSpine + EvidenceDrawer) ── */}
-      {allFacts && allFacts.length > 0 && (
-        <div className="pt-6 border-t" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[11px] font-medium tracking-wider uppercase" style={{ color: 'var(--fg-muted)' }}>
-              全部事实 ({allFacts.length})
-            </h2>
-            <DepthControl />
-          </div>
+      {/* ── 2. 本周叙事 (NarrativeRiver) ── */}
+      {narratives.length > 0 && (
+        <NarrativeRiver narratives={narratives as unknown as Parameters<typeof NarrativeRiver>[0]['narratives']} />
+      )}
 
-          {/* Search + tag filter */}
-          <div className="flex gap-2 mb-3 flex-wrap">
-            <label htmlFor="reader-fact-search" className="sr-only">搜索事实</label>
-            <input
-              id="reader-fact-search"
-              type="text"
-              value={factSearch}
-              onChange={e => setFactSearch(e.target.value)}
-              placeholder="搜索事实..."
-              className="flex-1 min-w-[200px] px-3 py-1.5 rounded-md border text-[13px] outline-none"
-              style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)', color: 'var(--fg-body)' }}
-            />
-            {factTagFilter && (
-              <button
-                onClick={() => setFactTagFilter(null)}
-                className="px-2 py-1 rounded border text-[11px]"
-                style={{ borderColor: 'var(--info)', color: 'var(--info)' }}>
-                {factTagFilter} ×
-              </button>
-            )}
-          </div>
-
-          {/* Tag pills */}
-          {allTags.length > 0 && !factTagFilter && (
-            <div className="flex flex-wrap gap-1 mb-3">
-              {allTags.slice(0, 20).map(tag => (
-                <button
-                  key={tag}
-                  onClick={() => setFactTagFilter(tag)}
-                  className="px-2 py-0.5 rounded text-[11px] border transition-colors hover:border-[var(--info-muted)]"
-                  style={{ borderColor: 'var(--border)', color: 'var(--fg-muted)' }}>
-                  {tag}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Facts list — ContextCard with TrustSpine */}
+      {/* ── 3. 本周速报 (Top 10 facts, compact) ── */}
+      {topFacts.length > 0 && (
+        <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+          <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
+            本周速报
+          </h2>
           <div className="space-y-2">
-            {filteredFacts.slice(0, 50).map(f => (
+            {topFacts.map(f => (
               <ContextCard key={f.id} fact={f} />
             ))}
-            {filteredFacts.length > 50 && (
-              <p className="text-[12px] text-center py-3" style={{ color: 'var(--fg-muted)' }}>
-                显示前 50 条，共 {filteredFacts.length} 条
-              </p>
-            )}
-            {filteredFacts.length === 0 && (
-              <p className="text-[13px] py-6 text-center" style={{ color: 'var(--fg-muted)' }}>
-                未找到匹配的事实
-              </p>
-            )}
           </div>
         </div>
       )}
