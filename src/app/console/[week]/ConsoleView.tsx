@@ -73,13 +73,12 @@ function isRedundantContext(signalText: string, ctx: { current_value?: string; d
 
 function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
   const useful = isUsefulDelta(ctx.delta_label)
-  const hasInsight = ctx.insight || ctx.comparison_basis
+  const hasInsight = !!ctx.insight
 
   return (
     <div className="mt-1.5 pl-3 text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
       {hasInsight ? (
         <>
-          {ctx.comparison_basis && <p>{ctx.comparison_basis}</p>}
           {ctx.insight && <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>}
         </>
       ) : (

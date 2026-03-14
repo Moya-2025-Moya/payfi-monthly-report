@@ -203,58 +203,42 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
 function buildSignals(signals: SignalItem[]): string {
   if (signals.length === 0) return ''
 
-  const grouped: Record<string, SignalItem[]> = {}
-  for (const s of signals) {
-    const cat = s.category || 'onchain_data'
-    if (!grouped[cat]) grouped[cat] = []
-    grouped[cat].push(s)
+  // Sort by category order internally, but render as flat list without category labels
+  const sorted: SignalItem[] = []
+  for (const cat of CATEGORY_ORDER) {
+    for (const s of signals) {
+      if ((s.category || 'onchain_data') === cat) sorted.push(s)
+    }
   }
 
-  // Group by category with sub-headers
-  const sections = CATEGORY_ORDER
-    .filter(cat => grouped[cat]?.length)
-    .map(cat => {
-      const items = grouped[cat]!
-      const colors = CATEGORY_COLORS[cat] || { bg: '#f3f4f6', text: '#374151' }
-      const label = CATEGORY_LABELS[cat] || cat
+  const itemRows = sorted.map(s => {
+    let row = `<tr><td style="padding:6px 0;font-size:14px;color:#1f2937;line-height:1.75;">
+      <table cellpadding="0" cellspacing="0" border="0"><tr>
+        <td valign="top" style="padding-right:8px;font-size:14px;color:#d1d5db;line-height:1.75;">&bull;</td>
+        <td style="font-size:14px;color:#1f2937;line-height:1.75;">${esc(s.text)}</td>
+      </tr></table>
+    </td></tr>`
 
-      const itemRows = items.map(s => {
-        let row = `<tr><td style="padding:6px 0;font-size:14px;color:#1f2937;line-height:1.75;">
-          <table cellpadding="0" cellspacing="0" border="0"><tr>
-            <td valign="top" style="padding-right:8px;font-size:14px;color:#d1d5db;line-height:1.75;">&bull;</td>
-            <td style="font-size:14px;color:#1f2937;line-height:1.75;">${esc(s.text)}</td>
-          </tr></table>
-        </td></tr>`
-
-        if (s.structured_context?.insight) {
-          row += `<tr><td style="padding:2px 0 8px 16px;">
-            <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-              <td width="3" style="background-color:#ff6d00;font-size:1px;line-height:1px;">&nbsp;</td>
-              <td style="background-color:#fffbf5;padding:10px 14px;font-size:13px;color:#4b5563;line-height:1.7;">${esc(s.structured_context.insight)}</td>
-            </tr></table>
-          </td></tr>`
-        } else if (s.context) {
-          row += `<tr><td style="padding:2px 0 8px 16px;">
-            <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-              <td width="3" style="background-color:#d1d5db;font-size:1px;line-height:1px;">&nbsp;</td>
-              <td style="background-color:#f9fafb;padding:8px 14px;font-size:13px;color:#6b7280;line-height:1.7;">${esc(s.context)}</td>
-            </tr></table>
-          </td></tr>`
-        }
-
-        return row
-      }).join('\n')
-
-      // Category sub-header with badge
-      return `<tr><td style="padding:12px 0 4px;">
-        <table cellpadding="0" cellspacing="0" border="0"><tr>
-          <td style="background-color:${colors.bg};padding:3px 10px;font-size:11px;font-weight:bold;color:${colors.text};letter-spacing:0.5px;">${esc(label)}</td>
+    if (s.structured_context?.insight) {
+      row += `<tr><td style="padding:2px 0 8px 16px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+          <td width="3" style="background-color:#ff6d00;font-size:1px;line-height:1px;">&nbsp;</td>
+          <td style="background-color:#fffbf5;padding:10px 14px;font-size:13px;color:#4b5563;line-height:1.7;">${esc(s.structured_context.insight)}</td>
         </tr></table>
-      </td></tr>
-      ${itemRows}`
-    }).join('\n')
+      </td></tr>`
+    } else if (s.context) {
+      row += `<tr><td style="padding:2px 0 8px 16px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+          <td width="3" style="background-color:#d1d5db;font-size:1px;line-height:1px;">&nbsp;</td>
+          <td style="background-color:#f9fafb;padding:8px 14px;font-size:13px;color:#6b7280;line-height:1.7;">${esc(s.context)}</td>
+        </tr></table>
+      </td></tr>`
+    }
 
-  return sections
+    return row
+  }).join('\n')
+
+  return itemRows
 }
 
 /* ── Briefs ── */
@@ -383,49 +367,20 @@ export function generateEmailHTML(data: EmailData): string {
 
   ${sections.join('\n\n  ')}
 
-  <!-- ━━━ CTA ━━━ -->
-  <tr><td style="padding:44px 40px 32px;" align="center">
-    <!--[if mso]>
-    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${esc(webLink)}" style="height:52px;v-text-anchor:middle;width:320px;" arcsize="0%" fillcolor="#ff6d00" stroke="f">
-      <w:anchorlock/>
-      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;letter-spacing:1px;">${esc(ctaText)}</center>
-    </v:roundrect>
-    <![endif]-->
-    <!--[if !mso]><!-->
-    <a href="${esc(webLink)}" target="_blank" style="display:inline-block;background-color:#ff6d00;color:#ffffff;padding:16px 56px;font-size:14px;font-weight:bold;text-decoration:none;font-family:Arial,sans-serif;letter-spacing:1px;">${ctaText}</a>
-    <!--<![endif]-->
-  </td></tr>
-
-  <!-- ━━━ Credibility strip ━━━ -->
-  <tr><td style="padding:0 40px;">
+  <!-- ━━━ CTA + Footer ━━━ -->
+  <tr><td style="padding:36px 40px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr><td style="border-top:1px solid #e5e7eb;font-size:1px;line-height:1px;">&nbsp;</td></tr>
     </table>
   </td></tr>
-  <tr><td style="padding:16px 40px 20px;" align="center">
+  <tr><td style="padding:20px 40px 28px;" align="center">
     <table cellpadding="0" cellspacing="0" border="0"><tr>
-      <td style="font-size:13px;color:#9ca3af;line-height:1.6;font-family:monospace;" align="center">
-        ${stats.factCount} 条事实&nbsp;&nbsp;&middot;&nbsp;&nbsp;${stats.verifiedCount} 条已验证&nbsp;&nbsp;&middot;&nbsp;&nbsp;${stats.sourceCount} 个来源
+      <td style="font-size:13px;color:#9ca3af;line-height:1.6;" align="center">
+        <a href="${esc(webLink)}" target="_blank" style="color:#ff6d00;text-decoration:none;font-weight:500;">阅读完整周报 &rarr;</a>
+        &nbsp;&nbsp;&middot;&nbsp;&nbsp;
+        <a href="{{unsubscribe_url}}" style="color:#9ca3af;text-decoration:underline;font-size:12px;">退订</a>
       </td>
     </tr></table>
-  </td></tr>
-
-  <!-- ━━━ Footer ━━━ -->
-  <tr><td style="background-color:#111827;padding:28px 40px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr>
-        <td>
-          <table cellpadding="0" cellspacing="0" border="0"><tr>
-            <td style="width:3px;height:12px;background-color:#ff6d00;font-size:1px;">&nbsp;</td>
-            <td style="padding-left:10px;font-size:11px;color:#9ca3af;letter-spacing:2.5px;font-weight:bold;">STABLEPULSE</td>
-          </tr></table>
-        </td>
-        <td align="right"><a href="{{unsubscribe_url}}" style="font-size:11px;color:#6b7280;text-decoration:underline;">退订</a></td>
-      </tr>
-      <tr><td colspan="2" style="padding-top:12px;font-size:11px;color:#4b5563;line-height:1.6;">
-        AI 生成 &middot; 人工审核 &middot; 稳定币行业原子知识引擎
-      </td></tr>
-    </table>
   </td></tr>
 
 </table>
