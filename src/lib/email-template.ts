@@ -212,55 +212,60 @@ function buildSignals(signals: SignalItem[]): string {
     grouped[cat].push(s)
   }
 
-  return CATEGORY_ORDER
+  // Flat list — no category labels, but ordered by category
+  const allItems = CATEGORY_ORDER
     .filter(cat => grouped[cat]?.length)
-    .map(cat => {
-      const items = grouped[cat]!.map(s => {
-        const sourceLink = s.source_url
-          ? ` <a href="${esc(s.source_url)}" target="_blank" style="color:#999999;font-size:11px;text-decoration:none;">&#x2197;</a>`
+    .flatMap(cat => grouped[cat]!)
+
+  return allItems.map(s => {
+    const sourceLink = s.source_url
+      ? ` <a href="${esc(s.source_url)}" target="_blank" style="color:#999999;font-size:11px;text-decoration:none;">&#x2197;</a>`
+      : ''
+
+    let row = `<tr><td style="padding:3px 0;font-size:14px;color:#333333;line-height:1.7;">&middot;&nbsp; ${esc(s.text)}${sourceLink}</td></tr>`
+
+    // Context — prefer structured
+    if (s.structured_context) {
+      const sc = s.structured_context
+      const isInvalidDelta = sc.delta_label && /无.*对比|不同维度|不适用/.test(sc.delta_label)
+      const pctMatch = sc.delta_label?.match(/(\d+)%/)
+      const isExtremeDelta = pctMatch && parseInt(pctMatch[1]) > 80
+
+      if (sc.comparison_basis || sc.insight) {
+        // Prefer insight-based rendering
+        let ctxHtml = ''
+        if (sc.comparison_basis) ctxHtml += `<span style="color:#999999;font-size:13px;">${esc(sc.comparison_basis)}</span><br>`
+        if (sc.insight) ctxHtml += `<span style="color:#666666;font-size:13px;">${esc(sc.insight)}</span>`
+        if (!ctxHtml) ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
+
+        row += `<tr><td style="padding:2px 0 6px;">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+            <td style="background-color:#f5f5f5;padding:10px 14px;font-size:13px;color:#666666;line-height:1.7;">${ctxHtml}</td>
+          </tr></table>
+        </td></tr>`
+      } else if (sc.current_entity && sc.current_value && !isInvalidDelta && !isExtremeDelta) {
+        let ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
+        const delta = sc.delta_label
+          ? `<span style="color:#ff6d00;font-weight:bold;">&nbsp;&nbsp;${esc(sc.delta_label)}</span>`
           : ''
+        ctxHtml += `<br><span style="font-size:14px;color:#1a1a1a;font-weight:bold;">${esc(sc.current_entity)}: ${esc(sc.current_value)}${delta}</span>`
 
-        let row = `<tr><td style="padding:3px 0;font-size:14px;color:#333333;line-height:1.7;">&middot;&nbsp; ${esc(s.text)}${sourceLink}</td></tr>`
-
-        // Context — prefer structured
-        if (s.structured_context) {
-          const sc = s.structured_context
-          const isInvalidDelta = sc.delta_label && /无.*对比|不同维度|不适用/.test(sc.delta_label)
-
-          // Reference line (subdued)
-          let ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
-
-          // Current + delta (punchline)
-          if (sc.current_entity && sc.current_value && !isInvalidDelta) {
-            const delta = sc.delta_label
-              ? `<span style="color:#ff6d00;font-weight:bold;">&nbsp;&nbsp;${esc(sc.delta_label)}</span>`
-              : ''
-            ctxHtml += `<br><span style="font-size:14px;color:#1a1a1a;font-weight:bold;">${esc(sc.current_entity)}: ${esc(sc.current_value)}${delta}</span>`
-          }
-
-          row += `<tr><td style="padding:2px 0 6px;">
-            <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-              <td style="background-color:#f5f5f5;padding:10px 14px;font-size:13px;color:#666666;line-height:1.7;">${ctxHtml}</td>
-            </tr></table>
-          </td></tr>`
-        } else if (s.context) {
-          row += `<tr><td style="padding:2px 0 6px;">
-            <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-              <td style="background-color:#f5f5f5;padding:8px 14px;font-size:13px;color:#666666;line-height:1.7;">${esc(s.context)}</td>
-            </tr></table>
-          </td></tr>`
-        }
-
-        return row
-      }).join('\n')
-
-      return `<tr><td style="padding:0 0 16px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%">
-          <tr><td style="padding:0 0 6px;font-size:12px;font-weight:bold;letter-spacing:0.5px;color:#999999;">${esc(CATEGORY_LABELS[cat] ?? cat)}</td></tr>
-          ${items}
-        </table>
+        row += `<tr><td style="padding:2px 0 6px;">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+            <td style="background-color:#f5f5f5;padding:10px 14px;font-size:13px;color:#666666;line-height:1.7;">${ctxHtml}</td>
+          </tr></table>
+        </td></tr>`
+      }
+    } else if (s.context) {
+      row += `<tr><td style="padding:2px 0 6px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+          <td style="background-color:#f5f5f5;padding:8px 14px;font-size:13px;color:#666666;line-height:1.7;">${esc(s.context)}</td>
+        </tr></table>
       </td></tr>`
-    }).join('\n')
+    }
+
+    return row
+  }).join('\n')
 }
 
 /* ── Briefs ── */
@@ -344,8 +349,24 @@ export function generateEmailHTML(data: EmailData): string {
   <!-- Market line -->
   ${marketLine ? `<tr><td style="padding:0 40px 20px;font-size:14px;color:#999999;line-height:1.6;">${esc(marketLine)}</td></tr>` : '<tr><td style="padding:0 0 12px;"></td></tr>'}
 
-  <!-- ━━━━━━ NARRATIVES ━━━━━━ -->
+  <!-- ━━━━━━ 本周亮点 (SIGNALS) ━━━━━━ -->
   <tr><td style="padding:0 40px;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr><td style="padding:0 0 12px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+          <td style="font-size:13px;font-weight:bold;color:#1a1a1a;">本周亮点</td>
+          <td align="right" style="font-size:12px;color:#bbbbbb;">${signals.length} 条</td>
+        </tr></table>
+      </td></tr>
+      ${signalsHTML}
+    </table>
+  </td></tr>
+
+  <!-- Divider -->
+  <tr><td style="padding:0 40px;">${divider().replace(/<tr><td[^>]*>/, '').replace(/<\/td><\/tr>$/, '')}</td></tr>
+
+  <!-- ━━━━━━ 本周叙事 (NARRATIVES) ━━━━━━ -->
+  <tr><td style="padding:4px 40px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr><td style="padding:0 0 12px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
@@ -357,30 +378,14 @@ export function generateEmailHTML(data: EmailData): string {
     </table>
   </td></tr>
 
-  <!-- Divider -->
-  <tr><td style="padding:0 40px;">${divider().replace(/<tr><td[^>]*>/, '').replace(/<\/td><\/tr>$/, '')}</td></tr>
-
-  <!-- ━━━━━━ SIGNALS ━━━━━━ -->
-  <tr><td style="padding:4px 40px 0;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr><td style="padding:0 0 12px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-          <td style="font-size:13px;font-weight:bold;color:#1a1a1a;">信号</td>
-          <td align="right" style="font-size:12px;color:#bbbbbb;">${signals.length} 条</td>
-        </tr></table>
-      </td></tr>
-      ${signalsHTML}
-    </table>
-  </td></tr>
-
   ${briefsHTML ? `
   <!-- Divider -->
   <tr><td style="padding:0 40px;">${divider().replace(/<tr><td[^>]*>/, '').replace(/<\/td><\/tr>$/, '')}</td></tr>
 
-  <!-- ━━━━━━ BRIEFS ━━━━━━ -->
+  <!-- ━━━━━━ 本周速报 (BRIEFS) ━━━━━━ -->
   <tr><td style="padding:4px 40px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr><td style="padding:0 0 8px;font-size:13px;font-weight:bold;color:#1a1a1a;">本周快讯</td></tr>
+      <tr><td style="padding:0 0 8px;font-size:13px;font-weight:bold;color:#1a1a1a;">本周速报</td></tr>
       ${briefsHTML}
     </table>
   </td></tr>` : ''}

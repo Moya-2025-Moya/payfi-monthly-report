@@ -14,15 +14,9 @@ import { FocusOverlay } from '@/components/focus/FocusOverlay'
 import { EntityTag } from '@/components/focus/EntityTag'
 import { ConsoleModal } from '@/components/console/ConsoleModal'
 
-/* ── Types matching V12 format ── */
+/* ── Types matching V12+ format ── */
 
-// Context can be string[] (legacy) or {event, detail}[] (V12+)
 type ContextItem = string | { event: string; detail: string }
-
-function formatCtx(c: ContextItem): string {
-  if (typeof c === 'string') return c
-  return `${c.event}: ${c.detail}`
-}
 
 interface NarrativeData {
   topic: string
@@ -38,9 +32,10 @@ interface NarrativeData {
 }
 
 interface SignalData {
-  category: 'market_structure' | 'product' | 'onchain_data'
+  category: string
   text: string
   context?: string
+  structured_context?: { event: string; detail: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string }
   source_url?: string
 }
 
@@ -54,17 +49,57 @@ interface Props {
   knowledgeGrowth?: { week: string; total: number }[]
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  market_structure: '市场结构',
-  product: '产品动态',
-  onchain_data: '链上数据',
-  milestone: '里程碑',
-  data: '数据',
+const CATEGORY_ORDER = ['market_structure', 'product', 'onchain_data', 'regulatory', 'funding', 'milestone', 'data']
+
+/* ── Signal dedup helpers (same as WeeklyReader) ── */
+
+function isUsefulDelta(delta: string | undefined): boolean {
+  if (!delta) return false
+  if (/无.*对比|不同维度|不适用/.test(delta)) return false
+  const pctMatch = delta.match(/(\d+)%/)
+  if (pctMatch && parseInt(pctMatch[1]) > 80) return false
+  return true
 }
 
-const COLOR = {
-  context: '#059669',
-} as const
+function isRedundantContext(signalText: string, ctx: { current_value?: string; delta_label?: string; insight?: string }): boolean {
+  if (ctx.insight) return false
+  if (ctx.current_value && signalText.includes(ctx.current_value.replace(/\s/g, ''))) return true
+  if (ctx.delta_label) {
+    const pct = ctx.delta_label.match(/\d+%/)
+    if (pct && signalText.includes(pct[0])) return true
+  }
+  return false
+}
+
+function SignalContextInline({ ctx }: { ctx: { event: string; detail?: string; current_entity?: string; current_value?: string; delta_label?: string; comparison_basis?: string; insight?: string } }) {
+  const useful = isUsefulDelta(ctx.delta_label)
+  const hasInsight = ctx.insight || ctx.comparison_basis
+
+  return (
+    <div className="mt-1.5 pl-3 text-[12px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+      {hasInsight ? (
+        <>
+          {ctx.comparison_basis && <p>{ctx.comparison_basis}</p>}
+          {ctx.insight && <p style={{ color: 'var(--fg-secondary)' }}>{ctx.insight}</p>}
+        </>
+      ) : (
+        <p>
+          {ctx.event}{ctx.detail ? ` · ${ctx.detail}` : ''}
+          {useful && ctx.current_value && (
+            <span>
+              {' → '}<span style={{ color: 'var(--fg-secondary)' }}>{ctx.current_entity}: {ctx.current_value}</span>
+              {ctx.delta_label && (
+                <span className="font-medium" style={{ color: 'var(--accent)' }}> {ctx.delta_label}</span>
+              )}
+            </span>
+          )}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/* ── Main Component ── */
 
 export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, knowledgeGrowth }: Props) {
   const { depth } = useDepth()
@@ -85,12 +120,11 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
     narratives = parsed.narratives || []
     signals = parsed.signals || []
 
-    // Fallback: V9 format
     if (!oneLiner && parsed.news && Array.isArray(parsed.news)) {
       const news = parsed.news as { simple_zh?: string; what_happened_zh?: string; tags?: string[]; source_url?: string | null }[]
       oneLiner = news.slice(0, 2).map(n => n.simple_zh || '').filter(Boolean).join('; ')
       signals = news.slice(0, 5).map(n => ({
-        category: 'onchain_data' as const,
+        category: 'onchain_data',
         text: n.what_happened_zh || n.simple_zh || '',
         source_url: n.source_url || undefined,
       }))
@@ -104,9 +138,11 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
     if (!grouped[cat]) grouped[cat] = []
     grouped[cat].push(s)
   }
-  const categoryOrder = ['market_structure', 'product', 'onchain_data', 'milestone', 'data']
 
-  // Build a map of entity → factIds for Focus Lens
+  // Signal texts for dedup
+  const signalTexts = useMemo(() => new Set(signals.map(s => s.text)), [signals])
+
+  // Build entity → factIds map for Focus Lens
   const entityFactMap = useMemo(() => {
     if (!allFacts) return new Map<string, string[]>()
     const map = new Map<string, string[]>()
@@ -119,7 +155,6 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
     return map
   }, [allFacts])
 
-  // Collect all unique entity tags for display
   const entityTags = useMemo(() => {
     const tagCounts = new Map<string, number>()
     for (const f of allFacts ?? []) {
@@ -133,7 +168,7 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
       .map(([tag]) => tag)
   }, [allFacts])
 
-  // Focus lens: determine if a fact is highlighted
+  // Focus lens
   const focusedFactIds = useMemo(() => {
     if (!focusedEntity || !allFacts) return null
     const ids = new Set<string>()
@@ -144,7 +179,7 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
     return ids
   }, [focusedEntity, allFacts])
 
-  // Facts search/filter
+  // Facts search/filter (console keeps full browser)
   const allTags = useMemo(() => {
     if (!allFacts) return []
     const tagSet = new Set<string>()
@@ -174,7 +209,7 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
 
   return (
     <div className="space-y-6">
-      {/* ── Section 0: Briefing Strip ── */}
+      {/* ── Briefing Strip ── */}
       <BriefingStrip
         facts={allFacts ?? []}
         oneLiner={oneLiner}
@@ -183,12 +218,12 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
         contradictionCount={snapshotData?.newContradictions}
       />
 
-      {/* ── Section 1: Knowledge Heartbeat ── */}
+      {/* ── Knowledge Heartbeat ── */}
       {knowledgeGrowth && knowledgeGrowth.length > 0 && (
         <KnowledgeHeartbeat data={knowledgeGrowth} />
       )}
 
-      {/* ── Depth Control (sticky desktop top / mobile bottom) ── */}
+      {/* ── Depth Control ── */}
       <div className="depth-control-sticky sticky z-20 py-2 flex items-center justify-between gap-3"
         style={{ top: 'var(--topbar-h)', background: 'var(--bg)' }}>
         <DepthControl />
@@ -197,7 +232,7 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
         </span>
       </div>
 
-      {/* ── Entity Tags (Focus Lens entry point) ── */}
+      {/* ── Entity Tags ── */}
       {entityTags.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {entityTags.map(tag => (
@@ -206,65 +241,47 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
         </div>
       )}
 
-      {/* ── Section 3: Narrative River ── */}
-      <NarrativeRiver narratives={narratives} />
-
-      {/* ── Section 4: Signals (本周精选) ── */}
+      {/* ── 1. 本周亮点 (Signals — no category labels) ── */}
       {signals.length > 0 && (
         <div>
-          <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: COLOR.context }}>
-            本周精选
+          <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
+            本周亮点
           </h2>
-          <div className="rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-            <div className="px-4 py-3 space-y-4">
-              {categoryOrder.filter(cat => grouped[cat]?.length).map(cat => (
-                <div key={cat}>
-                  <p className="text-[14px] font-semibold mb-1.5" style={{ color: 'var(--fg-muted)' }}>
-                    {CATEGORY_LABELS[cat]}:
+          <div className="space-y-1.5">
+            {CATEGORY_ORDER.filter(cat => grouped[cat]?.length).flatMap(cat =>
+              grouped[cat]!.map((s, si) => (
+                <div key={`${cat}-${si}`}>
+                  <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-body)' }}>
+                    · {s.text}
+                    {s.source_url && (
+                      <a href={s.source_url} target="_blank" rel="noopener noreferrer"
+                        className="ml-1 text-[11px] hover:underline" style={{ color: 'var(--info)' }}>
+                        [来源]
+                      </a>
+                    )}
                   </p>
-                  <div className="space-y-1.5">
-                    {grouped[cat]!.map((s, si) => (
-                      <div key={`${cat}-${si}`}>
-                        <p className="text-[14px] leading-relaxed" style={{ color: 'var(--fg-secondary)' }}>
-                          · {s.text}
-                          {s.source_url && (
-                            <a href={s.source_url} target="_blank" rel="noopener noreferrer"
-                              className="ml-1 text-[11px] hover:underline" style={{ color: 'var(--accent)' }}>
-                              [来源]
-                            </a>
-                          )}
-                        </p>
-                        {s.context && (
-                          <div className="depth-layer-1" data-depth={depth}>
-                            <p className="text-[12px] pl-3 mt-0.5" style={{ color: COLOR.context }}>
-                              {s.context}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  {s.structured_context && !isRedundantContext(s.text, s.structured_context) ? (
+                    <SignalContextInline ctx={s.structured_context} />
+                  ) : s.context && !s.structured_context ? (
+                    <p className="text-[12px] mt-0.5 pl-3" style={{ color: 'var(--fg-muted)' }}>
+                      {s.context}
+                    </p>
+                  ) : null}
                 </div>
-              ))}
-            </div>
+              ))
+            )}
           </div>
         </div>
       )}
 
-      {/* ── Footer ── */}
-      {stats && stats.total_facts > 0 && (
-        <div className="text-center py-2">
-          <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
-            数据来源: RSS + SEC EDGAR + DeFiLlama · AI 多源交叉验证
-          </p>
-        </div>
-      )}
+      {/* ── 2. 本周叙事 (NarrativeRiver) ── */}
+      <NarrativeRiver narratives={narratives} />
 
-      {/* ── Section 5: Full Facts (using ContextCard + Focus Lens) ── */}
+      {/* ── 3. 本周速报 (Top 10 facts, then full browser) ── */}
       {allFacts && allFacts.length > 0 && (
         <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
-            全部事实 ({allFacts.length})
+          <h2 className="text-[12px] font-semibold tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>
+            本周速报
           </h2>
 
           {/* Search + tag filter */}
@@ -304,7 +321,7 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
             </div>
           )}
 
-          {/* Facts list using ContextCard with Focus Lens */}
+          {/* Facts list */}
           <div className="space-y-2">
             {filteredFacts.slice(0, 50).map((f) => (
               <ContextCard key={f.id} fact={f} focusClassName={getFocusClass(f.id)} />
@@ -321,12 +338,21 @@ export function ConsoleView({ summaryDetailed, stats, allFacts, snapshotData, kn
         </div>
       )}
 
-      {/* Focus Overlay (floating entity header when focused) */}
+      {/* ── Footer ── */}
+      {stats && stats.total_facts > 0 && (
+        <div className="text-center py-2">
+          <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
+            数据来源: RSS + SEC EDGAR + DeFiLlama · AI 多源交叉验证
+          </p>
+        </div>
+      )}
+
+      {/* Focus Overlay */}
       <FocusOverlay entityInfo={focusedEntity ? {
         factCount: focusedFactIds?.size,
       } : undefined} />
 
-      {/* Console Modal (Cmd+K) — only on Console surface */}
+      {/* Console Modal (Cmd+K) */}
       <ConsoleModal />
     </div>
   )
