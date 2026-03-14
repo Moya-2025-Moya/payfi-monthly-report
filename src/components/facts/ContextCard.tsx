@@ -63,6 +63,21 @@ function VerificationSummary({ fact }: { fact: AtomicFact }) {
 
   if (items.length === 0) return null
 
+  // Derive reason for non-high confidence
+  const confidence = fact.confidence ?? 'high'
+  const reasons: string[] = []
+  if (confidence !== 'high') {
+    if (v1?.status === 'partial') reasons.push('原文仅部分匹配')
+    if (v1?.status !== 'matched' && v1?.status !== 'partial') reasons.push('无原文匹配')
+    if (v2?.cross_validation === 'inconsistent') reasons.push('多源不一致')
+    if (!v2?.source_count || v2.source_count < 2) reasons.push('仅单一来源')
+    if (v3?.sanity === 'anomaly') reasons.push('数据异常')
+    if (v3?.sanity === 'likely_error') reasons.push('疑似错误')
+    if (v4?.anchor_status === 'mismatch') reasons.push('锚定数据不符')
+    if (v5?.temporal_status === 'conflict') reasons.push('时序矛盾')
+    if (reasons.length === 0) reasons.push('综合评分未达高置信阈值')
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {items.map((item, i) => (
@@ -71,9 +86,13 @@ function VerificationSummary({ fact }: { fact: AtomicFact }) {
           [{item.label}:{item.value}]
         </span>
       ))}
-      {fact.confidence && (
-        <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>
-          置信度:<span style={{ color: CONFIDENCE_COLORS[fact.confidence] }}>{CONFIDENCE_LABELS[fact.confidence]}</span>
+      {/* 高置信度不显示标签；中/低显示原因 */}
+      {confidence !== 'high' && (
+        <span className="text-[11px]" style={{ color: CONFIDENCE_COLORS[confidence] }}>
+          置信度:{CONFIDENCE_LABELS[confidence]}
+          <span className="ml-1" style={{ color: 'var(--fg-muted)' }}>
+            ({reasons.join('、')})
+          </span>
         </span>
       )}
     </div>
