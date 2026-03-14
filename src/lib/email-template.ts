@@ -1,8 +1,8 @@
-// StablePulse Weekly Email — V15 Redesign
+// StablePulse Weekly Email — V16 Redesign
 // Design principles:
 //   1. 680px width (modern standard, supported by Gmail/Apple Mail/Outlook 365)
 //   2. Information density curve: dense→deep→scan→light (like breathing)
-//   3. Context blocks are the PROTAGONIST — neutral bg, data speaks for itself
+//   3. Context blocks are the PROTAGONIST — left-border accent, neutral bg
 //   4. Delta values (#ff6d00 orange bold) are the punchline of every comparison
 //   5. Zero CSS3 (no border-radius, no rgba, no box-shadow) for email safety
 //   6. font-size >= 13px (Gmail mobile threshold)
@@ -68,19 +68,11 @@ function esc(text: string): string {
 
 /* ── Category config ── */
 
-const CATEGORY_LABELS: Record<string, string> = {
-  market_structure: '市场',
-  product: '产品',
-  onchain_data: '链上',
-  regulatory: '监管',
-  funding: '融资',
-}
-
 const CATEGORY_ORDER: Array<SignalItem['category']> = [
   'market_structure', 'product', 'onchain_data', 'regulatory', 'funding',
 ]
 
-/* ── Context block — the product's core visual ── */
+/* ── Context block — left-border accent (core visual) ── */
 
 function buildContextBlock(items: NarrativeContext[]): string {
   if (!items || items.length === 0) return ''
@@ -90,32 +82,26 @@ function buildContextBlock(items: NarrativeContext[]): string {
       ? '<tr><td style="padding:6px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #e8e8e8;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>'
       : ''
 
-    // Comparison basis — why these are comparable
-    const basisRow = c.comparison_basis
-      ? `<tr><td style="padding:0 0 2px;font-size:13px;color:#999999;line-height:1.5;">${esc(c.comparison_basis)}</td></tr>`
-      : ''
-
     // Reference event — subdued, providing historical context
     const refRow = `<tr><td style="padding:0 0 2px;font-size:13px;color:#888888;line-height:1.6;">${esc(c.event)}${c.detail ? ` &middot; ${esc(c.detail)}` : ''}</td></tr>`
-
-    const compRow = ''
 
     // Insight — what this comparison reveals
     const insightRow = c.insight
       ? `<tr><td style="padding:3px 0 0;font-size:13px;color:#666666;line-height:1.5;">${esc(c.insight)}</td></tr>`
       : ''
 
-    return `${separator}${basisRow}${refRow}${compRow}${insightRow}`
+    return `${separator}${refRow}${insightRow}`
   }).join('')
 
   return `<tr><td style="padding:10px 0 4px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f5f5f5;">
-      <tr><td style="padding:14px 18px;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+      <td width="3" style="background-color:#c4c4c4;font-size:1px;line-height:1px;">&nbsp;</td>
+      <td style="background-color:#f5f5f5;padding:14px 18px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%">
           ${rows}
         </table>
-      </td></tr>
-    </table>
+      </td>
+    </tr></table>
   </td></tr>`
 }
 
@@ -129,24 +115,24 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
       ? `<td align="right" valign="middle" style="font-size:12px;color:#ff6d00;font-weight:bold;">第${n.weekCount}周</td>`
       : ''
 
-    // Timeline rows — progressive visual weight
+    // Timeline rows — story flow, not form fields
     const timelineRows: string[] = []
 
     if (n.origin) {
-      timelineRows.push(`<tr><td style="padding:3px 0;font-size:14px;color:#999999;line-height:1.6;">
-        <span style="display:inline-block;width:52px;font-size:12px;color:#bbbbbb;font-weight:bold;">起点</span>${esc(n.origin)}
+      timelineRows.push(`<tr><td style="padding:3px 0;font-size:14px;color:#bbbbbb;line-height:1.6;">
+        &mdash; ${esc(n.origin)}
       </td></tr>`)
     }
 
     if (n.last_week && n.last_week !== '首次追踪') {
-      timelineRows.push(`<tr><td style="padding:3px 0;font-size:14px;color:#888888;line-height:1.6;">
-        <span style="display:inline-block;width:52px;font-size:12px;color:#bbbbbb;font-weight:bold;">上周</span>${esc(n.last_week)}
+      timelineRows.push(`<tr><td style="padding:3px 0;font-size:14px;color:#999999;line-height:1.6;">
+        &mdash; ${esc(n.last_week)}
       </td></tr>`)
     }
 
-    // "本周" is the star — larger, bolder, dark
+    // "本周" is the star — largest, boldest, darkest, no prefix
     timelineRows.push(`<tr><td style="padding:6px 0 4px;font-size:16px;color:#1a1a1a;line-height:1.5;font-weight:bold;">
-      <span style="display:inline-block;width:52px;font-size:12px;color:#ff6d00;font-weight:bold;letter-spacing:0.5px;">本周</span>${esc(n.this_week)}
+      ${esc(n.this_week)}
     </td></tr>`)
 
     // Context block (the comparison — protagonist)
@@ -157,22 +143,22 @@ function buildNarratives(narratives: NarrativeForEmail[]): string {
     // Next week — dashed top border, muted
     const nextWeekRow = n.next_week_watch
       ? `<tr><td style="padding:8px 0 0;border-top:1px dashed #e0e0e0;font-size:13px;color:#999999;line-height:1.6;">
-          <span style="display:inline-block;width:70px;font-size:12px;color:#bbbbbb;font-weight:bold;">下周关注</span>${esc(n.next_week_watch)}
+          下周关注: ${esc(n.next_week_watch)}
         </td></tr>`
       : ''
 
     return `<tr><td style="padding:0 0 20px;">
       <!--[if mso]><table cellpadding="0" cellspacing="0" border="1" bordercolor="#e0e0e0" width="100%"><tr><td style="padding:0;"><![endif]-->
-      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e0e0e0;">
+      <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e0e0e0;border-top:2px solid #cccccc;">
         <!-- Card header -->
-        <tr><td style="padding:16px 20px 4px;">
+        <tr><td style="padding:16px 24px 4px;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
             <td style="font-size:17px;font-weight:bold;color:#1a1a1a;line-height:1.3;">${esc(n.topic)}</td>
             ${weekBadge}
           </tr></table>
         </td></tr>
         <!-- Card body -->
-        <tr><td style="padding:4px 20px 16px;">
+        <tr><td style="padding:4px 24px 16px;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             ${timelineRows.join('\n')}
             ${contextHtml}
@@ -209,34 +195,29 @@ function buildSignals(signals: SignalItem[]): string {
 
     let row = `<tr><td style="padding:3px 0;font-size:14px;color:#333333;line-height:1.7;">&middot;&nbsp; ${esc(s.text)}${sourceLink}</td></tr>`
 
-    // Context — prefer structured
+    // Context — prefer structured, with left-border accent
     if (s.structured_context) {
       const sc = s.structured_context
 
+      let ctxHtml = ''
       if (sc.comparison_basis || sc.insight) {
-        // Prefer insight-based rendering
-        let ctxHtml = ''
         if (sc.comparison_basis) ctxHtml += `<span style="color:#999999;font-size:13px;">${esc(sc.comparison_basis)}</span><br>`
         if (sc.insight) ctxHtml += `<span style="color:#666666;font-size:13px;">${esc(sc.insight)}</span>`
         if (!ctxHtml) ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
-
-        row += `<tr><td style="padding:2px 0 6px;">
-          <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-            <td style="background-color:#f5f5f5;padding:10px 14px;font-size:13px;color:#666666;line-height:1.7;">${ctxHtml}</td>
-          </tr></table>
-        </td></tr>`
       } else {
-        const ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
-
-        row += `<tr><td style="padding:2px 0 6px;">
-          <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-            <td style="background-color:#f5f5f5;padding:10px 14px;font-size:13px;color:#666666;line-height:1.7;">${ctxHtml}</td>
-          </tr></table>
-        </td></tr>`
+        ctxHtml = `<span style="color:#888888;font-size:13px;">${esc(sc.event)}${sc.detail ? ` &middot; ${esc(sc.detail)}` : ''}</span>`
       }
+
+      row += `<tr><td style="padding:2px 0 6px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+          <td width="3" style="background-color:#c4c4c4;font-size:1px;line-height:1px;">&nbsp;</td>
+          <td style="background-color:#f5f5f5;padding:10px 14px;font-size:13px;color:#666666;line-height:1.7;">${ctxHtml}</td>
+        </tr></table>
+      </td></tr>`
     } else if (s.context) {
       row += `<tr><td style="padding:2px 0 6px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+          <td width="3" style="background-color:#c4c4c4;font-size:1px;line-height:1px;">&nbsp;</td>
           <td style="background-color:#f5f5f5;padding:8px 14px;font-size:13px;color:#666666;line-height:1.7;">${esc(s.context)}</td>
         </tr></table>
       </td></tr>`
@@ -262,7 +243,7 @@ function buildBriefs(briefs: BriefItem[]): string {
 /* ── Section divider ── */
 
 function divider(): string {
-  return `<tr><td style="padding:8px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #f0f0f0;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>`
+  return `<tr><td style="padding:12px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:1px solid #eeeeee;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>`
 }
 
 /* ── Main generator ── */
@@ -275,11 +256,54 @@ export function generateEmailHTML(data: EmailData): string {
   const signalsHTML = buildSignals(signals)
   const briefsHTML = buildBriefs(briefs ?? [])
 
+  const hasSignals = signals.length > 0
+  const hasNarratives = narratives.length > 0
+  const hasBriefs = (briefs ?? []).length > 0
+
   const coveredCount = narratives.length * 3 + signals.length + (briefs ?? []).length
   const remainingCount = Math.max(0, stats.factCount - coveredCount)
   const ctaText = remainingCount > 3
     ? `另有 ${remainingCount} 条本周事实 →`
     : '查看完整版 →'
+
+  // Build sections with conditional dividers
+  const sections: string[] = []
+
+  if (hasSignals) {
+    sections.push(`<!-- ━━━━━━ 本周精选 (SIGNALS) ━━━━━━ -->
+  <tr><td style="padding:0 28px;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr><td style="padding:0 0 12px;font-size:13px;font-weight:bold;letter-spacing:1.5px;color:#999999;">本周精选</td></tr>
+      ${signalsHTML}
+    </table>
+  </td></tr>`)
+  }
+
+  if (hasNarratives) {
+    if (sections.length > 0) {
+      sections.push(`<tr><td style="padding:0 28px;">${divider().replace(/<tr><td[^>]*>/, '').replace(/<\/td><\/tr>$/, '')}</td></tr>`)
+    }
+    sections.push(`<!-- ━━━━━━ 本周叙事 (NARRATIVES) ━━━━━━ -->
+  <tr><td style="padding:4px 28px 0;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr><td style="padding:0 0 12px;font-size:13px;font-weight:bold;letter-spacing:1.5px;color:#999999;">本周叙事</td></tr>
+      ${narrativesHTML}
+    </table>
+  </td></tr>`)
+  }
+
+  if (hasBriefs) {
+    if (sections.length > 0) {
+      sections.push(`<tr><td style="padding:0 28px;">${divider().replace(/<tr><td[^>]*>/, '').replace(/<\/td><\/tr>$/, '')}</td></tr>`)
+    }
+    sections.push(`<!-- ━━━━━━ 新闻速览 (BRIEFS) ━━━━━━ -->
+  <tr><td style="padding:4px 28px 0;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr><td style="padding:0 0 8px;font-size:13px;font-weight:bold;letter-spacing:1.5px;color:#999999;">新闻速览</td></tr>
+      ${briefsHTML}
+    </table>
+  </td></tr>`)
+  }
 
   return `<!DOCTYPE html>
 <html lang="zh-CN" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -309,7 +333,7 @@ export function generateEmailHTML(data: EmailData): string {
 <table cellpadding="0" cellspacing="0" border="0" width="680" style="max-width:680px;background-color:#ffffff;">
 
   <!-- ━━ Brand header ━━ -->
-  <tr><td style="padding:32px 40px 0;">
+  <tr><td style="padding:32px 28px 0;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
       <td style="font-size:13px;font-weight:bold;letter-spacing:3px;color:#ff6d00;">STABLEPULSE</td>
       <td align="right" style="font-size:13px;color:#aaaaaa;">${esc(weekLabel)}</td>
@@ -317,77 +341,42 @@ export function generateEmailHTML(data: EmailData): string {
   </td></tr>
 
   <!-- Orange accent line -->
-  <tr><td style="padding:14px 40px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:2px solid #ff6d00;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
+  <tr><td style="padding:14px 28px 0;"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td style="border-top:2px solid #ff6d00;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr>
 
   <!-- ━━ One-liner (HERO — largest element in entire email) ━━ -->
-  <tr><td style="padding:24px 40px 6px;font-size:22px;font-weight:bold;color:#111111;line-height:1.35;">
+  <tr><td style="padding:24px 28px 6px;font-size:22px;font-weight:bold;color:#111111;line-height:1.35;">
     ${esc(oneLiner)}
   </td></tr>
 
   <!-- Market line -->
-  ${marketLine ? `<tr><td style="padding:0 40px 20px;font-size:14px;color:#999999;line-height:1.6;">${esc(marketLine)}</td></tr>` : '<tr><td style="padding:0 0 12px;"></td></tr>'}
+  ${marketLine ? `<tr><td style="padding:0 28px 32px;font-size:14px;color:#999999;line-height:1.6;">${esc(marketLine)}</td></tr>` : '<tr><td style="padding:0 0 32px;"></td></tr>'}
 
-  <!-- ━━━━━━ 本周精选 (SIGNALS) ━━━━━━ -->
-  <tr><td style="padding:0 40px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr><td style="padding:0 0 12px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-          <td style="font-size:13px;font-weight:bold;color:#1a1a1a;">本周精选</td>
-          <td align="right" style="font-size:12px;color:#bbbbbb;">${signals.length} 条</td>
-        </tr></table>
-      </td></tr>
-      ${signalsHTML}
-    </table>
-  </td></tr>
-
-  <!-- Divider -->
-  <tr><td style="padding:0 40px;">${divider().replace(/<tr><td[^>]*>/, '').replace(/<\/td><\/tr>$/, '')}</td></tr>
-
-  <!-- ━━━━━━ 本周叙事 (NARRATIVES) ━━━━━━ -->
-  <tr><td style="padding:4px 40px 0;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr><td style="padding:0 0 12px;">
-        <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
-          <td style="font-size:13px;font-weight:bold;color:#1a1a1a;">本周叙事</td>
-          <td align="right" style="font-size:12px;color:#bbbbbb;">${narratives.length} 条</td>
-        </tr></table>
-      </td></tr>
-      ${narrativesHTML}
-    </table>
-  </td></tr>
-
-  ${briefsHTML ? `
-  <!-- Divider -->
-  <tr><td style="padding:0 40px;">${divider().replace(/<tr><td[^>]*>/, '').replace(/<\/td><\/tr>$/, '')}</td></tr>
-
-  <!-- ━━━━━━ 新闻速览 (BRIEFS) ━━━━━━ -->
-  <tr><td style="padding:4px 40px 0;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr><td style="padding:0 0 8px;font-size:13px;font-weight:bold;color:#1a1a1a;">新闻速览</td></tr>
-      ${briefsHTML}
-    </table>
-  </td></tr>` : ''}
+  ${sections.join('\n\n  ')}
 
   <!-- ━━━━━━ CTA ━━━━━━ -->
-  <tr><td style="padding:28px 40px 24px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr><td style="border-top:1px solid #f0f0f0;padding:20px 0 0;" align="center">
-        <a href="${esc(webLink)}" target="_blank" style="font-size:15px;color:#ff6d00;text-decoration:none;font-weight:bold;">${esc(ctaText)}</a>
-      </td></tr>
-    </table>
+  <tr><td style="padding:36px 28px 24px;" align="center">
+    <!--[if mso]>
+    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${esc(webLink)}" style="height:44px;v-text-anchor:middle;width:220px;" arcsize="0%" fillcolor="#ff6d00" stroke="f">
+      <w:anchorlock/>
+      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">${esc(ctaText)}</center>
+    </v:roundrect>
+    <![endif]-->
+    <!--[if !mso]><!-->
+    <a href="${esc(webLink)}" target="_blank" style="display:inline-block;background-color:#ff6d00;color:#ffffff;padding:12px 32px;font-size:15px;font-weight:bold;text-decoration:none;font-family:Arial,sans-serif;">${esc(ctaText)}</a>
+    <!--<![endif]-->
   </td></tr>
 
   <!-- ━━━━━━ Footer ━━━━━━ -->
-  <tr><td style="padding:0 40px 32px;" align="center">
+  <tr><td style="padding:0 28px 32px;" align="center">
     <table cellpadding="0" cellspacing="0" border="0"><tr>
       <td style="font-size:12px;color:#bbbbbb;line-height:1.6;" align="center">
-        基于 ${stats.sourceCount} 个数据源 &middot; ${stats.factCount} 条事实 &middot; AI 交叉验证
+        AI 生成 &middot; 人工审核
       </td>
     </tr></table>
   </td></tr>
 
   <!-- Brand footer (gray bg) -->
-  <tr><td style="background-color:#f7f7f7;padding:20px 40px;">
+  <tr><td style="background-color:#f7f7f7;padding:20px 28px;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr>
         <td style="font-size:11px;color:#cccccc;letter-spacing:2px;">STABLEPULSE</td>
