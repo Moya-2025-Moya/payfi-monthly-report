@@ -266,6 +266,7 @@ ${candidatesText}
 4. metric_value 必须包含数字
 5. date_range 必须包含年份
 6. 如果候选材料不足以形成有意义的对比，返回空数组
+**最重要：对比必须在同一主题维度上。例如，"交易量超越"只能对比其他交易量事件，"融资"只能对比同类融资，"上市"只能对比其他上市。禁止跨主题对比（如用 IPO 对比交易量）。如果候选材料中没有同主题的可比对象，返回空数组。**
 7. current_entity 从当前事实中提取实体名，如无法确定则省略此字段
 8. current_value 必须包含数字，与 metric_value 同维度，如当前事实无明确数值则省略
 9. delta_label 只写客观差值（禁止"显著""惊人"等评价词），格式: "快/慢/大/小/多/少 + 百分比或倍数"
@@ -390,6 +391,45 @@ function validateDelta(comp: ContextComparison): ContextComparison {
   return comp
 }
 
+// ── Quality Gate 2.8: Relevance check ──
+// The comparison must be topically related to the original fact.
+// If they share zero entity/topic overlap, it's a nonsensical comparison.
+
+function extractKeywords(text: string): Set<string> {
+  // Extract entities and key nouns — lowercase, split on common delimiters
+  const words = new Set<string>()
+  // Extract English entities (capitalized words, acronyms)
+  for (const m of text.matchAll(/[A-Z][a-zA-Z0-9]+/g)) words.add(m[0].toLowerCase())
+  // Extract Chinese key terms (2-4 char segments that appear meaningful)
+  const cnTerms = ['交易量', '市值', '融资', '上市', '稳定币', '支付', '结算', '监管',
+    '牌照', '合规', '合作', '收购', '发行', 'IPO', 'TVL', '锁仓', '罚款', '和解',
+    '法案', '估值', '利润', '收入', '用户', '市场份额', '增长', '跨境', '汇款',
+    '银行', '托管', '清算', '借贷', '储备', '审计']
+  const lowerText = text.toLowerCase()
+  for (const term of cnTerms) {
+    if (lowerText.includes(term.toLowerCase())) words.add(term.toLowerCase())
+  }
+  return words
+}
+
+function validateRelevance(comp: ContextComparison, fact: FactInput): boolean {
+  const factKw = extractKeywords(fact.content)
+  const refKw = extractKeywords(`${comp.reference_event} ${comp.metric_label}`)
+
+  // Must share at least 1 keyword
+  let overlap = 0
+  for (const w of refKw) {
+    if (factKw.has(w)) overlap++
+  }
+
+  // Also check entity overlap in tags
+  for (const tag of fact.tags) {
+    if (comp.reference_event.toLowerCase().includes(tag.toLowerCase())) overlap++
+  }
+
+  return overlap >= 1
+}
+
 // ── Quality Gate 3: Insight 校验 (V13 新增) ──
 // Schema 通过不等于有洞察。过滤无价值的对比。
 
@@ -441,8 +481,11 @@ export async function generateFactContext(fact: FactInput): Promise<ContextResul
     // Gate 2.5: Delta numeric validation — recalculate AI-generated deltas
     const deltaValidated = schemaValid.map(c => validateDelta(c))
 
+    // Gate 2.8: Relevance — comparison must be topically related to the fact
+    const relevanceValid = deltaValidated.filter(c => validateRelevance(c, fact))
+
     // Gate 3: Insight 校验
-    const insightValid = deltaValidated.filter(c => validateInsight(c, fact))
+    const insightValid = relevanceValid.filter(c => validateInsight(c, fact))
 
     if (confidence === 'low' && insightValid.length === 0) {
       return { context_lines: [], comparisons: [], event_type: eventType, used_reference_ids: [], confidence: 'low' }
