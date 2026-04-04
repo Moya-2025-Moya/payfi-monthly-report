@@ -230,12 +230,13 @@ export async function GET(request: Request) {
         logger.log(`${verifiedFactIds.length} 条已验证事实`, 'info')
 
         // ── 增量过滤：只处理尚未完成各阶段的事实 ──
-        // B2: 过滤掉已有 fact_entities 记录的事实
+        // B2: 过滤掉已设置 b2_processed=true 的事实（包括无实体的事实）
         const { data: b2DoneRows } = await supabaseAdmin
-          .from('fact_entities')
-          .select('fact_id')
-          .in('fact_id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
-        const b2DoneSet = new Set((b2DoneRows ?? []).map((r: { fact_id: string }) => r.fact_id))
+          .from('atomic_facts')
+          .select('id')
+          .in('id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
+          .eq('b2_processed', true)
+        const b2DoneSet = new Set((b2DoneRows ?? []).map((r: { id: string }) => r.id))
         const b2TodoIds = verifiedFactIds.filter(id => !b2DoneSet.has(id))
 
         // B3: 过滤掉已设置 b3_processed=true 的事实（包括 standalone，即 AI 判断为不属于任何时间线的事实）

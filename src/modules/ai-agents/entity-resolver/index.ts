@@ -176,38 +176,39 @@ export async function resolveEntities(factId: string): Promise<void> {
 
   if (resolved.length === 0) {
     console.log(`[B2] No entities found for fact: ${factId}`)
-    return
-  }
+  } else {
+    console.log(`[B2] Found ${resolved.length} entity reference(s) for fact: ${factId}`)
 
-  console.log(`[B2] Found ${resolved.length} entity reference(s) for fact: ${factId}`)
+    // 4 & 5. For each resolved entity, find or create in DB
+    for (const entity of resolved) {
+      try {
+        let entityId: string
 
-  // 4 & 5. For each resolved entity, find or create in DB
-  for (const entity of resolved) {
-    try {
-      let entityId: string
-
-      if (!entity.is_new) {
-        // Find existing entity by name/alias (case-insensitive)
-        const match = findEntityInDB(entity.name, knownEntities)
-        if (!match) {
-          console.log(`[B2] Known entity not found in DB, skipping: "${entity.name}"`)
-          continue
+        if (!entity.is_new) {
+          // Find existing entity by name/alias (case-insensitive)
+          const match = findEntityInDB(entity.name, knownEntities)
+          if (!match) {
+            console.log(`[B2] Known entity not found in DB, skipping: "${entity.name}"`)
+            continue
+          }
+          entityId = match.id
+        } else {
+          // Create new entity
+          console.log(`[B2] Creating new entity: "${entity.name}" (category: ${entity.category})`)
+          entityId = await createEntity(entity.name, entity.category)
         }
-        entityId = match.id
-      } else {
-        // Create new entity
-        console.log(`[B2] Creating new entity: "${entity.name}" (category: ${entity.category})`)
-        entityId = await createEntity(entity.name, entity.category)
-      }
 
-      // 6. Insert into fact_entities, skip duplicates
-      await upsertFactEntity(factId, entityId, entity.role)
-      console.log(`[B2] Linked entity "${entity.name}" (role: ${entity.role}) to fact: ${factId}`)
-    } catch (err) {
-      console.log(`[B2] Error processing entity "${entity.name}" for fact ${factId}: ${err instanceof Error ? err.message : String(err)}`)
+        // 6. Insert into fact_entities, skip duplicates
+        await upsertFactEntity(factId, entityId, entity.role)
+        console.log(`[B2] Linked entity "${entity.name}" (role: ${entity.role}) to fact: ${factId}`)
+      } catch (err) {
+        console.log(`[B2] Error processing entity "${entity.name}" for fact ${factId}: ${err instanceof Error ? err.message : String(err)}`)
+      }
     }
   }
 
+  // Mark as B2-processed regardless of outcome (prevents reprocessing facts with no entities)
+  await supabaseAdmin.from('atomic_facts').update({ b2_processed: true }).eq('id', factId)
   console.log(`[B2] Done resolving entities for fact: ${factId}`)
 }
 
@@ -267,29 +268,31 @@ async function resolveEntitiesWithCache(factId: string, knownEntities: EntityRow
   const resolved = await callEntityResolver(factContent, knownEntities)
   if (resolved.length === 0) {
     console.log(`[B2] No entities found for fact: ${factId}`)
-    return
-  }
+  } else {
+    console.log(`[B2] Found ${resolved.length} entity reference(s) for fact: ${factId}`)
 
-  console.log(`[B2] Found ${resolved.length} entity reference(s) for fact: ${factId}`)
-
-  for (const entity of resolved) {
-    try {
-      let entityId: string
-      if (!entity.is_new) {
-        const match = findEntityInDB(entity.name, knownEntities)
-        if (!match) {
-          console.log(`[B2] Known entity not found in DB, skipping: "${entity.name}"`)
-          continue
+    for (const entity of resolved) {
+      try {
+        let entityId: string
+        if (!entity.is_new) {
+          const match = findEntityInDB(entity.name, knownEntities)
+          if (!match) {
+            console.log(`[B2] Known entity not found in DB, skipping: "${entity.name}"`)
+            continue
+          }
+          entityId = match.id
+        } else {
+          console.log(`[B2] Creating new entity: "${entity.name}" (category: ${entity.category})`)
+          entityId = await createEntity(entity.name, entity.category)
         }
-        entityId = match.id
-      } else {
-        console.log(`[B2] Creating new entity: "${entity.name}" (category: ${entity.category})`)
-        entityId = await createEntity(entity.name, entity.category)
+        await upsertFactEntity(factId, entityId, entity.role)
+        console.log(`[B2] Linked entity "${entity.name}" (role: ${entity.role}) to fact: ${factId}`)
+      } catch (err) {
+        console.log(`[B2] Error processing entity "${entity.name}" for fact ${factId}: ${err instanceof Error ? err.message : String(err)}`)
       }
-      await upsertFactEntity(factId, entityId, entity.role)
-      console.log(`[B2] Linked entity "${entity.name}" (role: ${entity.role}) to fact: ${factId}`)
-    } catch (err) {
-      console.log(`[B2] Error processing entity "${entity.name}" for fact ${factId}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
+
+  // Mark as B2-processed regardless of outcome (prevents reprocessing facts with no entities)
+  await supabaseAdmin.from('atomic_facts').update({ b2_processed: true }).eq('id', factId)
 }
