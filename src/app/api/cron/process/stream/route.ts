@@ -238,12 +238,13 @@ export async function GET(request: Request) {
         const b2DoneSet = new Set((b2DoneRows ?? []).map((r: { fact_id: string }) => r.fact_id))
         const b2TodoIds = verifiedFactIds.filter(id => !b2DoneSet.has(id))
 
-        // B3: 过滤掉已有 timeline_facts 记录的事实
+        // B3: 过滤掉已设置 b3_processed=true 的事实（包括 standalone，即 AI 判断为不属于任何时间线的事实）
         const { data: b3DoneRows } = await supabaseAdmin
-          .from('timeline_facts')
-          .select('fact_id')
-          .in('fact_id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
-        const b3DoneSet = new Set((b3DoneRows ?? []).map((r: { fact_id: string }) => r.fact_id))
+          .from('atomic_facts')
+          .select('id')
+          .in('id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
+          .eq('b3_processed', true)
+        const b3DoneSet = new Set((b3DoneRows ?? []).map((r: { id: string }) => r.id))
         const b3TodoIds = verifiedFactIds.filter(id => !b3DoneSet.has(id))
 
         // B4: 过滤掉已作为 fact_id_a 检查过的事实

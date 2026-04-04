@@ -288,6 +288,13 @@ export async function mergeTimeline(
     }
   }
 
+  // Mark as B3-processed regardless of outcome (assign/create/none)
+  // This prevents standalone facts from being reprocessed on every pipeline run
+  await supabaseAdmin
+    .from('atomic_facts')
+    .update({ b3_processed: true })
+    .eq('id', factId)
+
   return { action: aiResult.action, timelineId: resolvedTimelineId }
 }
 
