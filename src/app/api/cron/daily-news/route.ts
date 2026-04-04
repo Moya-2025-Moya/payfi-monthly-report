@@ -12,6 +12,13 @@ export async function GET(request: Request) {
   const authError = verifyAdminToken(request)
   if (authError) return authError
 
+  // Skip on Monday — weekly report runs instead (UTC 01:00 Mon = same slot)
+  const dayOfWeek = new Date().getUTCDay() // 0=Sun, 1=Mon
+  if (dayOfWeek === 1) {
+    console.log('[Cron] Daily news: skipping Monday (weekly report day)')
+    return NextResponse.json({ status: 'skipped', reason: 'monday' })
+  }
+
   try {
     await sendDailyNewsTelegram()
     console.log('[Cron] Daily news sent')
