@@ -1,51 +1,78 @@
 // Telegram runtime config — DB-first, env-var fallback
 //
-// Priority:
-//   1. app_settings table (editable from admin UI)
-//   2. Environment variables (TELEGRAM_CHAT_ID, TELEGRAM_THREAD_CN, TELEGRAM_THREAD_EN)
-//
+// Channels are stored as a JSON array in app_settings key "telegram_channels".
 // TELEGRAM_BOT_TOKEN is always read from env (secret, never stored in DB).
 
 import { supabaseAdmin } from '@/db/client'
 import { SOURCES } from '@/config/sources'
 
-export interface TelegramConfig {
-  botToken: string
-  chatId: string
-  threadCn: number | undefined
-  threadEn: number | undefined
+export interface TelegramChannel {
+  id: string           // client-generated uuid
+  name: string         // display name, e.g. "StablePulse CN"
+  chatId: string       // Telegram supergroup chat_id (negative number as string)
+  threadCn: number | undefined  // message_thread_id for CN topic
+  threadEn: number | undefined  // message_thread_id for EN topic
 }
 
-export async function getTelegramConfig(): Promise<TelegramConfig> {
-  // Bot token is always from env
-  const botToken = SOURCES.telegram.botToken
+export function getTelegramBotToken(): string {
+  return SOURCES.telegram.botToken
+}
 
-  // Try DB first for the rest
-  let dbChatId: string | undefined
-  let dbThreadCn: number | undefined
-  let dbThreadEn: number | undefined
+export async function getTelegramChannels(): Promise<TelegramChannel[]> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'telegram_channels')
+      .single()
 
+    if (data?.value) {
+      const parsed = JSON.parse(data.value as string)
+      if (Array.isArray(parsed)) return parsed as TelegramChannel[]
+    }
+  } catch {
+    // table may not exist or no channels saved yet
+  }
+
+  // Fallback: build single channel from env vars / legacy flat keys
   try {
     const { data } = await supabaseAdmin
       .from('app_settings')
       .select('key, value')
       .in('key', ['telegram_chat_id', 'telegram_thread_cn', 'telegram_thread_en'])
 
-    for (const row of data ?? []) {
-      const key = row.key as string
-      const val = row.value as string
-      if (key === 'telegram_chat_id') dbChatId = val
-      else if (key === 'telegram_thread_cn' && val) dbThreadCn = Number(val)
-      else if (key === 'telegram_thread_en' && val) dbThreadEn = Number(val)
-    }
-  } catch {
-    // app_settings table may not exist yet — fall through to env vars
-  }
+    let chatId = ''
+    let threadCn: number | undefined
+    let threadEn: number | undefined
 
-  return {
-    botToken,
-    chatId:   dbChatId   ?? SOURCES.telegram.chatId,
-    threadCn: dbThreadCn ?? SOURCES.telegram.threadCn,
-    threadEn: dbThreadEn ?? SOURCES.telegram.threadEn,
-  }
+    for (const row of data ?? []) {
+      if (row.key === 'telegram_chat_id') chatId = row.value as string
+      else if (row.key === 'telegram_thread_cn' && row.value) threadCn = Number(row.value)
+      else if (row.key === 'telegram_thread_en' && row.value) threadEn = Number(row.value)
+    }
+
+    if (chatId) {
+      return [{ id: 'legacy', name: 'Default', chatId, threadCn, threadEn }]
+    }
+  } catch { /* ignore */ }
+
+  // Final fallback: env vars
+  const chatId = SOURCES.telegram.chatId
+  if (!chatId) return []
+  return [{
+    id: 'env',
+    name: 'Default',
+    chatId,
+    threadCn: SOURCES.telegram.threadCn,
+    threadEn: SOURCES.telegram.threadEn,
+  }]
+}
+
+export async function saveTelegramChannels(channels: TelegramChannel[]): Promise<void> {
+  await supabaseAdmin
+    .from('app_settings')
+    .upsert(
+      { key: 'telegram_channels', value: JSON.stringify(channels), updated_at: new Date().toISOString() },
+      { onConflict: 'key' }
+    )
 }

@@ -10,7 +10,7 @@
 
 import { supabaseAdmin } from '@/db/client'
 import { callHaikuJSON } from '@/lib/ai-client'
-import { getTelegramConfig } from '@/lib/telegram-config'
+import { getTelegramBotToken, getTelegramChannels } from '@/lib/telegram-config'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,13 +46,12 @@ interface WeeklyAIResult {
 
 // ─── Core send ────────────────────────────────────────────────────────────────
 
-async function sendToThread(text: string, threadId?: number): Promise<void> {
-  const { botToken, chatId } = await getTelegramConfig()
-  if (!botToken || !chatId) {
-    console.log('[Telegram] not configured, skipping')
-    return
-  }
-
+async function sendToThread(
+  botToken: string,
+  chatId: string,
+  text: string,
+  threadId?: number,
+): Promise<void> {
   const body: Record<string, unknown> = {
     chat_id: chatId,
     text,
@@ -71,8 +70,6 @@ async function sendToThread(text: string, threadId?: number): Promise<void> {
     const err = await res.text()
     throw new Error(`Telegram API error ${res.status}: ${err}`)
   }
-
-  console.log('[Telegram] Message sent' + (threadId !== undefined ? ` to thread ${threadId}` : ''))
 }
 
 // ─── HTML escaping ────────────────────────────────────────────────────────────
@@ -196,7 +193,15 @@ function buildDailyMessage(facts: FactRow[], lang: 'cn' | 'en'): string {
 }
 
 export async function sendDailyNewsTelegram(): Promise<void> {
-  const { threadCn, threadEn } = await getTelegramConfig()
+  const [botToken, channels] = await Promise.all([
+    getTelegramBotToken(),
+    getTelegramChannels(),
+  ])
+
+  if (!botToken || channels.length === 0) {
+    console.log('[Telegram] Daily: not configured, skipping')
+    return
+  }
 
   const facts = await fetchYesterdayFacts()
   console.log(`[Telegram] Daily: ${facts.length} facts from yesterday's pipeline`)
@@ -212,16 +217,17 @@ export async function sendDailyNewsTelegram(): Promise<void> {
   const msgCn = buildDailyMessage(top, 'cn')
   const msgEn = buildDailyMessage(top, 'en')
 
-  const results = await Promise.allSettled([
-    threadCn !== undefined ? sendToThread(msgCn, threadCn) : Promise.resolve(),
-    threadEn !== undefined ? sendToThread(msgEn, threadEn) : Promise.resolve(),
-  ])
-
-  results.forEach((r, i) => {
-    if (r.status === 'rejected') {
-      console.error(`[Telegram] Daily send failed (thread ${i === 0 ? 'CN' : 'EN'}):`, r.reason)
-    }
-  })
+  for (const ch of channels) {
+    const sends = await Promise.allSettled([
+      ch.threadCn !== undefined ? sendToThread(botToken, ch.chatId, msgCn, ch.threadCn) : Promise.resolve(),
+      ch.threadEn !== undefined ? sendToThread(botToken, ch.chatId, msgEn, ch.threadEn) : Promise.resolve(),
+    ])
+    sends.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        console.error(`[Telegram] Daily "${ch.name}" ${i === 0 ? 'CN' : 'EN'} failed:`, r.reason)
+      }
+    })
+  }
 }
 
 // ─── Weekly ───────────────────────────────────────────────────────────────────
@@ -470,7 +476,15 @@ function buildWeeklyMessage(
 }
 
 export async function sendWeeklyNewsTelegram(weekNumber: string): Promise<void> {
-  const { threadCn, threadEn } = await getTelegramConfig()
+  const [botToken, channels] = await Promise.all([
+    getTelegramBotToken(),
+    getTelegramChannels(),
+  ])
+
+  if (!botToken || channels.length === 0) {
+    console.log('[Telegram] Weekly: not configured, skipping')
+    return
+  }
 
   const [facts, narratives, stats] = await Promise.all([
     fetchWeeklyFacts(weekNumber),
@@ -493,16 +507,17 @@ export async function sendWeeklyNewsTelegram(weekNumber: string): Promise<void> 
   const msgCn = buildWeeklyMessage(aiContent, facts, stats, 'cn', weekNumber, dateRange)
   const msgEn = buildWeeklyMessage(aiContent, facts, stats, 'en', weekNumber, dateRange)
 
-  const results = await Promise.allSettled([
-    threadCn !== undefined ? sendToThread(msgCn, threadCn) : Promise.resolve(),
-    threadEn !== undefined ? sendToThread(msgEn, threadEn) : Promise.resolve(),
-  ])
-
-  results.forEach((r, i) => {
-    if (r.status === 'rejected') {
-      console.error(`[Telegram] Weekly send failed (thread ${i === 0 ? 'CN' : 'EN'}):`, r.reason)
-    }
-  })
+  for (const ch of channels) {
+    const sends = await Promise.allSettled([
+      ch.threadCn !== undefined ? sendToThread(botToken, ch.chatId, msgCn, ch.threadCn) : Promise.resolve(),
+      ch.threadEn !== undefined ? sendToThread(botToken, ch.chatId, msgEn, ch.threadEn) : Promise.resolve(),
+    ])
+    sends.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        console.error(`[Telegram] Weekly "${ch.name}" ${i === 0 ? 'CN' : 'EN'} failed:`, r.reason)
+      }
+    })
+  }
 
   console.log(`[Telegram] Weekly sent for ${weekNumber}`)
 }
@@ -510,7 +525,18 @@ export async function sendWeeklyNewsTelegram(weekNumber: string): Promise<void> 
 // ─── Pipeline alert (no thread — goes to group main) ─────────────────────────
 
 export async function sendPipelineAlert(pipelineType: string, error: string): Promise<void> {
-  await sendToThread(
-    `<b>⚠️ Pipeline Failed</b>\n\nType: ${esc(pipelineType)}\nError: ${esc(error)}`,
-  )
+  const [botToken, channels] = await Promise.all([
+    getTelegramBotToken(),
+    getTelegramChannels(),
+  ])
+  if (!botToken || channels.length === 0) return
+
+  const text = `<b>⚠️ Pipeline Failed</b>\n\nType: ${esc(pipelineType)}\nError: ${esc(error)}`
+  for (const ch of channels) {
+    try {
+      await sendToThread(botToken, ch.chatId, text)
+    } catch (err) {
+      console.error(`[Telegram] Alert to "${ch.name}" failed:`, err)
+    }
+  }
 }

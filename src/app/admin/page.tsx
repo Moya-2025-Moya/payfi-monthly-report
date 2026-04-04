@@ -649,36 +649,85 @@ function SubscribersTab() {
   const [newEmail, setNewEmail] = useState('')
   const [adding, setAdding] = useState(false)
 
-  // Telegram config state
-  const [tgValues, setTgValues] = useState({ telegram_chat_id: '', telegram_thread_cn: '', telegram_thread_en: '' })
+  // Telegram multi-channel state
+  interface TgChannel { id: string; name: string; chatId: string; threadCn: string; threadEn: string }
+  const [tgChannels, setTgChannels] = useState<TgChannel[]>([])
   const [tgLoading, setTgLoading] = useState(true)
   const [tgSaving, setTgSaving] = useState(false)
   const [tgSaveMsg, setTgSaveMsg] = useState('')
   const [tgTestState, setTgTestState] = useState<Record<string, string>>({})
+  const [tgSendState, setTgSendState] = useState<{ daily: string; weekly: string; weekInput: string }>({
+    daily: '', weekly: '', weekInput: '',
+  })
 
   useEffect(() => {
     adminFetch('/api/admin/settings')
       .then(r => r.json())
       .then((data: Record<string, string>) => {
-        setTgValues({
-          telegram_chat_id: data.telegram_chat_id ?? '',
-          telegram_thread_cn: data.telegram_thread_cn ?? '',
-          telegram_thread_en: data.telegram_thread_en ?? '',
-        })
+        if (data.telegram_channels) {
+          try {
+            const parsed = JSON.parse(data.telegram_channels)
+            if (Array.isArray(parsed)) {
+              setTgChannels(parsed.map((ch: { id: string; name: string; chatId: string; threadCn?: number; threadEn?: number }) => ({
+                id: ch.id,
+                name: ch.name ?? '',
+                chatId: ch.chatId ?? '',
+                threadCn: ch.threadCn !== undefined ? String(ch.threadCn) : '',
+                threadEn: ch.threadEn !== undefined ? String(ch.threadEn) : '',
+              })))
+              return
+            }
+          } catch { /* ignore */ }
+        }
+        // Legacy fallback: build one channel from flat keys
+        if (data.telegram_chat_id) {
+          setTgChannels([{
+            id: 'legacy',
+            name: 'Default',
+            chatId: data.telegram_chat_id ?? '',
+            threadCn: data.telegram_thread_cn ?? '',
+            threadEn: data.telegram_thread_en ?? '',
+          }])
+        }
       })
       .catch(() => {})
       .finally(() => setTgLoading(false))
   }, [])
+
+  function addChannel() {
+    setTgChannels(prev => [...prev, {
+      id: `ch_${Date.now()}`,
+      name: '',
+      chatId: '',
+      threadCn: '',
+      threadEn: '',
+    }])
+  }
+
+  function removeChannel(id: string) {
+    setTgChannels(prev => prev.filter(ch => ch.id !== id))
+  }
+
+  function updateChannel(id: string, field: keyof TgChannel, value: string) {
+    setTgChannels(prev => prev.map(ch => ch.id === id ? { ...ch, [field]: value } : ch))
+  }
 
   async function handleTgSave(e: React.FormEvent) {
     e.preventDefault()
     setTgSaving(true)
     setTgSaveMsg('')
     try {
+      const serialized = tgChannels.map(ch => ({
+        id: ch.id,
+        name: ch.name,
+        chatId: ch.chatId,
+        threadCn: ch.threadCn ? Number(ch.threadCn) : undefined,
+        threadEn: ch.threadEn ? Number(ch.threadEn) : undefined,
+      }))
       const res = await adminFetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tgValues),
+        body: JSON.stringify({ telegram_channels: JSON.stringify(serialized) }),
       })
       setTgSaveMsg(res.ok ? '已保存' : '保存失败')
     } catch { setTgSaveMsg('保存失败') }
@@ -688,20 +737,55 @@ function SubscribersTab() {
     }
   }
 
-  async function handleTgTest(thread: 'main' | 'cn' | 'en') {
-    setTgTestState(prev => ({ ...prev, [thread]: '发送中...' }))
+  async function handleTgTest(channelId: string, threadType: 'main' | 'cn' | 'en') {
+    const ch = tgChannels.find(c => c.id === channelId)
+    if (!ch?.chatId) return
+    const key = `${channelId}_${threadType}`
+    setTgTestState(prev => ({ ...prev, [key]: '发送中...' }))
     try {
+      const threadId = threadType === 'cn' && ch.threadCn ? Number(ch.threadCn)
+        : threadType === 'en' && ch.threadEn ? Number(ch.threadEn)
+        : undefined
       const res = await adminFetch('/api/admin/settings/test-telegram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ thread }),
+        body: JSON.stringify({ chatId: ch.chatId, threadId, label: ch.name }),
       })
       const data = await res.json()
-      setTgTestState(prev => ({ ...prev, [thread]: res.ok ? '✓ 已发送' : `✗ ${data.error ?? '失败'}` }))
+      setTgTestState(prev => ({ ...prev, [key]: res.ok ? '✓ 已发送' : `✗ ${data.error ?? '失败'}` }))
     } catch (err) {
-      setTgTestState(prev => ({ ...prev, [thread]: `✗ ${err instanceof Error ? err.message : '失败'}` }))
+      setTgTestState(prev => ({ ...prev, [key]: `✗ ${err instanceof Error ? err.message : '失败'}` }))
     }
-    setTimeout(() => setTgTestState(prev => { const n = { ...prev }; delete n[thread]; return n }), 4000)
+    setTimeout(() => setTgTestState(prev => { const n = { ...prev }; delete n[key]; return n }), 4000)
+  }
+
+  async function handleSendDaily() {
+    setTgSendState(prev => ({ ...prev, daily: '发送中...' }))
+    try {
+      const res = await adminFetch('/api/admin/settings/test-daily', { method: 'POST' })
+      const data = await res.json()
+      setTgSendState(prev => ({ ...prev, daily: res.ok ? '✓ 日报已发送' : `✗ ${data.error ?? '失败'}` }))
+    } catch (err) {
+      setTgSendState(prev => ({ ...prev, daily: `✗ ${err instanceof Error ? err.message : '失败'}` }))
+    }
+    setTimeout(() => setTgSendState(prev => ({ ...prev, daily: '' })), 5000)
+  }
+
+  async function handleSendWeekly() {
+    setTgSendState(prev => ({ ...prev, weekly: '发送中...' }))
+    try {
+      const body = tgSendState.weekInput ? { week: tgSendState.weekInput } : {}
+      const res = await adminFetch('/api/admin/settings/test-weekly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      setTgSendState(prev => ({ ...prev, weekly: res.ok ? `✓ 周报已发送 (${data.week})` : `✗ ${data.error ?? '失败'}` }))
+    } catch (err) {
+      setTgSendState(prev => ({ ...prev, weekly: `✗ ${err instanceof Error ? err.message : '失败'}` }))
+    }
+    setTimeout(() => setTgSendState(prev => ({ ...prev, weekly: '' })), 5000)
   }
 
   const load = useCallback(async () => {
@@ -801,39 +885,102 @@ function SubscribersTab() {
         )}
       </Card>
 
-      {/* Telegram config */}
+      {/* Telegram multi-channel config */}
       <Card>
-        <p className="text-[13px] font-semibold mb-1" style={{ color: 'var(--fg-title)' }}>Telegram 配置</p>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>Telegram Channels</p>
+          <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>Bot Token 在 Vercel 环境变量中设置</span>
+        </div>
         <p className="text-[12px] mb-4" style={{ color: 'var(--fg-muted)' }}>
-          Chat ID 和 Thread ID 存在数据库，修改后无需重新部署。Bot Token 在 Vercel 环境变量中设置。
+          配置多个 Supergroup，日报和周报会发送到所有 Channel。每个 Channel 可独立测试。
         </p>
         {tgLoading ? (
           <p className="text-[12px]" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
         ) : (
-          <form onSubmit={handleTgSave} className="space-y-3">
-            {([
-              { key: 'telegram_chat_id' as const, label: 'Chat ID', placeholder: '-1001234567890', hint: 'Supergroup 的 chat_id（负数）' },
-              { key: 'telegram_thread_cn' as const, label: '中文 Thread ID', placeholder: '4', hint: '中文 topic 的 message_thread_id' },
-              { key: 'telegram_thread_en' as const, label: 'English Thread ID', placeholder: '6', hint: 'English topic 的 message_thread_id' },
-            ]).map(f => (
-              <div key={f.key}>
-                <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--fg-secondary)' }}>{f.label}</label>
-                <input
-                  type="text"
-                  value={tgValues[f.key]}
-                  onChange={e => setTgValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  placeholder={f.placeholder}
-                  className="w-full px-3 py-1.5 rounded-md border text-[13px] outline-none font-mono"
-                  style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }}
-                />
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{f.hint}</p>
-              </div>
-            ))}
-            <div className="flex items-center gap-3 pt-1">
+          <form onSubmit={handleTgSave}>
+            <div className="space-y-4">
+              {tgChannels.length === 0 && (
+                <p className="text-[12px] py-2" style={{ color: 'var(--fg-muted)' }}>暂无配置的 Channel。点击下方「添加 Channel」开始。</p>
+              )}
+              {tgChannels.map((ch, idx) => (
+                <div key={ch.id} className="rounded-md border p-3 space-y-2" style={{ borderColor: 'var(--border)' }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-medium" style={{ color: 'var(--fg-secondary)' }}>Channel {idx + 1}</span>
+                    <button type="button" onClick={() => removeChannel(ch.id)}
+                      className="text-[11px] px-2 py-0.5 rounded border"
+                      style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
+                      删除
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] mb-0.5" style={{ color: 'var(--fg-muted)' }}>名称</label>
+                      <input type="text" value={ch.name} onChange={e => updateChannel(ch.id, 'name', e.target.value)}
+                        placeholder="e.g. StablePulse CN"
+                        className="w-full px-2 py-1.5 rounded border text-[12px] outline-none"
+                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] mb-0.5" style={{ color: 'var(--fg-muted)' }}>Chat ID</label>
+                      <input type="text" value={ch.chatId} onChange={e => updateChannel(ch.id, 'chatId', e.target.value)}
+                        placeholder="-1001234567890"
+                        className="w-full px-2 py-1.5 rounded border text-[12px] outline-none font-mono"
+                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] mb-0.5" style={{ color: 'var(--fg-muted)' }}>中文 Thread ID</label>
+                      <input type="text" value={ch.threadCn} onChange={e => updateChannel(ch.id, 'threadCn', e.target.value)}
+                        placeholder="15"
+                        className="w-full px-2 py-1.5 rounded border text-[12px] outline-none font-mono"
+                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] mb-0.5" style={{ color: 'var(--fg-muted)' }}>English Thread ID</label>
+                      <input type="text" value={ch.threadEn} onChange={e => updateChannel(ch.id, 'threadEn', e.target.value)}
+                        placeholder="20"
+                        className="w-full px-2 py-1.5 rounded border text-[12px] outline-none font-mono"
+                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
+                    </div>
+                  </div>
+                  {/* Per-channel test buttons */}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {([
+                      { type: 'main' as const, label: '主群' },
+                      { type: 'cn' as const, label: '中文 Topic' },
+                      { type: 'en' as const, label: 'EN Topic' },
+                    ]).map(({ type, label }) => {
+                      const key = `${ch.id}_${type}`
+                      return (
+                        <div key={type} className="flex items-center gap-1.5">
+                          <button type="button"
+                            onClick={() => handleTgTest(ch.id, type)}
+                            disabled={!ch.chatId || !!tgTestState[key]}
+                            className="px-2.5 py-1 rounded text-[11px] border"
+                            style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)', opacity: (!ch.chatId || !!tgTestState[key]) ? 0.5 : 1 }}>
+                            测试 {label}
+                          </button>
+                          {tgTestState[key] && (
+                            <span className="text-[11px]" style={{ color: tgTestState[key]?.startsWith('✓') ? '#16a34a' : '#ef4444' }}>
+                              {tgTestState[key]}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-3 mt-4">
+              <button type="button" onClick={addChannel}
+                className="px-3 py-1.5 rounded-md text-[12px] border"
+                style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)' }}>
+                + 添加 Channel
+              </button>
               <button type="submit" disabled={tgSaving}
-                className="px-4 py-2 rounded-md text-[12px] font-medium"
+                className="px-4 py-1.5 rounded-md text-[12px] font-medium"
                 style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: tgSaving ? 0.6 : 1 }}>
-                {tgSaving ? '保存中...' : '保存'}
+                {tgSaving ? '保存中...' : '保存所有'}
               </button>
               {tgSaveMsg && (
                 <span className="text-[12px]" style={{ color: tgSaveMsg === '已保存' ? '#16a34a' : '#ef4444' }}>
@@ -845,29 +992,47 @@ function SubscribersTab() {
         )}
       </Card>
 
-      {/* Telegram test send */}
+      {/* Test send full digest */}
       <Card>
-        <p className="text-[13px] font-semibold mb-1" style={{ color: 'var(--fg-title)' }}>测试发送</p>
-        <p className="text-[12px] mb-3" style={{ color: 'var(--fg-muted)' }}>保存配置后点击，验证消息能正常发到对应 Topic。</p>
-        <div className="flex flex-wrap gap-3">
-          {([
-            { key: 'main' as const, label: '主群（无 Topic）' },
-            { key: 'cn' as const, label: '中文 Topic' },
-            { key: 'en' as const, label: 'English Topic' },
-          ]).map(({ key, label }) => (
-            <div key={key} className="flex items-center gap-2">
-              <button onClick={() => handleTgTest(key)} disabled={!!tgTestState[key]}
-                className="px-3 py-1.5 rounded-md text-[12px] font-medium border"
-                style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)', opacity: tgTestState[key] ? 0.6 : 1 }}>
-                {label}
-              </button>
-              {tgTestState[key] && (
-                <span className="text-[11px]" style={{ color: tgTestState[key]?.startsWith('✓') ? '#16a34a' : '#ef4444' }}>
-                  {tgTestState[key]}
-                </span>
-              )}
-            </div>
-          ))}
+        <p className="text-[13px] font-semibold mb-1" style={{ color: 'var(--fg-title)' }}>发送测试内容</p>
+        <p className="text-[12px] mb-4" style={{ color: 'var(--fg-muted)' }}>
+          使用真实数据立即发送到所有已配置 Channel。日报取昨天数据，周报取指定周（默认本周）。
+        </p>
+        <div className="space-y-3">
+          {/* Daily test */}
+          <div className="flex items-center gap-3">
+            <button onClick={handleSendDaily} disabled={!!tgSendState.daily}
+              className="px-4 py-1.5 rounded-md text-[12px] font-medium border"
+              style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)', opacity: tgSendState.daily ? 0.6 : 1 }}>
+              {tgSendState.daily === '发送中...' ? '发送中...' : '发送日报'}
+            </button>
+            {tgSendState.daily && tgSendState.daily !== '发送中...' && (
+              <span className="text-[12px]" style={{ color: tgSendState.daily.startsWith('✓') ? '#16a34a' : '#ef4444' }}>
+                {tgSendState.daily}
+              </span>
+            )}
+          </div>
+          {/* Weekly test */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              type="text"
+              value={tgSendState.weekInput}
+              onChange={e => setTgSendState(prev => ({ ...prev, weekInput: e.target.value }))}
+              placeholder="留空=本周，或填 2025-W14"
+              className="px-3 py-1.5 rounded-md border text-[12px] outline-none font-mono w-48"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }}
+            />
+            <button onClick={handleSendWeekly} disabled={!!tgSendState.weekly}
+              className="px-4 py-1.5 rounded-md text-[12px] font-medium border"
+              style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)', opacity: tgSendState.weekly ? 0.6 : 1 }}>
+              {tgSendState.weekly === '发送中...' ? '发送中...' : '发送周报'}
+            </button>
+            {tgSendState.weekly && tgSendState.weekly !== '发送中...' && (
+              <span className="text-[12px]" style={{ color: tgSendState.weekly.startsWith('✓') ? '#16a34a' : '#ef4444' }}>
+                {tgSendState.weekly}
+              </span>
+            )}
+          </div>
         </div>
       </Card>
     </div>
