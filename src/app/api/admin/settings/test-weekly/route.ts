@@ -30,8 +30,11 @@ export async function POST(request: NextRequest) {
   const week = body.week?.trim() || currentISOWeek()
 
   try {
-    await sendWeeklyNewsTelegram(week)
-    return NextResponse.json({ ok: true, week })
+    const result = await sendWeeklyNewsTelegram(week)
+    if (result.skipped) {
+      return NextResponse.json({ ok: false, week, skipped: result.skipped }, { status: 200 })
+    }
+    return NextResponse.json({ ok: true, week, ...result })
   } catch (err) {
     console.error('[Admin] test-weekly failed:', err)
     return NextResponse.json(

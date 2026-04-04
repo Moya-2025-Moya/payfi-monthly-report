@@ -192,23 +192,33 @@ function buildDailyMessage(facts: FactRow[], lang: 'cn' | 'en'): string {
   return [header, '', items, '', footer].join('\n')
 }
 
-export async function sendDailyNewsTelegram(): Promise<void> {
+export interface SendResult {
+  skipped?: string   // reason for skip
+  factCount?: number
+  selected?: number
+  channels?: number
+}
+
+export async function sendDailyNewsTelegram(): Promise<SendResult> {
   const [botToken, channels] = await Promise.all([
     getTelegramBotToken(),
     getTelegramChannels(),
   ])
 
-  if (!botToken || channels.length === 0) {
-    console.log('[Telegram] Daily: not configured, skipping')
-    return
+  if (!botToken) {
+    console.log('[Telegram] Daily: bot token not set, skipping')
+    return { skipped: 'TELEGRAM_BOT_TOKEN not set in environment' }
+  }
+  if (channels.length === 0) {
+    console.log('[Telegram] Daily: no channels configured, skipping')
+    return { skipped: 'No channels configured — add one in Admin → Subscribers → Telegram Channels' }
   }
 
   const facts = await fetchYesterdayFacts()
   console.log(`[Telegram] Daily: ${facts.length} facts from yesterday's pipeline`)
 
   if (facts.length === 0) {
-    console.log('[Telegram] Daily: no facts found, skipping')
-    return
+    return { skipped: 'No verified facts found for yesterday — run Collect + Process first', factCount: 0, channels: channels.length }
   }
 
   const top = await selectTopFacts(facts, 10)
@@ -228,6 +238,8 @@ export async function sendDailyNewsTelegram(): Promise<void> {
       }
     })
   }
+
+  return { factCount: facts.length, selected: top.length, channels: channels.length }
 }
 
 // ─── Weekly ───────────────────────────────────────────────────────────────────
@@ -475,15 +487,17 @@ function buildWeeklyMessage(
   return lines.join('\n')
 }
 
-export async function sendWeeklyNewsTelegram(weekNumber: string): Promise<void> {
+export async function sendWeeklyNewsTelegram(weekNumber: string): Promise<SendResult> {
   const [botToken, channels] = await Promise.all([
     getTelegramBotToken(),
     getTelegramChannels(),
   ])
 
-  if (!botToken || channels.length === 0) {
-    console.log('[Telegram] Weekly: not configured, skipping')
-    return
+  if (!botToken) {
+    return { skipped: 'TELEGRAM_BOT_TOKEN not set in environment' }
+  }
+  if (channels.length === 0) {
+    return { skipped: 'No channels configured — add one in Admin → Subscribers → Telegram Channels' }
   }
 
   const [facts, narratives, stats] = await Promise.all([
@@ -497,8 +511,7 @@ export async function sendWeeklyNewsTelegram(weekNumber: string): Promise<void> 
   )
 
   if (facts.length === 0) {
-    console.log(`[Telegram] Weekly: no facts for ${weekNumber}, skipping`)
-    return
+    return { skipped: `No verified facts found for ${weekNumber} — run Collect + Process first`, factCount: 0, channels: channels.length }
   }
 
   const aiContent = await generateWeeklyAIContent(facts, narratives)
@@ -520,6 +533,7 @@ export async function sendWeeklyNewsTelegram(weekNumber: string): Promise<void> 
   }
 
   console.log(`[Telegram] Weekly sent for ${weekNumber}`)
+  return { factCount: facts.length, channels: channels.length }
 }
 
 // ─── Pipeline alert (no thread — goes to group main) ─────────────────────────

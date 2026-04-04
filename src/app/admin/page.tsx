@@ -764,11 +764,17 @@ function SubscribersTab() {
     try {
       const res = await adminFetch('/api/admin/settings/test-daily', { method: 'POST' })
       const data = await res.json()
-      setTgSendState(prev => ({ ...prev, daily: res.ok ? '✓ 日报已发送' : `✗ ${data.error ?? '失败'}` }))
+      if (!res.ok) {
+        setTgSendState(prev => ({ ...prev, daily: `✗ ${data.error ?? '失败'}` }))
+      } else if (data.skipped) {
+        setTgSendState(prev => ({ ...prev, daily: `⚠ 跳过: ${data.skipped}` }))
+      } else {
+        setTgSendState(prev => ({ ...prev, daily: `✓ 已发送 — ${data.selected} 条新闻 → ${data.channels} 个 Channel` }))
+      }
     } catch (err) {
       setTgSendState(prev => ({ ...prev, daily: `✗ ${err instanceof Error ? err.message : '失败'}` }))
     }
-    setTimeout(() => setTgSendState(prev => ({ ...prev, daily: '' })), 5000)
+    setTimeout(() => setTgSendState(prev => ({ ...prev, daily: '' })), 8000)
   }
 
   async function handleSendWeekly() {
@@ -781,11 +787,17 @@ function SubscribersTab() {
         body: JSON.stringify(body),
       })
       const data = await res.json()
-      setTgSendState(prev => ({ ...prev, weekly: res.ok ? `✓ 周报已发送 (${data.week})` : `✗ ${data.error ?? '失败'}` }))
+      if (!res.ok) {
+        setTgSendState(prev => ({ ...prev, weekly: `✗ ${data.error ?? '失败'}` }))
+      } else if (data.skipped) {
+        setTgSendState(prev => ({ ...prev, weekly: `⚠ 跳过: ${data.skipped}` }))
+      } else {
+        setTgSendState(prev => ({ ...prev, weekly: `✓ 已发送 ${data.week} — ${data.factCount} 条新闻 → ${data.channels} 个 Channel` }))
+      }
     } catch (err) {
       setTgSendState(prev => ({ ...prev, weekly: `✗ ${err instanceof Error ? err.message : '失败'}` }))
     }
-    setTimeout(() => setTgSendState(prev => ({ ...prev, weekly: '' })), 5000)
+    setTimeout(() => setTgSendState(prev => ({ ...prev, weekly: '' })), 8000)
   }
 
   const load = useCallback(async () => {
@@ -1007,7 +1019,7 @@ function SubscribersTab() {
               {tgSendState.daily === '发送中...' ? '发送中...' : '发送日报'}
             </button>
             {tgSendState.daily && tgSendState.daily !== '发送中...' && (
-              <span className="text-[12px]" style={{ color: tgSendState.daily.startsWith('✓') ? '#16a34a' : '#ef4444' }}>
+              <span className="text-[12px]" style={{ color: tgSendState.daily.startsWith('✓') ? '#16a34a' : tgSendState.daily.startsWith('⚠') ? '#d97706' : '#ef4444' }}>
                 {tgSendState.daily}
               </span>
             )}
@@ -1028,7 +1040,7 @@ function SubscribersTab() {
               {tgSendState.weekly === '发送中...' ? '发送中...' : '发送周报'}
             </button>
             {tgSendState.weekly && tgSendState.weekly !== '发送中...' && (
-              <span className="text-[12px]" style={{ color: tgSendState.weekly.startsWith('✓') ? '#16a34a' : '#ef4444' }}>
+              <span className="text-[12px]" style={{ color: tgSendState.weekly.startsWith('✓') ? '#16a34a' : tgSendState.weekly.startsWith('⚠') ? '#d97706' : '#ef4444' }}>
                 {tgSendState.weekly}
               </span>
             )}

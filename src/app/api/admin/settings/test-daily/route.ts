@@ -12,8 +12,11 @@ export async function POST(request: NextRequest) {
   if (authError) return authError
 
   try {
-    await sendDailyNewsTelegram()
-    return NextResponse.json({ ok: true })
+    const result = await sendDailyNewsTelegram()
+    if (result.skipped) {
+      return NextResponse.json({ ok: false, skipped: result.skipped }, { status: 200 })
+    }
+    return NextResponse.json({ ok: true, ...result })
   } catch (err) {
     console.error('[Admin] test-daily failed:', err)
     return NextResponse.json(
