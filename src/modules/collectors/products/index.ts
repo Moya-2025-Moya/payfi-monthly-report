@@ -215,7 +215,7 @@ export async function collectProductUpdates(): Promise<CollectorResult> {
 
   const { error } = await supabaseAdmin
     .from('raw_product_updates')
-    .upsert(deduped, { onConflict: 'source_url' })
+    .upsert(deduped, { onConflict: 'source_url', ignoreDuplicates: true })
 
   if (error) {
     console.error('[products] Upsert failed:', error)

@@ -319,7 +319,7 @@ export async function collectRegulatory(): Promise<CollectorResult> {
 
   const { error } = await supabaseAdmin
     .from('raw_regulatory')
-    .upsert(deduped, { onConflict: 'source_url' })
+    .upsert(deduped, { onConflict: 'source_url', ignoreDuplicates: true })
 
   if (error) {
     console.error('[regulatory] Upsert failed:', error)

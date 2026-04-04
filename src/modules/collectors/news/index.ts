@@ -344,7 +344,7 @@ async function upsertItems(items: CollectedItem[]): Promise<number> {
     const batch = rows.slice(i, i + INSERT_BATCH)
     const { error } = await supabaseAdmin
       .from('raw_news')
-      .upsert(batch, { onConflict: 'source_url' })
+      .upsert(batch, { onConflict: 'source_url', ignoreDuplicates: true })
 
     if (error) {
       console.error(`[A2] 入库批次 ${Math.floor(i / INSERT_BATCH) + 1} 失败:`, error.message)

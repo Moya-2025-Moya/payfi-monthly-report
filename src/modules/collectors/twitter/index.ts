@@ -251,7 +251,7 @@ export async function collectTweets(): Promise<number> {
 
   const { error } = await supabaseAdmin
     .from('raw_tweets')
-    .upsert(tweets, { onConflict: 'source_url' })
+    .upsert(tweets, { onConflict: 'source_url', ignoreDuplicates: true })
 
   if (error) {
     console.error('[twitter] 入库失败:', error.message)
