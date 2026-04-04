@@ -6,9 +6,19 @@ import { NextResponse } from 'next/server'
 // so the backend must accept the same value
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || process.env.NEXT_PUBLIC_ADMIN_TOKEN
 
+// CRON_SECRET is set automatically by Vercel and sent as Bearer token
+// in the Authorization header on every cron invocation.
+const CRON_SECRET = process.env.CRON_SECRET
+
 export function verifyAdminToken(request: Request): NextResponse | null {
   // 开发环境且未配置 token 时跳过鉴权
   if (!ADMIN_TOKEN && process.env.NODE_ENV === 'development') {
+    return null
+  }
+
+  // Accept Vercel cron requests authenticated via CRON_SECRET Bearer token
+  const authHeader = request.headers.get('authorization')
+  if (CRON_SECRET && authHeader === `Bearer ${CRON_SECRET}`) {
     return null
   }
 
