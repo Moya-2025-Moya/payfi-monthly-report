@@ -1,6 +1,6 @@
-// Full-text content extraction from URLs using Mozilla Readability
-// Used by all collectors to fetch article/page body text
-// Dynamic imports to avoid bundling issues on Vercel serverless
+// Full-text content extraction from URLs using Mozilla Readability + linkedom
+// linkedom is a CommonJS-compatible DOM implementation that works on Vercel serverless
+// (jsdom has ESM transitive dependencies that break in Vercel's Node runtime)
 
 const FETCH_TIMEOUT_MS = 15_000
 const MAX_HTML_SIZE = 2_000_000 // 2MB — skip huge pages
@@ -17,7 +17,8 @@ export async function extractContent(
   url: string
 ): Promise<{ title: string; text: string } | null> {
   try {
-    const { JSDOM } = await import('jsdom')
+    // linkedom is CommonJS-compatible; Readability works with any DOM implementation
+    const { parseHTML } = await import('linkedom')
     const { Readability } = await import('@mozilla/readability')
 
     const controller = new AbortController()
@@ -41,8 +42,8 @@ export async function extractContent(
     const html = await res.text()
     if (html.length > MAX_HTML_SIZE) return null
 
-    const dom = new JSDOM(html, { url })
-    const reader = new Readability(dom.window.document)
+    const { document } = parseHTML(html)
+    const reader = new Readability(document as unknown as Document)
     const article = reader.parse()
 
     if (!article?.textContent || article.textContent.trim().length < 50) {

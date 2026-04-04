@@ -160,7 +160,7 @@ export async function GET(request: Request) {
           const facts = VERIFY_LIMIT < Infinity ? allPending.slice(0, VERIFY_LIMIT) : allPending
           logger.log(`  待验证事实: ${facts.length} 条${isTest && allPending.length > facts.length ? ` (测试模式，跳过 ${allPending.length - facts.length} 条)` : ''}`, 'info')
 
-          const BATCH = 20
+          const BATCH = 5 // 5 facts × 5 validators = 25 max, but global limiter caps at 6 actual concurrent
           for (let i = 0; i < facts.length; i += BATCH) {
             if (isApproachingTimeout()) throw new PipelineTimeoutError(2)
             const batch = facts.slice(i, i + BATCH)

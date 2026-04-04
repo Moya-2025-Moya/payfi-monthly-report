@@ -87,7 +87,7 @@ export async function translateFactsBatch(
   onCancelCheck?: () => Promise<void>,
   onProgress?: (current: number, total: number) => void
 ): Promise<{ translated: number; skipped: number; failed: number }> {
-  const BATCH_SIZE = 10
+  const BATCH_SIZE = 5
   let translated = 0
   let failed = 0
 

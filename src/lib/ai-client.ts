@@ -9,6 +9,29 @@ const MAX_RETRIES = 3
 const BASE_DELAY_MS = 3_000 // 3s base delay for rate limits
 const FETCH_TIMEOUT_MS = 60_000 // 60s per request timeout
 
+// Global concurrency limiter — prevents thundering herd on Anthropic's 50k token/min limit.
+// All callAI() calls share this semaphore regardless of which module calls them.
+const MAX_CONCURRENT_AI_CALLS = 6
+let activeAICalls = 0
+const aiCallQueue: Array<() => void> = []
+
+function acquireAISlot(): Promise<void> {
+  if (activeAICalls < MAX_CONCURRENT_AI_CALLS) {
+    activeAICalls++
+    return Promise.resolve()
+  }
+  return new Promise(resolve => { aiCallQueue.push(resolve) })
+}
+
+function releaseAISlot(): void {
+  const next = aiCallQueue.shift()
+  if (next) {
+    next() // passes slot directly to next waiter — activeAICalls stays same
+  } else {
+    activeAICalls--
+  }
+}
+
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -44,6 +67,8 @@ export async function callAI(
   }
   if (system) body.system = system
 
+  await acquireAISlot()
+  try {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
@@ -98,6 +123,9 @@ export async function callAI(
   }
 
   throw new Error('Exhausted retries — should not reach here')
+  } finally {
+    releaseAISlot()
+  }
 }
 
 // 便捷方法: 单轮调用 Haiku (大部分 Agent 用)

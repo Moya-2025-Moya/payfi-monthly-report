@@ -214,7 +214,7 @@ export async function resolveEntities(factId: string): Promise<void> {
 // ─── Batch version: resolves entities for multiple facts with per-fact error isolation ───
 
 // 并行批量大小：B2 会创建新实体，后续批次需看到新实体，所以用小批量
-const B2_CONCURRENCY = 15
+const B2_CONCURRENCY = 5
 
 export async function resolveEntitiesBatch(
   factIds: string[],

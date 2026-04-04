@@ -47,7 +47,7 @@ const RAW_TABLES = [
   'raw_regulatory',
 ] as const
 
-const VALIDATION_BATCH_SIZE = 20
+const VALIDATION_BATCH_SIZE = 5 // 降低：5 facts × 5 validators = 25 并发，配合全局限制 6 实际上只有 6
 
 const ENTITY_CATEGORIES: EntityCategory[] = [
   'stablecoin_issuer',

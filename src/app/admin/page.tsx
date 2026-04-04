@@ -245,6 +245,7 @@ function PipelineTab() {
   const [resetStatus, setResetStatus] = useState('')
   const [activeStep, setActiveStep] = useState<string | null>(null)
   const [testMode, setTestMode] = useState(false)
+  const [dailyPhase, setDailyPhase] = useState<'idle' | 'collecting' | 'processing'>('idle')
   // Per-step latest run info (from DB)
   const [stepRuns, setStepRuns] = useState<Record<string, PipelineRunData | null>>({})
   const [loadingRuns, setLoadingRuns] = useState(true)
@@ -343,6 +344,52 @@ function PipelineTab() {
   // Cleanup on unmount
   useEffect(() => () => stopPolling(), [])
 
+  async function handleDailyCron() {
+    if (running || runningStep !== null || dailyPhase !== 'idle') return
+    setDailyPhase('collecting')
+    setActiveStep('collect')
+    setLogs(['━━━ 一键日报流程 ━━━', '', '[ 1/2 ] 数据采集中...'])
+    setRunning(true)
+
+    try {
+      const res = await adminFetch('/api/cron/collect')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setLogs(prev => [...prev, `[ERROR] 采集失败: ${data.message || res.statusText}`])
+        setRunning(false)
+        setDailyPhase('idle')
+        return
+      }
+      const results = data.results as Record<string, { count?: number; status?: string }> | undefined
+      const lines: string[] = [`✓ 采集完成 (${data.duration_ms ?? '?'}ms)`]
+      if (results) {
+        for (const [k, v] of Object.entries(results)) {
+          lines.push(`  ${k}: ${v.count ?? 0} 条`)
+        }
+      }
+      setLogs(prev => [...prev, ...lines])
+    } catch {
+      setLogs(prev => [...prev, '[ERROR] 采集网络错误'])
+      setRunning(false)
+      setDailyPhase('idle')
+      return
+    }
+
+    setRunning(false)
+    setDailyPhase('processing')
+    setActiveStep('process')
+    setLogs(prev => [...prev, '', '[ 2/2 ] AI 处理中...', ''])
+
+    const url = testMode ? '/api/cron/process/stream?test=true' : '/api/cron/process/stream'
+    await run(url, true) // isContinuation=true → 保留已有 logs，不清空
+
+    setDailyPhase('idle')
+    try {
+      const res = await adminFetch('/api/pipeline/runs')
+      if (res.ok) setStepRuns(await res.json())
+    } catch { /* ignore */ }
+  }
+
   async function handleStep(step: typeof PIPELINE_STEPS[number]) {
     setRunningStep(step.key)
     setActiveStep(step.key)
@@ -430,6 +477,45 @@ function PipelineTab() {
           onCancel={() => setShowResetConfirm(false)}
         />
       )}
+
+      {/* Daily cron one-click */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>一键日报流程</p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>
+              顺序执行：采集 → AI处理。{testMode ? '（测试模式，每表仅处理 3 条）' : '（完整模式）'}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {dailyPhase !== 'idle' && (
+              <span className="text-[11px] font-mono px-2 py-1 rounded"
+                style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                {dailyPhase === 'collecting' ? '采集中...' : 'AI 处理中...'}
+              </span>
+            )}
+            {dailyPhase !== 'idle' ? (
+              <button onClick={handleCancel}
+                className="px-4 py-1.5 rounded-md text-[12px] font-medium border"
+                style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
+                停止
+              </button>
+            ) : (
+              <button
+                onClick={handleDailyCron}
+                disabled={running || runningStep !== null}
+                className="px-4 py-1.5 rounded-md text-[12px] font-medium"
+                style={{
+                  background: 'var(--accent)',
+                  color: 'var(--accent-fg)',
+                  opacity: (running || runningStep !== null) ? 0.5 : 1,
+                }}>
+                执行
+              </button>
+            )}
+          </div>
+        </div>
+      </Card>
 
       {/* Test mode + controls */}
       <Card>
