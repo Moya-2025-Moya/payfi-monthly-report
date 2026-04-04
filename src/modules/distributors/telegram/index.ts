@@ -127,16 +127,14 @@ function weekDateRange(weekNumber: string): { cn: string; en: string } {
 // ─── Daily ────────────────────────────────────────────────────────────────────
 
 async function fetchYesterdayFacts(): Promise<FactRow[]> {
-  const today = new Date()
-  today.setUTCHours(0, 0, 0, 0)
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
+  // Look back 48 hours so the send works whether triggered same-day or next morning
+  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000)
 
   const { data, error } = await supabaseAdmin
     .from('atomic_facts')
     .select('id, content_en, content_zh, source_url, confidence, fact_type, tags')
     .in('verification_status', ['verified', 'partially_verified'])
-    .gte('collected_at', yesterday.toISOString())
-    .lt('collected_at', today.toISOString())
+    .gte('collected_at', cutoff.toISOString())
     .order('confidence', { ascending: false })
     .limit(100)
 
