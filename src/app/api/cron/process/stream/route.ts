@@ -343,10 +343,18 @@ export async function GET(request: Request) {
         if (isApproachingTimeout()) throw new PipelineTimeoutError(6)
         // ── Stage 6: Translation ──
         if (fromStage <= 6) {
-          logger.progress('阶段6/6', '翻译 (B5) — 双语补全')
+          // B5: 只处理缺少 content_en 的事实（避免对已翻译的事实做无效DB读取）
+          const { data: untranslatedRows } = await supabaseAdmin
+            .from('atomic_facts')
+            .select('id')
+            .in('id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
+            .or('content_en.is.null,content_en.eq.')
+          const b5TodoIds = (untranslatedRows ?? []).map((r: { id: string }) => r.id)
+
+          logger.progress('阶段6/6', `翻译 (B5) — ${b5TodoIds.length} 条待翻译`)
           try {
             const b5Stats = await translateFactsBatch(
-              verifiedFactIds,
+              b5TodoIds,
               () => logger.checkCancelled(),
               (current, total) => logger.log(`  翻译: ${current}/${total}`, 'progress')
             )
