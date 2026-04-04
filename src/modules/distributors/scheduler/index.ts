@@ -5,7 +5,7 @@
 
 import { supabaseAdmin, getCurrentWeekNumber } from '@/db/client'
 import { sendWeeklySnapshotEmail } from '../email'
-import { sendWeeklySnapshotTelegram, sendPipelineAlert } from '../telegram'
+import { sendWeeklyNewsTelegram, sendPipelineAlert } from '../telegram'
 import { getDensityAnomalies } from '@/modules/knowledge/density'
 
 // ─── generateWeeklySnapshot ───────────────────────────────────────────────────
@@ -182,10 +182,7 @@ export async function distributeSnapshot(weekNumber?: string): Promise<void> {
 
   // ── 4. Send Telegram ──────────────────────────────────────────────────────
   try {
-    await sendWeeklySnapshotTelegram({
-      week_number: snapshot.week_number as string,
-      snapshot_data: snapshot.snapshot_data as Record<string, unknown>,
-    })
+    await sendWeeklyNewsTelegram(targetWeek)
   } catch (err) {
     console.error('[E3] Telegram distribution failed:', err)
   }

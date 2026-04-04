@@ -63,5 +63,8 @@ export const SOURCES = {
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || '',
     chatId: process.env.TELEGRAM_CHAT_ID || '',
+    // Topic thread IDs for the supergroup (undefined = not configured)
+    threadCn: process.env.TELEGRAM_THREAD_CN ? Number(process.env.TELEGRAM_THREAD_CN) : undefined,
+    threadEn: process.env.TELEGRAM_THREAD_EN ? Number(process.env.TELEGRAM_THREAD_EN) : undefined,
   },
 } as const

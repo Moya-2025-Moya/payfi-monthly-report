@@ -14,7 +14,7 @@ function adminFetch(url: string, init?: RequestInit): Promise<Response> {
   return fetch(url, { ...init, headers })
 }
 
-type Tab = 'pipeline' | 'quality' | 'preview' | 'subscribers'
+type Tab = 'pipeline' | 'quality' | 'preview' | 'subscribers' | 'settings'
 
 /* ── Stream event types ── */
 interface StreamEvent {
@@ -916,13 +916,200 @@ function DataQualityTab() {
 }
 
 /* ──────────────────────────────────────────
-   Main Admin Page: 4 Tabs
+   Tab 5: Settings (Telegram config)
+   ────────────────────────────────────────── */
+function SettingsTab() {
+  const [values, setValues] = useState({
+    telegram_chat_id: '',
+    telegram_thread_cn: '',
+    telegram_thread_en: '',
+  })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+  const [testState, setTestState] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    adminFetch('/api/admin/settings')
+      .then(r => r.json())
+      .then((data: Record<string, string>) => {
+        setValues({
+          telegram_chat_id: data.telegram_chat_id ?? '',
+          telegram_thread_cn: data.telegram_thread_cn ?? '',
+          telegram_thread_en: data.telegram_thread_en ?? '',
+        })
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setSaveMsg('')
+    try {
+      const res = await adminFetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      })
+      setSaveMsg(res.ok ? '已保存' : '保存失败')
+    } catch {
+      setSaveMsg('保存失败')
+    } finally {
+      setSaving(false)
+      setTimeout(() => setSaveMsg(''), 3000)
+    }
+  }
+
+  async function handleTest(thread: 'main' | 'cn' | 'en') {
+    setTestState(prev => ({ ...prev, [thread]: '发送中...' }))
+    try {
+      const res = await adminFetch('/api/admin/settings/test-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thread }),
+      })
+      const data = await res.json()
+      setTestState(prev => ({ ...prev, [thread]: res.ok ? '✓ 已发送' : `✗ ${data.error ?? '失败'}` }))
+    } catch (err) {
+      setTestState(prev => ({ ...prev, [thread]: `✗ ${err instanceof Error ? err.message : '失败'}` }))
+    }
+    setTimeout(() => setTestState(prev => { const n = { ...prev }; delete n[thread]; return n }), 4000)
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '8px 10px',
+    fontSize: 13,
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: 'var(--surface)',
+    color: 'var(--fg-title)',
+    outline: 'none',
+    fontFamily: 'monospace',
+  }
+
+  const fields: { key: keyof typeof values; label: string; placeholder: string; hint: string }[] = [
+    {
+      key: 'telegram_chat_id',
+      label: 'Chat ID',
+      placeholder: '-1001234567890',
+      hint: 'Supergroup 的 chat_id（负数）',
+    },
+    {
+      key: 'telegram_thread_cn',
+      label: '中文 Thread ID',
+      placeholder: '4',
+      hint: '中文 topic 的 message_thread_id',
+    },
+    {
+      key: 'telegram_thread_en',
+      label: 'English Thread ID',
+      placeholder: '6',
+      hint: 'English topic 的 message_thread_id',
+    },
+  ]
+
+  if (loading) {
+    return <p className="text-[12px] py-8 text-center" style={{ color: 'var(--fg-muted)' }}>加载配置...</p>
+  }
+
+  return (
+    <div className="space-y-6 max-w-lg">
+      {/* Telegram config */}
+      <Card>
+        <p className="text-[13px] font-semibold mb-4" style={{ color: 'var(--fg-title)' }}>
+          Telegram 配置
+        </p>
+        <p className="text-[12px] mb-4" style={{ color: 'var(--fg-muted)' }}>
+          Bot Token 在 <code>.env.local</code> 中设置。Chat ID 和 Thread ID 保存在数据库，修改后无需重新部署。
+        </p>
+        <form onSubmit={handleSave} className="space-y-4">
+          {fields.map(f => (
+            <div key={f.key}>
+              <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--fg-secondary)' }}>
+                {f.label}
+              </label>
+              <input
+                type="text"
+                value={values[f.key]}
+                onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                placeholder={f.placeholder}
+                style={inputStyle}
+              />
+              <p className="text-[11px] mt-1" style={{ color: 'var(--fg-muted)' }}>{f.hint}</p>
+            </div>
+          ))}
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 rounded-md text-[12px] font-medium"
+              style={{ background: 'var(--accent)', color: '#fff', opacity: saving ? 0.6 : 1 }}
+            >
+              {saving ? '保存中...' : '保存'}
+            </button>
+            {saveMsg && (
+              <span className="text-[12px]" style={{ color: saveMsg === '已保存' ? '#16a34a' : '#ef4444' }}>
+                {saveMsg}
+              </span>
+            )}
+          </div>
+        </form>
+      </Card>
+
+      {/* Test send */}
+      <Card>
+        <p className="text-[13px] font-semibold mb-1" style={{ color: 'var(--fg-title)' }}>
+          测试发送
+        </p>
+        <p className="text-[12px] mb-4" style={{ color: 'var(--fg-muted)' }}>
+          保存配置后点击测试，确认消息能正常发到对应 Topic。
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {([
+            { key: 'main', label: '主群（无 Topic）' },
+            { key: 'cn', label: '中文 Topic' },
+            { key: 'en', label: 'English Topic' },
+          ] as const).map(({ key, label }) => (
+            <div key={key} className="flex items-center gap-2">
+              <button
+                onClick={() => handleTest(key)}
+                disabled={!!testState[key]}
+                className="px-3 py-1.5 rounded-md text-[12px] font-medium border"
+                style={{
+                  borderColor: 'var(--border)',
+                  color: 'var(--fg-secondary)',
+                  opacity: testState[key] ? 0.6 : 1,
+                }}
+              >
+                {label}
+              </button>
+              {testState[key] && (
+                <span
+                  className="text-[11px]"
+                  style={{ color: testState[key]?.startsWith('✓') ? '#16a34a' : '#ef4444' }}
+                >
+                  {testState[key]}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+/*  Main Admin Page: 5 Tabs
    ────────────────────────────────────────── */
 const TABS: { key: Tab; label: string }[] = [
   { key: 'pipeline', label: '流水线' },
   { key: 'quality', label: '数据质量' },
   { key: 'preview', label: '预览邮件' },
   { key: 'subscribers', label: '订阅者' },
+  { key: 'settings', label: '设置' },
 ]
 
 const ADMIN_PASSWORD = 'ZIAN'
@@ -1008,6 +1195,7 @@ export default function AdminPage() {
         {tab === 'quality' && <DataQualityTab />}
         {tab === 'preview' && <PreviewTab />}
         {tab === 'subscribers' && <SubscribersTab />}
+        {tab === 'settings' && <SettingsTab />}
       </div>
     </AdminGate>
   )
