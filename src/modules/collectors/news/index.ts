@@ -101,6 +101,11 @@ const STRONG_KEYWORDS = [
   // ── 代币化/RWA（跟支付结算强相关）──
   'tokenization', 'tokenized deposit', 'tokenised',
   'real world asset', 'rwa',
+  // ── RWA 重点项目 ──
+  'usyc', 'buidl', 'ibenji', 'benji',
+  // ── 跨境支付/汇款 ──
+  'moneygram', 'stellar', 'bitso', 'yellow card',
+  'ripple', 'rlusd',
 ]
 
 // 弱关键词（TradFi / DeFi / 监管 / 通用加密 — 必须配合上下文）
@@ -109,9 +114,17 @@ const WEAK_KEYWORDS = [
   'visa', 'mastercard', 'jpmorgan', 'blackrock', 'coinbase', 'robinhood',
   'square', 'paypal',
   // DeFi 协议
-  'aave', 'curve', 'uniswap', 'maker', 'compound',
+  'aave', 'curve', 'uniswap', 'maker', 'compound', 'ethena',
+  // 交易所
+  'binance', 'okx',
   // 监管机构
   'sec ', 'occ', 'federal reserve', 'cftc', 'fdic', 'fincen',
+  'hkma', 'hong kong monetary', 'mas singapore', 'mica',
+  'nydfs', 'ny dfs',
+  // 托管/基础设施
+  'bitgo', 'anchorage', 'chainlink', 'bitpay', 'checkout.com',
+  // 企业用户
+  'deel', 'remote.com',
   // 通用加密词（太宽泛，必须配合支付上下文）
   'crypto', 'blockchain', 'defi', 'web3', 'digital asset',
   // 金融动作
