@@ -2,9 +2,9 @@ name: Cron Triggers
 
 on:
   schedule:
-    - cron: '0 1 * * *'   # UTC 01:00 daily  → daily-news, twitter(Sun), snapshot(Mon)
-    - cron: '0 2 * * *'   # UTC 02:00 daily  → collect
-    - cron: '0 3 * * *'   # UTC 03:00 daily  → process
+    - cron: '0 0 * * *'   # UTC 00:00 daily  → collect
+    - cron: '0 1 * * *'   # UTC 01:00 daily  → process, twitter(Sun), snapshot(Mon)
+    - cron: '0 2 * * *'   # UTC 02:00 daily  → daily-news
     - cron: '0 5 * * 0'   # UTC 05:00 Sunday → knowledge
   workflow_dispatch:
     inputs:
@@ -52,20 +52,24 @@ jobs:
 
           echo "UTC hour=$HOUR, day=$DOW"
 
-          if [ "$HOUR" = "1" ]; then
-            call "/api/cron/daily-news"
+          # UTC 00:00 (Beijing 08:00) — collect data
+          if [ "$HOUR" = "0" ]; then
+            call "/api/cron/collect"
             [ "$DOW" = "7" ] && call "/api/cron/twitter"
+          fi
+
+          # UTC 01:00 (Beijing 09:00) — process collected data
+          if [ "$HOUR" = "1" ]; then
+            call "/api/cron/process"
             [ "$DOW" = "1" ] && call "/api/cron/snapshot"
           fi
 
+          # UTC 02:00 (Beijing 10:00) — send daily news digest
           if [ "$HOUR" = "2" ]; then
-            call "/api/cron/collect"
+            call "/api/cron/daily-news"
           fi
 
-          if [ "$HOUR" = "3" ]; then
-            call "/api/cron/process"
-          fi
-
+          # UTC 05:00 Sunday (Beijing 13:00) — knowledge engine
           if [ "$HOUR" = "5" ] && [ "$DOW" = "7" ]; then
             call "/api/cron/knowledge"
           fi

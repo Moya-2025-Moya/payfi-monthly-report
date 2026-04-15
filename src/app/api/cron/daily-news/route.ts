@@ -20,9 +20,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    await sendDailyNewsTelegram()
-    console.log('[Cron] Daily news sent')
-    return NextResponse.json({ status: 'done' })
+    const result = await sendDailyNewsTelegram()
+    if (result.skipped) {
+      console.log('[Cron] Daily news skipped:', result.skipped)
+      return NextResponse.json({ status: 'skipped', ...result })
+    }
+    console.log('[Cron] Daily news sent:', result)
+    return NextResponse.json({ status: 'done', ...result })
   } catch (err) {
     console.error('[Cron] Daily news failed:', err)
     return NextResponse.json(
