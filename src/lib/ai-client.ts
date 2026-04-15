@@ -168,5 +168,10 @@ export async function callHaikuJSON<T>(
     jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '').trim()
   }
 
-  return JSON.parse(jsonStr) as T
+  try {
+    return JSON.parse(jsonStr) as T
+  } catch (e) {
+    console.error('[ai-client] JSON parse failed. Raw response:', response.slice(0, 500))
+    throw new Error(`JSON parse failed: ${(e as Error).message}`)
+  }
 }

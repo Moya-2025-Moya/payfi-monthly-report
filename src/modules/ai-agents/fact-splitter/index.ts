@@ -418,7 +418,11 @@ export async function processUnprocessedRaw(
         if (raw.text.length < 30) return { raw, candidates: [] as CandidateFact[], dropped: 0 }
         const text = raw.text.length > 15000 ? raw.text.slice(0, 15000) : raw.text
         const extracted = await extractFacts(raw.source_url, raw.published_at, text)
-        if (extracted.length === 0) return { raw, candidates: [], dropped: 0 }
+        if (extracted.length === 0) {
+          console.warn(`[fact-splitter] ${table} item ${raw.id}: AI returned 0 facts from ${text.length} chars`)
+          return { raw, candidates: [], dropped: 0 }
+        }
+        console.log(`[fact-splitter] ${table} item ${raw.id}: extracted ${extracted.length} facts`)
         const verdicts = await verifyFacts(text, extracted)
         const allCandidates = mergeToCandidates(extracted, verdicts)
         const filtered = filterCandidates(allCandidates)
