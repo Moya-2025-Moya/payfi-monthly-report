@@ -25,6 +25,7 @@ interface StreamEvent {
   level?: string
   fromStage?: number
   isTest?: boolean
+  continueFromRunId?: string
 }
 
 /* ── DB log entry (from pipeline_runs.logs) ── */
@@ -90,7 +91,7 @@ function useSSEStream() {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   // Stores pending auto-continue info when a timeout_continue event is received
-  const continueRef = useRef<{ fromStage: number; isTest: boolean } | null>(null)
+  const continueRef = useRef<{ fromStage: number; isTest: boolean; continueFromRunId?: string } | null>(null)
 
   useEffect(() => {
     if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
@@ -136,7 +137,11 @@ function useSSEStream() {
             } else if (event.type === 'progress' && event.step && event.message) {
               setLogs(prev => [...prev, `[${event.step}] ${event.message}`])
             } else if (event.type === 'timeout_continue') {
-              continueRef.current = { fromStage: event.fromStage as number, isTest: !!event.isTest }
+              continueRef.current = {
+                fromStage: event.fromStage as number,
+                isTest: !!event.isTest,
+                continueFromRunId: event.continueFromRunId,
+              }
               setLogs(prev => [...prev, `⏱ 接近超时限制，将从阶段 ${event.fromStage} 自动续跑...`])
             } else if (event.type === 'done') {
               setLogs(prev => [...prev, '--- 完成 ---'])
@@ -159,7 +164,10 @@ function useSSEStream() {
       if (cont) {
         continueRef.current = null
         setLogs(prev => [...prev, '', '━━━ 自动续跑 ━━━', ''])
-        const contUrl = `/api/cron/process/stream?from=${cont.fromStage}${cont.isTest ? '&test=true' : ''}`
+        const params = new URLSearchParams({ from: String(cont.fromStage) })
+        if (cont.isTest) params.set('test', 'true')
+        if (cont.continueFromRunId) params.set('continueFromRunId', cont.continueFromRunId)
+        const contUrl = `/api/cron/process/stream?${params.toString()}`
         runRef.current?.(contUrl, true)
         return
       }

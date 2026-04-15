@@ -35,6 +35,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const fromStage = parseInt(url.searchParams.get('from') ?? '1', 10)
   const isTest = url.searchParams.get('test') === 'true'
+  const continueFromRunId = url.searchParams.get('continueFromRunId')
   const encoder = new TextEncoder()
 
   // Test mode: 每张表最多处理 3 条，验证最多 5 条
@@ -87,8 +88,31 @@ export async function GET(request: Request) {
       const weekNumber = getCurrentWeekNumber()
       const modeLabel = isTest ? ' [测试模式: 每表3条]' : ''
       logger.log(`AI 处理流水线启动，当前周次: ${weekNumber}${modeLabel}${fromStage > 1 ? `，从阶段 ${fromStage} 开始` : ''}`, 'info')
+      let postProcessFactIds: string[] = []
 
       try {
+        if (fromStage > 2 && continueFromRunId) {
+          const { data: previousRun, error: previousRunError } = await supabaseAdmin
+            .from('pipeline_runs')
+            .select('stats')
+            .eq('id', continueFromRunId)
+            .maybeSingle()
+
+          if (previousRunError) {
+            logger.log(`读取续跑范围失败 — ${previousRunError.message}`, 'error')
+          } else {
+            const stats = previousRun?.stats as { postProcessFactIds?: unknown } | null
+            const continuedIds = Array.isArray(stats?.postProcessFactIds)
+              ? stats.postProcessFactIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+              : []
+
+            postProcessFactIds = continuedIds
+            logger.log(`续跑范围已恢复 — ${postProcessFactIds.length} 条事实（来自 run ${continueFromRunId}）`, 'info')
+          }
+        } else if (fromStage > 2) {
+          logger.log('未提供续跑范围，本次后处理只会处理当前请求内新验证的事实', 'info')
+        }
+
         // ── Pre-check ──
         logger.progress('预检', '统计待处理数据...')
 
@@ -140,6 +164,7 @@ export async function GET(request: Request) {
         let totalRaw = 0
         let totalFacts = 0
         let verified = 0, rejected = 0, partial = 0
+        const newlyVerifiedFactIds: string[] = []
 
         // ── Stage 1: Fact splitting ──
         if (fromStage <= 1) {
@@ -231,62 +256,57 @@ export async function GET(request: Request) {
               return verdict
             }))
 
-            for (const r of results) {
+            results.forEach((r, index) => {
               if (r.status === 'fulfilled') {
-                if (r.value.status === 'verified') verified++
-                else if (r.value.status === 'rejected') rejected++
-                else if (r.value.status === 'partially_verified') partial++
+                if (r.value.status === 'verified') {
+                  verified++
+                  newlyVerifiedFactIds.push(batch[index].id)
+                } else if (r.value.status === 'rejected') {
+                  rejected++
+                } else if (r.value.status === 'partially_verified') {
+                  partial++
+                  newlyVerifiedFactIds.push(batch[index].id)
+                }
               }
-            }
+            })
           }
           logger.log(`阶段2完成 — 已验证 ${verified}，部分验证 ${partial}，拒绝 ${rejected}`, 'success')
+          postProcessFactIds = newlyVerifiedFactIds
+          logger.log(`本次运行待进入后处理的事实 ${postProcessFactIds.length} 条`, 'info')
         } else {
           logger.log('阶段2 跳过', 'info')
         }
 
         await logger.checkCancelled()
 
-        // ── Get verified fact IDs for stages 3-6 ──
-        const { data: verifiedRows } = await supabaseAdmin
-          .from('atomic_facts')
-          .select('id')
-          .in('verification_status', ['verified', 'partially_verified'])
+        const scopeIds = Array.from(new Set(postProcessFactIds))
+        logger.log(`后处理范围: ${scopeIds.length} 条事实`, 'info')
 
-        const verifiedFactIds = (verifiedRows ?? []).map((r: { id: string }) => r.id)
-        logger.log(`${verifiedFactIds.length} 条已验证事实`, 'info')
+        const fetchStageTodoIds = async (
+          stageColumn: 'b2_processed' | 'b3_processed',
+          ids: string[],
+        ): Promise<string[]> => {
+          if (ids.length === 0) return []
 
-        // ── 增量过滤：只处理尚未完成各阶段的事实 ──
-        // B2: 过滤掉已设置 b2_processed=true 的事实（包括无实体的事实）
-        const { data: b2DoneRows } = await supabaseAdmin
-          .from('atomic_facts')
-          .select('id')
-          .in('id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
-          .eq('b2_processed', true)
-        const b2DoneSet = new Set((b2DoneRows ?? []).map((r: { id: string }) => r.id))
-        const b2TodoIds = verifiedFactIds.filter(id => !b2DoneSet.has(id))
+          const { data: rows, error } = await supabaseAdmin
+            .from('atomic_facts')
+            .select('id')
+            .in('id', ids)
+            .or(`${stageColumn}.is.null,${stageColumn}.eq.false`)
 
-        // B3: 过滤掉已设置 b3_processed=true 的事实（包括 standalone，即 AI 判断为不属于任何时间线的事实）
-        const { data: b3DoneRows } = await supabaseAdmin
-          .from('atomic_facts')
-          .select('id')
-          .in('id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
-          .eq('b3_processed', true)
-        const b3DoneSet = new Set((b3DoneRows ?? []).map((r: { id: string }) => r.id))
-        const b3TodoIds = verifiedFactIds.filter(id => !b3DoneSet.has(id))
+          if (error) {
+            logger.log(`查询 ${stageColumn} 待处理事实失败 — ${error.message}`, 'error')
+            return []
+          }
 
-        // B4: 过滤掉已作为 fact_id_a 检查过的事实
-        const { data: b4DoneRows } = await supabaseAdmin
-          .from('fact_contradictions')
-          .select('fact_id_a')
-          .in('fact_id_a', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
-        const b4DoneSet = new Set((b4DoneRows ?? []).map((r: { fact_id_a: string }) => r.fact_id_a))
-        // B4 比较特殊：没有矛盾的事实不会有记录，所以不能用这个方法跳过
-        // 改用：跟 B2 一样只处理本次新验证的事实（b2TodoIds 之外的都是老的）
-        // 但更可靠的方式是：对所有事实都跑 B4（因为新老事实可能矛盾）
-        // 折中：只对本次新增的事实运行 B4
-        const b4TodoIds = b2TodoIds.length > 0 ? b2TodoIds : []
+          return (rows ?? []).map((r: { id: string }) => r.id)
+        }
 
-        logger.log(`增量: B2 待处理 ${b2TodoIds.length}/${verifiedFactIds.length}, B3 待处理 ${b3TodoIds.length}/${verifiedFactIds.length}, B4 待处理 ${b4TodoIds.length}`, 'info')
+        const b2TodoIds = await fetchStageTodoIds('b2_processed', scopeIds)
+        const b3TodoIds = await fetchStageTodoIds('b3_processed', scopeIds)
+        const b4TodoIds = scopeIds
+
+        logger.log(`增量: B2 待处理 ${b2TodoIds.length}/${scopeIds.length}, B3 待处理 ${b3TodoIds.length}/${scopeIds.length}, B4 待处理 ${b4TodoIds.length}`, 'info')
 
         if (isApproachingTimeout()) throw new PipelineTimeoutError(3)
         // ── Stage 3: Entity resolution ──
@@ -299,7 +319,7 @@ export async function GET(request: Request) {
                 () => logger.checkCancelled(),
                 (current, total) => logger.log(`  实体识别: ${current}/${total}`, 'progress')
               )
-              logger.log(`阶段3完成 — 成功 ${b2Stats.succeeded} 条，失败 ${b2Stats.failed} 条 (跳过 ${b2DoneSet.size} 条已处理)`, 'success')
+              logger.log(`阶段3完成 — 成功 ${b2Stats.succeeded} 条，失败 ${b2Stats.failed} 条 (跳过 ${scopeIds.length - b2TodoIds.length} 条已处理)`, 'success')
             } catch (err) {
               if (err instanceof PipelineCancelledError) throw err
               logger.log(`阶段3失败: ${err instanceof Error ? err.message : String(err)}`, 'error')
@@ -325,7 +345,7 @@ export async function GET(request: Request) {
                 (current, total) => logger.log(`  时间线归并: ${current}/${total}`, 'progress')
               )
               logger.log(
-                `阶段4完成 — 分配 ${b3Stats.assigned}，新建 ${b3Stats.created}，独立 ${b3Stats.standalone}，失败 ${b3Stats.failed} (跳过 ${b3DoneSet.size} 条已处理)`,
+                `阶段4完成 — 分配 ${b3Stats.assigned}，新建 ${b3Stats.created}，独立 ${b3Stats.standalone}，失败 ${b3Stats.failed} (跳过 ${scopeIds.length - b3TodoIds.length} 条已处理)`,
                 'success'
               )
             } catch (err) {
@@ -373,7 +393,7 @@ export async function GET(request: Request) {
           const { data: untranslatedRows } = await supabaseAdmin
             .from('atomic_facts')
             .select('id')
-            .in('id', verifiedFactIds.length > 0 ? verifiedFactIds : ['__none__'])
+            .in('id', scopeIds.length > 0 ? scopeIds : ['__none__'])
             .or('content_en.is.null,content_en.eq.')
           const b5TodoIds = (untranslatedRows ?? []).map((r: { id: string }) => r.id)
 
@@ -399,15 +419,20 @@ export async function GET(request: Request) {
         if (fromStage <= 2) {
           logger.log(`  验证结果: 通过 ${verified}，部分通过 ${partial}，拒绝 ${rejected}`, 'info')
         }
-        logger.log(`  后处理: ${verifiedFactIds.length} 条事实`, 'info')
-        await logger.done({ message: 'AI 处理流水线全部完成' })
+        logger.log(`  后处理: ${scopeIds.length} 条事实`, 'info')
+        await logger.done({ message: 'AI 处理流水线全部完成', postProcessFactIds: scopeIds })
       } catch (err) {
         if (err instanceof PipelineTimeoutError) {
           const elapsed = Math.round((Date.now() - pipelineStart) / 1000)
           logger.log(`⏱ 已运行 ${elapsed}s，接近超时限制，暂停处理`, 'info')
           logger.log(`将从阶段 ${err.resumeFromStage} 自动续跑...`, 'info')
-          send({ type: 'timeout_continue', fromStage: err.resumeFromStage, isTest })
-          await logger.done({ message: `超时暂停，将从阶段 ${err.resumeFromStage} 续跑`, partial: true, resumeFromStage: err.resumeFromStage })
+          send({ type: 'timeout_continue', fromStage: err.resumeFromStage, isTest, continueFromRunId: logger.runId })
+          await logger.done({
+            message: `超时暂停，将从阶段 ${err.resumeFromStage} 续跑`,
+            partial: true,
+            resumeFromStage: err.resumeFromStage,
+            postProcessFactIds,
+          })
         } else if (err instanceof PipelineCancelledError) {
           logger.log('流水线已被用户取消', 'error')
           await logger.cancel()

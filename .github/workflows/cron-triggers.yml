@@ -69,12 +69,20 @@ jobs:
               fi
 
               next_from=$(sed -n 's/.*"type":"timeout_continue","fromStage":\([0-9][0-9]*\).*/\1/p' "$tmp_file" | tail -1)
+              continue_run_id=$(sed -n 's/.*"continueFromRunId":"\([^"]*\)".*/\1/p' "$tmp_file" | tail -1)
+              next_is_test=$(sed -n 's/.*"type":"timeout_continue".*"isTest":\(true\|false\).*/\1/p' "$tmp_file" | tail -1)
               saw_done=$(grep -c '"type":"done"' "$tmp_file" || true)
               rm -f "$tmp_file"
 
               if [ -n "$next_from" ]; then
                 attempt=$((attempt + 1))
                 path="/api/cron/process/stream?from=$next_from"
+                if [ "$next_is_test" = "true" ]; then
+                  path="${path}&test=true"
+                fi
+                if [ -n "$continue_run_id" ]; then
+                  path="${path}&continueFromRunId=$continue_run_id"
+                fi
                 echo "↻ Process timed out safely, continuing from stage $next_from (attempt $attempt)"
                 continue
               fi
