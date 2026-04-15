@@ -50,6 +50,32 @@ export async function GET(request: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
 
+      // Prevent overlapping process runs from cron retries or repeated manual clicks.
+      const runningCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+      const { data: existingRun, error: existingRunError } = await supabaseAdmin
+        .from('pipeline_runs')
+        .select('id, started_at')
+        .eq('pipeline_type', 'process')
+        .eq('status', 'running')
+        .gte('started_at', runningCutoff)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (existingRunError) {
+        console.error('[process] Failed to check running pipeline:', existingRunError.message)
+      }
+
+      if (existingRun) {
+        send({ type: 'init', runId: existingRun.id })
+        send({
+          type: 'error',
+          message: `已有 process 流水线在运行（runId=${existingRun.id}, started_at=${existingRun.started_at}），请等待当前任务完成后再试。`,
+        })
+        controller.close()
+        return
+      }
+
       /** Returns true if we're approaching the Vercel timeout */
       function isApproachingTimeout(): boolean {
         return Date.now() - pipelineStart > TIMEOUT_SAFETY_MS

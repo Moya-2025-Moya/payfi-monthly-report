@@ -1,21 +1,24 @@
 name: Cron Triggers
 
+concurrency:
+  group: cron-triggers-production
+  cancel-in-progress: false
+
 on:
   schedule:
-    - cron: '0 0 * * *'   # UTC 00:00 daily  → collect
-    - cron: '0 1 * * *'   # UTC 01:00 daily  → process, twitter(Sun), snapshot(Mon)
-    - cron: '0 2 * * *'   # UTC 02:00 daily  → daily-news
+    - cron: '0 0 * * *'   # UTC 00:00 daily  → collect → process → daily-news
+    - cron: '0 1 * * 1'   # UTC 01:00 Monday → snapshot
     - cron: '0 5 * * 0'   # UTC 05:00 Sunday → knowledge
   workflow_dispatch:
     inputs:
       endpoint:
-        description: 'Endpoint to trigger (e.g. /api/cron/daily-news), leave empty to auto-detect'
+        description: 'Endpoint to trigger (e.g. /api/cron/daily-news or /api/cron/process/stream); leave empty to run the full daily chain'
         required: false
 
 jobs:
   trigger:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 45
     steps:
       - name: Trigger cron endpoints
         env:
@@ -23,12 +26,14 @@ jobs:
           BASE_URL: https://payfi-monthly-report.vercel.app
           MANUAL_ENDPOINT: ${{ github.event.inputs.endpoint }}
         run: |
+          set -euo pipefail
+
           call() {
             local path="$1"
             echo "→ Triggering $path ..."
             RESPONSE=$(curl -s -w "\n%{http_code}" \
               -H "Authorization: Bearer $CRON_SECRET" \
-              --max-time 120 \
+              --max-time 600 \
               "$BASE_URL$path")
             STATUS=$(echo "$RESPONSE" | tail -1)
             BODY=$(echo "$RESPONSE" | sed '$d')
@@ -40,9 +45,79 @@ jobs:
             fi
           }
 
+          run_process_stream() {
+            local path="${1:-/api/cron/process/stream}"
+            local attempt=1
+
+            while true; do
+              echo "→ Triggering $path ..."
+              tmp_file=$(mktemp)
+
+              if ! curl -fsS -N \
+                -H "Authorization: Bearer $CRON_SECRET" \
+                --max-time 900 \
+                "$BASE_URL$path" | tee "$tmp_file"; then
+                echo "::error::$path stream request failed"
+                rm -f "$tmp_file"
+                exit 1
+              fi
+
+              if grep -q '"type":"error"' "$tmp_file"; then
+                echo "::error::$path emitted an error event"
+                rm -f "$tmp_file"
+                exit 1
+              fi
+
+              next_from=$(sed -n 's/.*"type":"timeout_continue","fromStage":\([0-9][0-9]*\).*/\1/p' "$tmp_file" | tail -1)
+              saw_done=$(grep -c '"type":"done"' "$tmp_file" || true)
+              rm -f "$tmp_file"
+
+              if [ -n "$next_from" ]; then
+                attempt=$((attempt + 1))
+                path="/api/cron/process/stream?from=$next_from"
+                echo "↻ Process timed out safely, continuing from stage $next_from (attempt $attempt)"
+                continue
+              fi
+
+              if [ "$saw_done" -eq 0 ]; then
+                echo "::error::$path finished without a done event"
+                exit 1
+              fi
+
+              echo "✓ Process pipeline finished"
+              break
+            done
+          }
+
+          run_daily_chain() {
+            local dow="$1"
+
+            call "/api/cron/collect"
+            [ "$dow" = "7" ] && call "/api/cron/twitter"
+            run_process_stream "/api/cron/process/stream"
+
+            if [ "$dow" != "1" ]; then
+              call "/api/cron/daily-news"
+            else
+              echo "Skipping daily-news on Monday; snapshot has its own schedule."
+            fi
+          }
+
           # Manual trigger with specific endpoint
           if [ -n "$MANUAL_ENDPOINT" ]; then
-            call "$MANUAL_ENDPOINT"
+            if [ "$MANUAL_ENDPOINT" = "/api/cron/process" ] || [ "$MANUAL_ENDPOINT" = "/api/cron/process/stream" ]; then
+              run_process_stream "/api/cron/process/stream"
+            else
+              call "$MANUAL_ENDPOINT"
+            fi
+            exit 0
+          fi
+
+          # Manual trigger without endpoint defaults to the full daily chain
+          if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
+            DOW=$(date -u +%u)  # 1=Mon … 7=Sun
+            echo "Manual run — executing full daily chain (day=$DOW)"
+            run_daily_chain "$DOW"
             exit 0
           fi
 
@@ -52,21 +127,14 @@ jobs:
 
           echo "UTC hour=$HOUR, day=$DOW"
 
-          # UTC 00:00 (Beijing 08:00) — collect data
+          # UTC 00:00 (Beijing 08:00) — full daily chain
           if [ "$HOUR" = "0" ]; then
-            call "/api/cron/collect"
-            [ "$DOW" = "7" ] && call "/api/cron/twitter"
+            run_daily_chain "$DOW"
           fi
 
-          # UTC 01:00 (Beijing 09:00) — process collected data
-          if [ "$HOUR" = "1" ]; then
-            call "/api/cron/process"
-            [ "$DOW" = "1" ] && call "/api/cron/snapshot"
-          fi
-
-          # UTC 02:00 (Beijing 10:00) — send daily news digest
-          if [ "$HOUR" = "2" ]; then
-            call "/api/cron/daily-news"
+          # UTC 01:00 Monday (Beijing 09:00) — weekly snapshot
+          if [ "$HOUR" = "1" ] && [ "$DOW" = "1" ]; then
+            call "/api/cron/snapshot"
           fi
 
           # UTC 05:00 Sunday (Beijing 13:00) — knowledge engine
