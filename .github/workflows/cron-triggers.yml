@@ -105,11 +105,14 @@ jobs:
 
           # Manual trigger with specific endpoint
           if [ -n "$MANUAL_ENDPOINT" ]; then
-            if [ "$MANUAL_ENDPOINT" = "/api/cron/process" ] || [ "$MANUAL_ENDPOINT" = "/api/cron/process/stream" ]; then
-              run_process_stream "/api/cron/process/stream"
-            else
-              call "$MANUAL_ENDPOINT"
-            fi
+            case "$MANUAL_ENDPOINT" in
+              /api/cron/process|/api/cron/process/stream|/api/cron/process\?*|/api/cron/process/stream\?*)
+                run_process_stream "$MANUAL_ENDPOINT"
+                ;;
+              *)
+                call "$MANUAL_ENDPOINT"
+                ;;
+            esac
             exit 0
           fi
 
