@@ -1,5 +1,5 @@
 // ============================================================
-// StablePulse V2 — DB-backed Watchlist Entity Management
+// $U Daily News — DB-backed Watchlist Entity Management
 // Replaces hardcoded WATCHLIST config with dynamic DB reads
 // ============================================================
 

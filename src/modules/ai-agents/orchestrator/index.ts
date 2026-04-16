@@ -1,5 +1,5 @@
 // ============================================================
-// StablePulse V2 — Pipeline Orchestrator
+// $U Daily News — Pipeline Orchestrator
 // Simplified: extract → merge → V1 check → translate → save → push
 // ============================================================
 

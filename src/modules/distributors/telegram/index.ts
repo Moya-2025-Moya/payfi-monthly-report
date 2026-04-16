@@ -1,5 +1,5 @@
 // ============================================================
-// StablePulse V2 — Telegram Distributor
+// $U Daily News V2 — Telegram Distributor
 //
 // Three output formats:
 //   pushRealtimeEvent()  — importance 1-2 events, pushed immediately
@@ -182,7 +182,7 @@ export async function pushDailySummary(): Promise<number> {
   const briefs = allEvents.filter(e => e.importance === 4).slice(0, 8)
 
   // Format CN message
-  let cnMsg = `📰 <b>StablePulse 日报</b> · ${todayLabel()}\n`
+  let cnMsg = `📰 <b>$U Daily News 日报</b> · ${todayLabel()}\n`
 
   if (topEvents.length > 0) {
     cnMsg += `\n━━ 今日要闻 ━━\n`
@@ -206,7 +206,7 @@ export async function pushDailySummary(): Promise<number> {
   // EN version
   const enTopEvents = topEvents.filter(e => e.title_en && e.summary_en)
   if (enTopEvents.length > 0) {
-    let enMsg = `📰 <b>StablePulse Daily</b> · ${todayLabel()}\n`
+    let enMsg = `📰 <b>$U Daily News Daily</b> · ${todayLabel()}\n`
     enMsg += `\n━━ Top Stories ━━\n`
     enTopEvents.forEach((e, i) => {
       const cat = CATEGORY_EMOJI[e.category] ?? ''
@@ -230,7 +230,7 @@ export async function pushDailySummary(): Promise<number> {
 // ─── Weekly Trend Summary (Monday) ─────────────────────────────────────────
 
 export async function pushWeeklySummary(summary: WeeklySummary): Promise<void> {
-  let cnMsg = `📊 <b>StablePulse 周报</b> · ${summary.week_number}\n`
+  let cnMsg = `📊 <b>$U Daily News 周报</b> · ${summary.week_number}\n`
 
   if (summary.trends.length > 0) {
     cnMsg += `\n━━ 趋势研判 ━━\n`
@@ -259,7 +259,7 @@ export async function pushWeeklySummary(summary: WeeklySummary): Promise<void> {
 
   // EN version
   if (summary.summary_en || summary.trends.some(t => t.title_en)) {
-    let enMsg = `📊 <b>StablePulse Weekly</b> · ${summary.week_number}\n`
+    let enMsg = `📊 <b>$U Daily News Weekly</b> · ${summary.week_number}\n`
 
     if (summary.trends.length > 0) {
       enMsg += `\n━━ Trend Analysis ━━\n`

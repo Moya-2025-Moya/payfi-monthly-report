@@ -1,5 +1,5 @@
 // ============================================================
-// StablePulse V2 — Core TypeScript Types
+// $U Daily News — Core TypeScript Types
 // Simplified: events > atomic facts, timeliness > accuracy
 // ============================================================
 

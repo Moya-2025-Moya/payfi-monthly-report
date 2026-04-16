@@ -48,7 +48,7 @@ async function fetchArticleText(url: string): Promise<string | null> {
       signal: controller.signal,
       redirect: 'follow',
       headers: {
-        'User-Agent': 'StablePulse/1.0 (fact-verification)',
+        'User-Agent': 'UDailyNews/1.0 (fact-verification)',
         Accept: 'text/html,application/xhtml+xml,text/plain',
       },
     })

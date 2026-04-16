@@ -7,7 +7,7 @@ const MAX_HTML_SIZE = 2_000_000 // 2MB — skip huge pages
 const MAX_TEXT_LENGTH = 30_000 // truncate extremely long articles
 
 const USER_AGENT =
-  'Mozilla/5.0 (compatible; StablePulse/1.0; +https://github.com/stablepulse)'
+  'Mozilla/5.0 (compatible; UDailyNews/1.0)'
 
 /**
  * Fetch a URL and extract the main article text using Readability.

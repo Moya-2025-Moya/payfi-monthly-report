@@ -32,7 +32,7 @@ export const SOURCES = {
   secEdgar: {
     baseUrl: 'https://efts.sec.gov/LATEST/search-index',
     fullTextUrl: 'https://www.sec.gov/cgi-bin/browse-edgar',
-    userAgent: process.env.SEC_EDGAR_USER_AGENT || 'StablePulse research@example.com',
+    userAgent: process.env.SEC_EDGAR_USER_AGENT || 'UDailyNews research@example.com',
   },
 
   // ── Twitter (twitterapi.io) ──

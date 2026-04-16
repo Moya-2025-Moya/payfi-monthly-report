@@ -44,7 +44,7 @@ type RSSItem = {
 
 const rssParser = new RSSParser({
   headers: {
-    'User-Agent': 'Mozilla/5.0 (compatible; StablePulse/1.0)',
+    'User-Agent': 'Mozilla/5.0 (compatible; UDailyNews/1.0)',
     Accept: 'application/rss+xml, application/xml, text/xml, */*',
   },
   timeout: 15_000,
