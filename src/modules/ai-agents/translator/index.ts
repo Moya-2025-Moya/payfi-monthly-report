@@ -1,116 +1,70 @@
-// B5 Translator Agent — Bilingual completion
-// Now that B1 outputs Chinese directly:
-//   - If content_zh exists and content_en is null → translate ZH→EN
-//   - If content_en exists and content_zh is null → translate EN→ZH (legacy)
+// Translator — Batch EN→ZH translation for events
+// V2 simplified: only translates events that have EN but no ZH content
 
-import { readFileSync } from 'fs'
-import { join } from 'path'
-import { callHaiku } from '@/lib/ai-client'
-import { supabaseAdmin } from '@/db/client'
-import type { AtomicFact } from '@/lib/types'
+import { callHaikuJSON } from '@/lib/ai-client'
+import type { ExtractedEvent } from '@/lib/types'
 
-// ─── Prompt 模板 ───
+const BATCH_SIZE = 5
 
-const PROMPTS_DIR = join(process.cwd(), 'src/config/prompts')
-
-function loadPrompt(filename: string): string {
-  return readFileSync(join(PROMPTS_DIR, filename), 'utf-8')
+interface TranslationInput {
+  index: number
+  title_en: string
+  summary_en: string
 }
 
-// ─── 单条翻译 ───
-
-export async function translateFact(factId: string): Promise<void> {
-  const { data, error } = await supabaseAdmin
-    .from('atomic_facts')
-    .select('*')
-    .eq('id', factId)
-    .single()
-
-  if (error) throw new Error(`[B5] Failed to fetch fact ${factId}: ${error.message}`)
-
-  const fact = data as AtomicFact
-
-  const hasZh = !!fact.content_zh
-  const hasEn = !!fact.content_en // empty string '' is treated as missing
-
-  // Both filled → skip
-  if (hasZh && hasEn) {
-    console.log(`[B5] Skipping fact ${factId} — both languages present`)
-    return
-  }
-
-  // Neither filled → skip
-  if (!hasZh && !hasEn) {
-    console.log(`[B5] Skipping fact ${factId} — no content`)
-    return
-  }
-
-  if (hasZh && !hasEn) {
-    // ZH→EN: new path (B1 now outputs Chinese)
-    const prompt = [
-      'Translate the following Chinese atomic fact into English.',
-      'Rules: preserve proper nouns (company names, product names, abbreviations like USDC, SEC, S-1).',
-      'Preserve all numbers exactly. Output only the translated text, nothing else.',
-      '',
-      fact.content_zh,
-    ].join('\n')
-
-    const response = await callHaiku(prompt)
-
-    const { error: updateError } = await supabaseAdmin
-      .from('atomic_facts')
-      .update({ content_en: response.trim() })
-      .eq('id', factId)
-
-    if (updateError) throw new Error(`[B5] Failed to update fact ${factId}: ${updateError.message}`)
-    console.log(`[B5] Translated ZH→EN for fact ${factId}`)
-  } else if (hasEn && !hasZh) {
-    // EN→ZH: legacy path
-    const template = loadPrompt('translator.md')
-    const prompt = template.replace('{content_en}', fact.content_en)
-    const response = await callHaiku(prompt)
-
-    const { error: updateError } = await supabaseAdmin
-      .from('atomic_facts')
-      .update({ content_zh: response.trim() })
-      .eq('id', factId)
-
-    if (updateError) throw new Error(`[B5] Failed to update fact ${factId}: ${updateError.message}`)
-    console.log(`[B5] Translated EN→ZH for fact ${factId}`)
-  }
+interface TranslationOutput {
+  translations: { index: number; title_zh: string; summary_zh: string }[]
 }
 
-// ─── 批量翻译 ───
-
-export async function translateFactsBatch(
-  factIds: string[],
-  onCancelCheck?: () => Promise<void>,
-  onProgress?: (current: number, total: number) => void
-): Promise<{ translated: number; skipped: number; failed: number }> {
-  const BATCH_SIZE = 5
-  let translated = 0
-  let failed = 0
-
-  for (let i = 0; i < factIds.length; i += BATCH_SIZE) {
-    if (onCancelCheck && i > 0) await onCancelCheck()
-    if (onProgress) onProgress(Math.min(i, factIds.length), factIds.length)
-    const batch = factIds.slice(i, i + BATCH_SIZE)
-    console.log(`[B5] Processing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} facts)`)
-
-    const results = await Promise.allSettled(batch.map(id => translateFact(id)))
-
-    for (let j = 0; j < results.length; j++) {
-      const result = results[j]
-      if (result.status === 'rejected') {
-        failed++
-        console.error(`[B5] Failed to translate fact ${batch[j]}:`, result.reason)
-      } else {
-        translated++
+export async function translateEvents(events: ExtractedEvent[]): Promise<void> {
+  // Find events that need ZH translation (have EN but weak/missing ZH)
+  const needsTranslation: TranslationInput[] = events
+    .map((e, i) => ({ event: e, index: i }))
+    .filter(({ event }) => {
+      // If ZH already looks good (not just a copy of EN), skip
+      if (event.title_zh && event.title_zh !== event.title_en && /[\u4e00-\u9fff]/.test(event.title_zh)) {
+        return false
       }
+      return event.title_en && event.title_en.length > 0
+    })
+    .map(({ event, index }) => ({
+      index,
+      title_en: event.title_en,
+      summary_en: event.summary_en,
+    }))
+
+  if (needsTranslation.length === 0) {
+    console.log('[translator] All events already have Chinese content')
+    return
+  }
+
+  console.log(`[translator] Translating ${needsTranslation.length} events`)
+
+  for (let i = 0; i < needsTranslation.length; i += BATCH_SIZE) {
+    const batch = needsTranslation.slice(i, i + BATCH_SIZE)
+
+    const items = batch.map(t =>
+      `[${t.index}] Title: ${t.title_en}\nSummary: ${t.summary_en}`
+    ).join('\n\n')
+
+    try {
+      const result = await callHaikuJSON<TranslationOutput>(
+        `Translate these news items to Chinese. Keep entity names (company names, product names, regulatory bodies) in English. Be concise and natural.
+
+${items}
+
+Return JSON: {"translations": [{"index": N, "title_zh": "...", "summary_zh": "..."}]}`,
+        { maxTokens: 2048 }
+      )
+
+      for (const t of result.translations ?? []) {
+        if (t.index >= 0 && t.index < events.length) {
+          events[t.index].title_zh = t.title_zh
+          events[t.index].summary_zh = t.summary_zh
+        }
+      }
+    } catch (err) {
+      console.error(`[translator] Batch failed:`, err instanceof Error ? err.message : String(err))
     }
   }
-
-  const skipped = factIds.length - translated - failed
-  console.log(`[B5] Batch translation complete — translated: ${translated}, skipped: ${skipped}, failed: ${failed}`)
-  return { translated, skipped, failed }
 }

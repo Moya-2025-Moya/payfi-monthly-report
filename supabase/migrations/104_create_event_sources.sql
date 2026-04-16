@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS event_sources (event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE, raw_item_id uuid NOT NULL REFERENCES raw_items(id) ON DELETE CASCADE, PRIMARY KEY (event_id, raw_item_id));

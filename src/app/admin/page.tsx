@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
-import { Card } from '@/components/ui/Card'
+import { useEffect, useState, useCallback } from 'react'
 
-// Admin token for API auth (dev environments may leave this empty)
+// ─── Admin auth helper ───
 function getAdminHeaders(): Record<string, string> {
   const token = process.env.NEXT_PUBLIC_ADMIN_TOKEN
   return token ? { 'x-admin-token': token } : {}
@@ -14,1313 +13,414 @@ function adminFetch(url: string, init?: RequestInit): Promise<Response> {
   return fetch(url, { ...init, headers })
 }
 
-type Tab = 'pipeline' | 'quality' | 'preview' | 'subscribers'
+// ─── Types ───
+type Tab = 'pipeline' | 'watchlist'
 
-/* ── Stream event types ── */
-interface StreamEvent {
-  type: string
-  runId?: string
-  step?: string
-  message?: string
-  level?: string
-  fromStage?: number
-  isTest?: boolean
-  continueFromRunId?: string
-}
-
-/* ── DB log entry (from pipeline_runs.logs) ── */
-interface DBLogEntry {
-  time: string
-  message: string
-  level: 'info' | 'success' | 'error' | 'progress'
-}
-
-/* ── Pipeline run record ── */
-interface PipelineRunData {
+interface PipelineRun {
   id: string
   pipeline_type: string
   status: 'running' | 'completed' | 'failed' | 'cancelled'
   started_at: string
   completed_at: string | null
-  logs: DBLogEntry[]
+  logs: { time: string; message: string; level: string }[]
   stats: Record<string, unknown> | null
+  error: string | null
 }
 
-/* ── Report data ── */
-interface ReportData {
+interface WatchlistEntity {
   id: string
-  date: string
-  subject: string | null
-  content: string
+  name: string
+  aliases: string[]
+  category: string
+  active: boolean
+  metadata: Record<string, unknown>
   created_at: string
+  updated_at: string
 }
 
-/* ── Subscriber ── */
-interface Subscriber {
-  id: string
-  email: string
-  status: string
-  created_at: string
-}
-
-/* ── Confirm dialog ── */
-function ConfirmDialog({ title, message, onConfirm, onCancel, danger }: {
-  title: string; message: string; onConfirm: () => void; onCancel: () => void; danger?: boolean
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
-      <div className="rounded-lg border p-6 max-w-sm w-full mx-4" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-        <p className="text-[14px] font-semibold mb-2" style={{ color: 'var(--fg-title)' }}>{title}</p>
-        <p className="text-[12px] mb-4" style={{ color: 'var(--fg-secondary)' }}>{message}</p>
-        <div className="flex gap-2 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 rounded-md text-[12px] border"
-            style={{ borderColor: 'var(--border)', color: 'var(--fg-muted)' }}>取消</button>
-          <button onClick={onConfirm} className="px-4 py-2 rounded-md text-[12px] font-medium"
-            style={{ background: danger ? 'var(--danger)' : 'var(--accent)', color: 'white' }}>确认</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ── SSE Log Stream Hook (returns runId for polling) ── */
-function useSSEStream() {
-  const [logs, setLogs] = useState<string[]>([])
-  const [running, setRunning] = useState(false)
-  const [runId, setRunId] = useState<string | null>(null)
-  const logsEndRef = useRef<HTMLDivElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  // Stores pending auto-continue info when a timeout_continue event is received
-  const continueRef = useRef<{ fromStage: number; isTest: boolean; continueFromRunId?: string } | null>(null)
-
-  useEffect(() => {
-    if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
-  }, [logs])
-
-  const runRef = useRef<(url: string, isContinuation?: boolean) => Promise<void>>(undefined)
-
-  const run = useCallback(async (url: string, isContinuation = false) => {
-    setRunning(true)
-    if (!isContinuation) {
-      setLogs([])
-      setRunId(null)
-    }
-
-    // Create AbortController so we can kill the connection
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    try {
-      const res = await adminFetch(url, { signal: controller.signal })
-      if (!res.ok || !res.body) {
-        setLogs(prev => [...prev, '[ERROR] 请求失败'])
-        setRunning(false)
-        return
-      }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const event: StreamEvent = JSON.parse(line.slice(6))
-            if (event.type === 'init' && event.runId) {
-              setRunId(event.runId)
-            } else if (event.type === 'log' && event.message) {
-              setLogs(prev => [...prev, event.message!])
-            } else if (event.type === 'progress' && event.step && event.message) {
-              setLogs(prev => [...prev, `[${event.step}] ${event.message}`])
-            } else if (event.type === 'timeout_continue') {
-              continueRef.current = {
-                fromStage: event.fromStage as number,
-                isTest: !!event.isTest,
-                continueFromRunId: event.continueFromRunId,
-              }
-              setLogs(prev => [...prev, `⏱ 接近超时限制，将从阶段 ${event.fromStage} 自动续跑...`])
-            } else if (event.type === 'done') {
-              setLogs(prev => [...prev, '--- 完成 ---'])
-            } else if (event.type === 'error' && event.message) {
-              setLogs(prev => [...prev, `[ERROR] ${event.message}`])
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setLogs(prev => [...prev, '[停止] 连接已中断'])
-      } else {
-        setLogs(prev => [...prev, '[ERROR] 网络错误'])
-      }
-    } finally {
-      abortRef.current = null
-      // Check if we need to auto-continue from a timeout
-      const cont = continueRef.current
-      if (cont) {
-        continueRef.current = null
-        setLogs(prev => [...prev, '', '━━━ 自动续跑 ━━━', ''])
-        const params = new URLSearchParams({ from: String(cont.fromStage) })
-        if (cont.isTest) params.set('test', 'true')
-        if (cont.continueFromRunId) params.set('continueFromRunId', cont.continueFromRunId)
-        const contUrl = `/api/cron/process/stream?${params.toString()}`
-        runRef.current?.(contUrl, true)
-        return
-      }
-      setRunning(false)
-    }
-  }, [])
-
-  runRef.current = run
-
-  // Abort the SSE connection directly
-  const abort = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
-    }
-  }, [])
-
-  // Restore logs from a DB run record
-  const restore = useCallback((dbLogs: DBLogEntry[], status: string, id: string) => {
-    setRunId(id)
-    setLogs(dbLogs.map(l => {
-      const prefix = l.level === 'error' ? '[ERROR] ' : ''
-      return prefix + l.message
-    }))
-    setRunning(status === 'running')
-  }, [])
-
-  return { logs, running, run, runId, logsEndRef, restore, setLogs, setRunning, abort }
-}
-
-function LogPanel({ logs, logsEndRef }: { logs: string[]; logsEndRef: React.RefObject<HTMLDivElement | null> }) {
-  if (logs.length === 0) return null
-  return (
-    <Card>
-      <p className="text-[11px] font-medium tracking-wider uppercase mb-3" style={{ color: 'var(--fg-muted)' }}>日志</p>
-      <div className="font-mono text-[11px] leading-relaxed rounded-md p-3 overflow-auto"
-        style={{ background: 'var(--surface-alt)', color: 'var(--fg-secondary)', maxHeight: '400px' }}>
-        {logs.map((log, i) => (
-          <div key={i} style={{ color: log.includes('[ERROR]') ? 'var(--danger)' : log.includes('完成') ? 'var(--success)' : undefined }}>
-            {log}
-          </div>
-        ))}
-        <div ref={logsEndRef} />
-      </div>
-    </Card>
-  )
-}
-
-/* ──────────────────────────────────────────
-   Tab 1: Pipeline (逐步执行 + 持久化日志)
-   ────────────────────────────────────────── */
-const PIPELINE_STEPS = [
-  { key: 'collect', label: '数据采集', endpoint: '/api/cron/collect', desc: '从 RSS / SEC EDGAR 采集新闻', pipelineType: 'collect' },
-  { key: 'twitter', label: '推特采集', endpoint: '/api/cron/twitter', desc: '从 Twitter/X 采集推文', pipelineType: 'twitter' },
-  { key: 'process', label: 'AI 处理', endpoint: '/api/cron/process/stream', desc: '事实拆解 + 验证 + 分类', pipelineType: 'process', isStream: true },
-  { key: 'snapshot', label: '快照生成', endpoint: '/api/cron/snapshot/stream', desc: '选取 + 上下文引擎 + 邮件', pipelineType: 'snapshot', isStream: true },
-  { key: 'narrative', label: '叙事更新', endpoint: '/api/cron/narrative/stream', desc: '更新叙事线索追踪', pipelineType: 'narrative', isStream: true },
+const CATEGORY_OPTIONS = [
+  'issuer', 'payments', 'institutional', 'regulatory',
+  'infrastructure', 'enterprise', 'rwa', 'defi',
 ] as const
 
-/* Status badge colors */
-function statusColor(run: PipelineRunData | null | undefined): { bg: string; fg: string; label: string } {
-  const status = run?.status
-  // Detect cancelled: explicit 'cancelled' or 'failed' with cancellation marker
-  const isCancelled = status === 'cancelled' || (status === 'failed' && run?.stats === null && run?.logs?.some(l => l.message.includes('用户取消')))
-  if (isCancelled) return { bg: 'var(--surface-alt)', fg: 'var(--fg-muted)', label: '已取消' }
-  switch (status) {
-    case 'running': return { bg: 'var(--accent-soft)', fg: 'var(--accent)', label: '运行中' }
-    case 'completed': return { bg: 'var(--success-soft, rgba(34,197,94,0.1))', fg: 'var(--success)', label: '已完成' }
-    case 'failed': return { bg: 'rgba(239,68,68,0.1)', fg: 'var(--danger)', label: '失败' }
-    default: return { bg: 'var(--surface-alt)', fg: 'var(--fg-muted)', label: '未执行' }
+const PIPELINE_TYPES = [
+  { key: 'collect', label: 'Collection', endpoint: '/api/cron/collect', buttonLabel: 'Run Collection' },
+  { key: 'process', label: 'Processing', endpoint: '/api/cron/process', buttonLabel: 'Run Processing' },
+  { key: 'daily_push', label: 'Daily Push', endpoint: '/api/cron/daily-push', buttonLabel: 'Push Daily' },
+  { key: 'weekly_summary', label: 'Weekly Summary', endpoint: '/api/cron/weekly-summary', buttonLabel: 'Push Weekly' },
+] as const
+
+// ─── Helpers ───
+function formatTime(iso: string | null): string {
+  if (!iso) return '-'
+  try {
+    return new Date(iso).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+  } catch { return '-' }
+}
+
+function statusBadge(status: string | undefined) {
+  const map: Record<string, string> = {
+    running: 'bg-yellow-100 text-yellow-800',
+    completed: 'bg-green-100 text-green-800',
+    failed: 'bg-red-100 text-red-800',
+    cancelled: 'bg-gray-100 text-gray-600',
   }
+  const cls = map[status ?? ''] ?? 'bg-gray-100 text-gray-500'
+  return <span className={`px-2 py-0.5 rounded text-xs font-mono ${cls}`}>{status ?? 'never run'}</span>
 }
 
-function formatTime(iso: string): string {
-  try { return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }
-  catch { return '' }
-}
-
+// ══════════════════════════════════════════
+// Tab 1: Pipeline
+// ══════════════════════════════════════════
 function PipelineTab() {
-  const { logs, running, run, runId, logsEndRef, restore, setLogs, setRunning, abort } = useSSEStream()
-  const [runningStep, setRunningStep] = useState<string | null>(null)
-  const [showResetConfirm, setShowResetConfirm] = useState(false)
-  const [resetStatus, setResetStatus] = useState('')
-  const [activeStep, setActiveStep] = useState<string | null>(null)
-  const [testMode, setTestMode] = useState(false)
-  const [dailyPhase, setDailyPhase] = useState<'idle' | 'collecting' | 'processing'>('idle')
-  // Per-step latest run info (from DB)
-  const [stepRuns, setStepRuns] = useState<Record<string, PipelineRunData | null>>({})
-  const [loadingRuns, setLoadingRuns] = useState(true)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const pollingRunIdRef = useRef<string | null>(null)
+  const [runs, setRuns] = useState<Record<string, PipelineRun | null>>({})
+  const [loading, setLoading] = useState(true)
+  const [triggerStatus, setTriggerStatus] = useState<Record<string, string>>({})
+  const [logOutput, setLogOutput] = useState<string[]>([])
 
-  // ─── Load latest runs on mount ───
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const res = await adminFetch('/api/pipeline/runs')
-        if (res.ok) {
-          const data = await res.json()
-          if (!cancelled) {
-            setStepRuns(data)
-            // Find any currently running step
-            for (const step of PIPELINE_STEPS) {
-              const r = data[step.pipelineType] as PipelineRunData | null
-              if (r?.status === 'running') {
-                setActiveStep(step.key)
-                restore(r.logs ?? [], r.status, r.id)
-                // Start polling
-                startPolling(r.id)
-                break
-              }
-            }
-            // If no running step, show latest completed/failed step's logs
-            if (!cancelled) {
-              let latest: PipelineRunData | null = null
-              let latestKey: string | null = null
-              for (const step of PIPELINE_STEPS) {
-                const r = data[step.pipelineType] as PipelineRunData | null
-                if (r && r.status !== 'running') {
-                  if (!latest || r.started_at > latest.started_at) {
-                    latest = r
-                    latestKey = step.key
-                  }
-                }
-              }
-              if (latest && latestKey && !data[PIPELINE_STEPS.find(s => s.key === latestKey)!.pipelineType]?.status?.includes('running')) {
-                // Only restore if no running step was found
-                const hasRunning = PIPELINE_STEPS.some(s => data[s.pipelineType]?.status === 'running')
-                if (!hasRunning) {
-                  setActiveStep(latestKey)
-                  restore(latest.logs ?? [], latest.status, latest.id)
-                }
-              }
-            }
-          }
-        }
-      } catch { /* ignore */ }
-      finally { if (!cancelled) setLoadingRuns(false) }
-    }
-    load()
-    return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const loadRuns = useCallback(async () => {
+    try {
+      const res = await adminFetch('/api/pipeline/runs')
+      if (res.ok) setRuns(await res.json())
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
   }, [])
 
-  // ─── Polling for running pipelines ───
-  function startPolling(id: string) {
-    stopPolling()
-    pollingRunIdRef.current = id
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await adminFetch(`/api/pipeline/runs?id=${id}`)
-        if (!res.ok) return
-        const data: PipelineRunData = await res.json()
-        // Update logs
-        setLogs((data.logs ?? []).map(l => {
-          const prefix = l.level === 'error' ? '[ERROR] ' : ''
-          return prefix + l.message
-        }))
-        // Update step status
-        setStepRuns(prev => ({ ...prev, [data.pipeline_type]: data }))
-        // If done, stop polling
-        if (data.status !== 'running') {
-          if (data.status === 'completed') {
-            setLogs(prev => [...prev, '--- 完成 ---'])
-          }
-          setRunning(false)
-          stopPolling()
-        }
-      } catch { /* ignore */ }
-    }, 2000)
-  }
+  useEffect(() => { loadRuns() }, [loadRuns])
 
-  function stopPolling() {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-    pollingRunIdRef.current = null
-  }
-
-  // Cleanup on unmount
-  useEffect(() => () => stopPolling(), [])
-
-  async function handleDailyCron() {
-    if (running || runningStep !== null || dailyPhase !== 'idle') return
-    setDailyPhase('collecting')
-    setActiveStep('collect')
-    setLogs(['━━━ 一键日报流程 ━━━', '', '[ 1/2 ] 数据采集中...'])
-    setRunning(true)
-
+  async function triggerPipeline(key: string, endpoint: string) {
+    setTriggerStatus(prev => ({ ...prev, [key]: 'running...' }))
+    setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] Triggering ${key}...`])
     try {
-      const res = await adminFetch('/api/cron/collect')
+      const res = await adminFetch(endpoint)
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setLogs(prev => [...prev, `[ERROR] 采集失败: ${data.message || res.statusText}`])
-        setRunning(false)
-        setDailyPhase('idle')
-        return
+      if (res.ok) {
+        setTriggerStatus(prev => ({ ...prev, [key]: 'done' }))
+        setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${key} completed: ${JSON.stringify(data).slice(0, 200)}`])
+      } else {
+        setTriggerStatus(prev => ({ ...prev, [key]: 'failed' }))
+        setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${key} FAILED: ${data.error || data.message || res.statusText}`])
       }
-      const results = data.results as Record<string, { count?: number; status?: string }> | undefined
-      const lines: string[] = [`✓ 采集完成 (${data.duration_ms ?? '?'}ms)`]
-      if (results) {
-        for (const [k, v] of Object.entries(results)) {
-          lines.push(`  ${k}: ${v.count ?? 0} 条`)
-        }
-      }
-      setLogs(prev => [...prev, ...lines])
-    } catch {
-      setLogs(prev => [...prev, '[ERROR] 采集网络错误'])
-      setRunning(false)
-      setDailyPhase('idle')
-      return
+    } catch (err) {
+      setTriggerStatus(prev => ({ ...prev, [key]: 'error' }))
+      setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${key} ERROR: ${err instanceof Error ? err.message : 'network error'}`])
     }
-
-    setRunning(false)
-    setDailyPhase('processing')
-    setActiveStep('process')
-    setLogs(prev => [...prev, '', '[ 2/2 ] AI 处理中...', ''])
-
-    const url = testMode ? '/api/cron/process/stream?test=true' : '/api/cron/process/stream'
-    await run(url, true) // isContinuation=true → 保留已有 logs，不清空
-
-    setDailyPhase('idle')
-    try {
-      const res = await adminFetch('/api/pipeline/runs')
-      if (res.ok) setStepRuns(await res.json())
-    } catch { /* ignore */ }
-  }
-
-  async function handleStep(step: typeof PIPELINE_STEPS[number]) {
-    setRunningStep(step.key)
-    setActiveStep(step.key)
-
-    const isStream = 'isStream' in step && step.isStream
-    const url = testMode && isStream ? `${step.endpoint}?test=true` : step.endpoint
-
-    if (isStream) {
-      await run(url)
-    } else {
-      // Non-stream endpoint: regular fetch, show JSON result as log
-      setLogs([])
-      setRunning(true)
-      try {
-        const res = await adminFetch(url)
-        const data = await res.json().catch(() => ({}))
-        if (res.ok) {
-          const msg = data.message || data.status || '完成'
-          const details = data.results
-            ? Object.entries(data.results as Record<string, { count?: number; error?: string }>)
-                .map(([k, v]) => `  ${k}: ${v.count ?? 0} 条${v.error ? ` (错误: ${v.error})` : ''}`)
-                .join('\n')
-            : null
-          setLogs(details ? [msg, ...details.split('\n'), `耗时: ${data.duration_ms ?? '?'}ms`] : [msg])
-        } else {
-          setLogs([`[ERROR] ${data.message || res.statusText || '请求失败'}`])
-        }
-      } catch {
-        setLogs(['[ERROR] 网络错误'])
-      } finally {
-        setRunning(false)
-      }
-    }
-
-    setRunningStep(null)
-    // Refresh runs after completion
-    try {
-      const res = await adminFetch('/api/pipeline/runs')
-      if (res.ok) setStepRuns(await res.json())
-    } catch { /* ignore */ }
-  }
-
-  async function handleCancel() {
-    // 1. Immediately abort the SSE connection (kills the frontend fetch)
-    abort()
-
-    // 2. Also try to mark the run as cancelled in DB (best-effort, server may be dead)
-    const id = runId ?? pollingRunIdRef.current
-    if (id) {
-      try {
-        await adminFetch('/api/pipeline/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ runId: id }),
-        })
-      } catch { /* server might already be dead, that's ok */ }
-    }
-
-    // 3. Force UI state reset
-    setRunning(false)
-    setRunningStep(null)
-    stopPolling()
-  }
-
-  async function handleReset() {
-    setShowResetConfirm(false)
-    setResetStatus('重置中...')
-    try {
-      const res = await adminFetch('/api/admin/reset', { method: 'POST' })
-      setResetStatus(res.ok ? '数据已重置' : '重置失败')
-    } catch {
-      setResetStatus('重置失败')
-    }
-    setTimeout(() => setResetStatus(''), 3000)
+    // Refresh runs after trigger
+    setTimeout(loadRuns, 1000)
+    setTimeout(() => setTriggerStatus(prev => ({ ...prev, [key]: '' })), 5000)
   }
 
   return (
     <div className="space-y-4">
-      {showResetConfirm && (
-        <ConfirmDialog
-          title="重置所有数据"
-          message="将清空所有事实、快照和邮件报告。此操作不可撤销。确认继续？"
-          danger
-          onConfirm={handleReset}
-          onCancel={() => setShowResetConfirm(false)}
-        />
-      )}
-
-      {/* Daily cron one-click */}
-      <Card>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>一键日报流程</p>
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>
-              顺序执行：采集 → AI处理。{testMode ? '（测试模式，每表仅处理 3 条）' : '（完整模式）'}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {dailyPhase !== 'idle' && (
-              <span className="text-[11px] font-mono px-2 py-1 rounded"
-                style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
-                {dailyPhase === 'collecting' ? '采集中...' : 'AI 处理中...'}
-              </span>
-            )}
-            {dailyPhase !== 'idle' ? (
-              <button onClick={handleCancel}
-                className="px-4 py-1.5 rounded-md text-[12px] font-medium border"
-                style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
-                停止
-              </button>
-            ) : (
-              <button
-                onClick={handleDailyCron}
-                disabled={running || runningStep !== null}
-                className="px-4 py-1.5 rounded-md text-[12px] font-medium"
-                style={{
-                  background: 'var(--accent)',
-                  color: 'var(--accent-fg)',
-                  opacity: (running || runningStep !== null) ? 0.5 : 1,
-                }}>
-                执行
-              </button>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      {/* Test mode + controls */}
-      <Card>
-        <div className="flex items-center justify-between">
-          <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>流水线步骤</p>
-          <div className="flex rounded-md overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
-            <button
-              onClick={() => setTestMode(false)}
-              className="px-3 py-1 text-[11px] font-medium transition-colors"
-              style={{
-                background: !testMode ? 'var(--accent)' : 'transparent',
-                color: !testMode ? '#fff' : 'var(--fg-muted)',
-              }}>
-              完整
-            </button>
-            <button
-              onClick={() => setTestMode(true)}
-              className="px-3 py-1 text-[11px] font-medium transition-colors"
-              style={{
-                background: testMode ? 'var(--accent)' : 'transparent',
-                color: testMode ? '#fff' : 'var(--fg-muted)',
-              }}>
-              测试 (每表3条)
-            </button>
-          </div>
-        </div>
-      </Card>
-
-      <Card>
-        {loadingRuns ? (
-          <p className="text-[12px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>加载状态...</p>
+      {/* Latest Run Status */}
+      <div className="border rounded p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>Latest Run Status</h2>
+        {loading ? (
+          <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>Loading...</p>
         ) : (
-          <div className="space-y-2">
-            {PIPELINE_STEPS.map(step => {
-              const stepRun = stepRuns[step.pipelineType]
-              const sc = statusColor(stepRun)
-              const isActive = activeStep === step.key
-              return (
-                <div key={step.key}
-                  className="flex items-center justify-between py-2.5 px-3 rounded-md border cursor-pointer transition-colors"
-                  style={{
-                    borderColor: isActive ? 'var(--accent)' : 'var(--border)',
-                    background: isActive ? 'var(--accent-soft)' : 'transparent',
-                  }}
-                  onClick={() => {
-                    if (stepRun) {
-                      setActiveStep(step.key)
-                      restore(stepRun.logs ?? [], stepRun.status, stepRun.id)
-                      if (stepRun.status === 'running') startPolling(stepRun.id)
-                    }
-                  }}>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-[13px] font-medium" style={{ color: 'var(--fg-body)' }}>{step.label}</p>
-                        {stepRun && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                            style={{ background: sc.bg, color: sc.fg }}>
-                            {sc.label}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>
-                        {step.desc}
-                        {stepRun?.started_at && (
-                          <span className="ml-2">· {formatTime(stepRun.started_at)}</span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {(runningStep === step.key || (running && activeStep === step.key)) ? (
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ color: 'var(--fg-muted)' }}>
+                <th className="text-left py-1 pr-4 font-medium">Pipeline</th>
+                <th className="text-left py-1 pr-4 font-medium">Status</th>
+                <th className="text-left py-1 pr-4 font-medium">Started</th>
+                <th className="text-left py-1 pr-4 font-medium">Completed</th>
+                <th className="text-left py-1 font-medium">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {PIPELINE_TYPES.map(p => {
+                const run = runs[p.key]
+                const ts = triggerStatus[p.key]
+                return (
+                  <tr key={p.key} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                    <td className="py-2 pr-4 font-medium" style={{ color: 'var(--fg-body)' }}>{p.label}</td>
+                    <td className="py-2 pr-4">{statusBadge(run?.status)}</td>
+                    <td className="py-2 pr-4 font-mono" style={{ color: 'var(--fg-secondary)' }}>
+                      {formatTime(run?.started_at ?? null)}
+                    </td>
+                    <td className="py-2 pr-4 font-mono" style={{ color: 'var(--fg-secondary)' }}>
+                      {formatTime(run?.completed_at ?? null)}
+                    </td>
+                    <td className="py-2">
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleCancel() }}
-                        className="px-4 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
-                        style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
-                        停止
-                      </button>
-                    ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleStep(step) }}
-                        disabled={running || runningStep !== null}
-                        className="px-4 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
+                        onClick={() => triggerPipeline(p.key, p.endpoint)}
+                        disabled={!!ts && ts === 'running...'}
+                        className="px-3 py-1 rounded text-xs font-medium border"
                         style={{
                           borderColor: 'var(--border)',
-                          color: 'var(--fg-secondary)',
-                          opacity: (running || runningStep !== null) ? 0.5 : 1,
+                          color: ts === 'running...' ? 'var(--fg-muted)' : 'var(--fg-body)',
+                          opacity: ts === 'running...' ? 0.5 : 1,
+                          background: 'var(--surface)',
                         }}>
-                        执行
+                        {ts === 'running...' ? 'Running...' : p.buttonLabel}
                       </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                      {ts && ts !== 'running...' && (
+                        <span className={`ml-2 text-xs ${ts === 'done' ? 'text-green-600' : 'text-red-600'}`}>{ts}</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         )}
-      </Card>
+      </div>
 
-      {/* Log panel with step context */}
-      {logs.length > 0 && (
-        <Card>
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[11px] font-medium tracking-wider uppercase" style={{ color: 'var(--fg-muted)' }}>
-              {activeStep ? PIPELINE_STEPS.find(s => s.key === activeStep)?.label + ' — ' : ''}日志
-            </p>
-            {running && (
-              <span className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--accent)' }}>
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
-                实时
-              </span>
-            )}
+      {/* Log output */}
+      {logOutput.length > 0 && (
+        <div className="border rounded p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--fg-title)' }}>Log</h2>
+            <button onClick={() => setLogOutput([])} className="text-xs underline" style={{ color: 'var(--fg-muted)' }}>Clear</button>
           </div>
-          <div className="font-mono text-[11px] leading-relaxed rounded-md p-3 overflow-auto"
-            style={{ background: 'var(--surface-alt)', color: 'var(--fg-secondary)', maxHeight: '500px' }}>
-            {logs.map((log, i) => (
-              <div key={i} style={{
-                color: log.includes('[ERROR]') ? 'var(--danger)'
-                  : log.includes('完成') || log.includes('--- 完成 ---') ? 'var(--success)'
-                  : undefined
-              }}>
-                {log}
+          <div className="font-mono text-xs leading-relaxed rounded p-3 overflow-auto max-h-64"
+            style={{ background: 'var(--surface-alt)', color: 'var(--fg-secondary)' }}>
+            {logOutput.map((line, i) => (
+              <div key={i} style={{ color: line.includes('FAILED') || line.includes('ERROR') ? '#ef4444' : line.includes('completed') ? '#16a34a' : undefined }}>
+                {line}
               </div>
             ))}
-            <div ref={logsEndRef} />
           </div>
-        </Card>
-      )}
-
-      {/* DEV: Data Reset */}
-      <Card>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[12px] font-semibold" style={{ color: 'var(--danger)' }}>数据重置</p>
-            <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>清空事实、快照、邮件、叙事、时间线，重置原始数据为未处理</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {resetStatus && (
-              <span className="text-[11px]" style={{ color: resetStatus.includes('失败') ? 'var(--danger)' : 'var(--success)' }}>
-                {resetStatus}
-              </span>
-            )}
-            <button
-              onClick={() => setShowResetConfirm(true)}
-              disabled={running}
-              className="px-4 py-1.5 rounded-md text-[12px] font-medium border transition-colors"
-              style={{ borderColor: 'var(--danger)', color: 'var(--danger)', opacity: running ? 0.5 : 1 }}>
-              重置数据
-            </button>
-          </div>
-        </div>
-      </Card>
-    </div>
-  )
-}
-
-/* ──────────────────────────────────────────
-   Tab 3: Email Preview
-   ────────────────────────────────────────── */
-function PreviewTab() {
-  const [reports, setReports] = useState<ReportData[]>([])
-  const [selected, setSelected] = useState<ReportData | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    adminFetch('/api/reports')
-      .then(r => r.json())
-      .then((data: ReportData[]) => {
-        setReports(data)
-        if (data.length > 0) setSelected(data[0])
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
-
-  if (loading) return <p className="text-[12px] py-8 text-center" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
-  if (reports.length === 0) return <p className="text-[12px] py-8 text-center" style={{ color: 'var(--fg-muted)' }}>还没有生成过邮件报告。</p>
-
-  return (
-    <div className="flex gap-4">
-      <div className="w-48 shrink-0 space-y-1">
-        {reports.map(r => (
-          <button key={r.id} onClick={() => setSelected(r)}
-            className="w-full text-left px-3 py-2 rounded-md text-[12px] transition-colors"
-            style={{
-              background: selected?.id === r.id ? 'var(--accent-soft)' : 'transparent',
-              color: selected?.id === r.id ? 'var(--accent)' : 'var(--fg-secondary)',
-              border: `1px solid ${selected?.id === r.id ? 'var(--accent-muted)' : 'var(--border)'}`,
-            }}>
-            <p className="font-medium">{r.date}</p>
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--fg-muted)' }}>{r.subject ?? 'No subject'}</p>
-          </button>
-        ))}
-      </div>
-      {selected && (
-        <div className="flex-1 border rounded-lg overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface-alt)' }}>
-            <div>
-              <p className="text-[12px] font-medium" style={{ color: 'var(--fg-title)' }}>{selected.subject ?? `StablePulse | ${selected.date}`}</p>
-              <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>From: StablePulse &lt;noreply@stablepulse.com&gt;</p>
-            </div>
-            <p className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>{new Date(selected.created_at).toLocaleString('zh-CN')}</p>
-          </div>
-          <iframe srcDoc={selected.content} className="w-full border-0" style={{ height: '80vh', background: '#f0f0f0' }} title="Email preview" sandbox="allow-same-origin" />
         </div>
       )}
     </div>
   )
 }
 
-/* ──────────────────────────────────────────
-   Tab 4: Subscribers
-   ────────────────────────────────────────── */
-function SubscribersTab() {
-  const [subscribers, setSubscribers] = useState<Subscriber[]>([])
+// ══════════════════════════════════════════
+// Tab 2: Watchlist
+// ══════════════════════════════════════════
+function WatchlistTab() {
+  const [entities, setEntities] = useState<WatchlistEntity[]>([])
   const [loading, setLoading] = useState(true)
-  const [newEmail, setNewEmail] = useState('')
+  // Add form
+  const [newName, setNewName] = useState('')
+  const [newAliases, setNewAliases] = useState('')
+  const [newCategory, setNewCategory] = useState<string>(CATEGORY_OPTIONS[0])
   const [adding, setAdding] = useState(false)
+  // Edit state
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editAliases, setEditAliases] = useState('')
+  const [editCategory, setEditCategory] = useState('')
 
-  // Telegram multi-channel state
-  interface TgChannel { id: string; name: string; chatId: string; threadCn: string; threadEn: string }
-  const [tgChannels, setTgChannels] = useState<TgChannel[]>([])
-  const [tgLoading, setTgLoading] = useState(true)
-  const [tgSaving, setTgSaving] = useState(false)
-  const [tgSaveMsg, setTgSaveMsg] = useState('')
-  const [tgTestState, setTgTestState] = useState<Record<string, string>>({})
-  const [tgSendState, setTgSendState] = useState<{ daily: string; weekly: string; weekInput: string }>({
-    daily: '', weekly: '', weekInput: '',
-  })
-
-  useEffect(() => {
-    adminFetch('/api/admin/settings')
-      .then(r => r.json())
-      .then((data: Record<string, string>) => {
-        if (data.telegram_channels) {
-          try {
-            const parsed = JSON.parse(data.telegram_channels)
-            if (Array.isArray(parsed)) {
-              setTgChannels(parsed.map((ch: { id: string; name: string; chatId: string; threadCn?: number; threadEn?: number }) => ({
-                id: ch.id,
-                name: ch.name ?? '',
-                chatId: ch.chatId ?? '',
-                threadCn: ch.threadCn !== undefined ? String(ch.threadCn) : '',
-                threadEn: ch.threadEn !== undefined ? String(ch.threadEn) : '',
-              })))
-              return
-            }
-          } catch { /* ignore */ }
-        }
-        // Legacy fallback: build one channel from flat keys
-        if (data.telegram_chat_id) {
-          setTgChannels([{
-            id: 'legacy',
-            name: 'Default',
-            chatId: data.telegram_chat_id ?? '',
-            threadCn: data.telegram_thread_cn ?? '',
-            threadEn: data.telegram_thread_en ?? '',
-          }])
-        }
-      })
-      .catch(() => {})
-      .finally(() => setTgLoading(false))
-  }, [])
-
-  function addChannel() {
-    setTgChannels(prev => [...prev, {
-      id: `ch_${Date.now()}`,
-      name: '',
-      chatId: '',
-      threadCn: '',
-      threadEn: '',
-    }])
-  }
-
-  function removeChannel(id: string) {
-    setTgChannels(prev => prev.filter(ch => ch.id !== id))
-  }
-
-  function updateChannel(id: string, field: keyof TgChannel, value: string) {
-    setTgChannels(prev => prev.map(ch => ch.id === id ? { ...ch, [field]: value } : ch))
-  }
-
-  async function handleTgSave(e: React.FormEvent) {
-    e.preventDefault()
-    setTgSaving(true)
-    setTgSaveMsg('')
+  const loadEntities = useCallback(async () => {
     try {
-      const serialized = tgChannels.map(ch => ({
-        id: ch.id,
-        name: ch.name,
-        chatId: ch.chatId,
-        threadCn: ch.threadCn ? Number(ch.threadCn) : undefined,
-        threadEn: ch.threadEn ? Number(ch.threadEn) : undefined,
-      }))
-      const res = await adminFetch('/api/admin/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_channels: JSON.stringify(serialized) }),
-      })
-      setTgSaveMsg(res.ok ? '已保存' : '保存失败')
-    } catch { setTgSaveMsg('保存失败') }
-    finally {
-      setTgSaving(false)
-      setTimeout(() => setTgSaveMsg(''), 3000)
-    }
-  }
-
-  async function handleTgTest(channelId: string, threadType: 'main' | 'cn' | 'en') {
-    const ch = tgChannels.find(c => c.id === channelId)
-    if (!ch?.chatId) return
-    const key = `${channelId}_${threadType}`
-    setTgTestState(prev => ({ ...prev, [key]: '发送中...' }))
-    try {
-      const threadId = threadType === 'cn' && ch.threadCn ? Number(ch.threadCn)
-        : threadType === 'en' && ch.threadEn ? Number(ch.threadEn)
-        : undefined
-      const res = await adminFetch('/api/admin/settings/test-telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: ch.chatId, threadId, label: ch.name }),
-      })
-      const data = await res.json()
-      setTgTestState(prev => ({ ...prev, [key]: res.ok ? '✓ 已发送' : `✗ ${data.error ?? '失败'}` }))
-    } catch (err) {
-      setTgTestState(prev => ({ ...prev, [key]: `✗ ${err instanceof Error ? err.message : '失败'}` }))
-    }
-    setTimeout(() => setTgTestState(prev => { const n = { ...prev }; delete n[key]; return n }), 4000)
-  }
-
-  async function handleSendDaily() {
-    setTgSendState(prev => ({ ...prev, daily: '发送中...' }))
-    try {
-      const res = await adminFetch('/api/admin/settings/test-daily', { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) {
-        setTgSendState(prev => ({ ...prev, daily: `✗ ${data.error ?? '失败'}` }))
-      } else if (data.skipped) {
-        setTgSendState(prev => ({ ...prev, daily: `⚠ 跳过: ${data.skipped}` }))
-      } else {
-        setTgSendState(prev => ({ ...prev, daily: `✓ 已发送 — ${data.selected} 条新闻 → ${data.channels} 个 Channel` }))
-      }
-    } catch (err) {
-      setTgSendState(prev => ({ ...prev, daily: `✗ ${err instanceof Error ? err.message : '失败'}` }))
-    }
-    setTimeout(() => setTgSendState(prev => ({ ...prev, daily: '' })), 8000)
-  }
-
-  async function handleSendWeekly() {
-    setTgSendState(prev => ({ ...prev, weekly: '发送中...' }))
-    try {
-      const body = tgSendState.weekInput ? { week: tgSendState.weekInput } : {}
-      const res = await adminFetch('/api/admin/settings/test-weekly', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setTgSendState(prev => ({ ...prev, weekly: `✗ ${data.error ?? '失败'}` }))
-      } else if (data.skipped) {
-        setTgSendState(prev => ({ ...prev, weekly: `⚠ 跳过: ${data.skipped}` }))
-      } else {
-        setTgSendState(prev => ({ ...prev, weekly: `✓ 已发送 ${data.week} — ${data.factCount} 条新闻 → ${data.channels} 个 Channel` }))
-      }
-    } catch (err) {
-      setTgSendState(prev => ({ ...prev, weekly: `✗ ${err instanceof Error ? err.message : '失败'}` }))
-    }
-    setTimeout(() => setTgSendState(prev => ({ ...prev, weekly: '' })), 8000)
-  }
-
-  const load = useCallback(async () => {
-    try {
-      const res = await adminFetch('/api/subscribers')
+      const res = await adminFetch('/api/admin/watchlist')
       if (res.ok) {
         const data = await res.json()
-        setSubscribers(Array.isArray(data) ? data : data.data ?? [])
+        setEntities(data.entities ?? [])
       }
     } catch { /* ignore */ }
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { loadEntities() }, [loadEntities])
 
-  async function handleAdd() {
-    const email = newEmail.trim()
-    if (!email || adding) return
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newName.trim() || adding) return
     setAdding(true)
     try {
-      const res = await adminFetch('/api/subscribe', {
+      const aliases = newAliases.split(',').map(a => a.trim()).filter(Boolean)
+      const res = await adminFetch('/api/admin/watchlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ name: newName.trim(), aliases, category: newCategory }),
       })
-      if (res.ok) { setNewEmail(''); load() }
+      if (res.ok) {
+        setNewName('')
+        setNewAliases('')
+        loadEntities()
+      }
     } catch { /* ignore */ }
     finally { setAdding(false) }
   }
 
-  async function handleToggle(id: string, currentStatus: string) {
-    const newStatus = currentStatus === 'active' ? 'unsubscribed' : 'active'
+  async function handleToggleActive(entity: WatchlistEntity) {
     try {
-      await adminFetch('/api/subscribers', {
-        method: 'PATCH',
+      await adminFetch('/api/admin/watchlist', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, status: newStatus }),
+        body: JSON.stringify({ id: entity.id, active: !entity.active }),
       })
-      load()
+      loadEntities()
     } catch { /* ignore */ }
   }
 
-  const active = subscribers.filter(s => s.status === 'active')
-  const inactive = subscribers.filter(s => s.status !== 'active')
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this entity?')) return
+    try {
+      await adminFetch(`/api/admin/watchlist?id=${id}`, { method: 'DELETE' })
+      loadEntities()
+    } catch { /* ignore */ }
+  }
+
+  function startEdit(entity: WatchlistEntity) {
+    setEditId(entity.id)
+    setEditName(entity.name)
+    setEditAliases(entity.aliases.join(', '))
+    setEditCategory(entity.category)
+  }
+
+  async function saveEdit() {
+    if (!editId) return
+    try {
+      const aliases = editAliases.split(',').map(a => a.trim()).filter(Boolean)
+      await adminFetch('/api/admin/watchlist', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editId, name: editName.trim(), aliases, category: editCategory }),
+      })
+      setEditId(null)
+      loadEntities()
+    } catch { /* ignore */ }
+  }
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <Card>
-        <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>添加订阅者</p>
-        <div className="flex gap-2">
-          <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleAdd()}
-            placeholder="email@example.com"
-            className="flex-1 px-3 py-2 rounded-md border text-[13px] outline-none"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
-          <button onClick={handleAdd} disabled={adding || !newEmail.trim()}
-            className="px-4 py-2 rounded-md text-[12px] font-medium"
-            style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: adding ? 0.7 : 1 }}>
-            {adding ? '添加中...' : '添加'}
-          </button>
-        </div>
-      </Card>
-
-      <Card>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>订阅者列表</p>
-          <span className="text-[11px] font-mono" style={{ color: 'var(--fg-muted)' }}>{active.length} 活跃 · {inactive.length} 已退订</span>
-        </div>
-        {loading ? (
-          <p className="text-[12px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
-        ) : subscribers.length === 0 ? (
-          <p className="text-[12px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>暂无订阅者</p>
-        ) : (
-          <div className="space-y-1">
-            {subscribers.map(s => (
-              <div key={s.id} className="flex items-center justify-between py-2 px-3 rounded-md"
-                style={{ background: s.status === 'active' ? 'transparent' : 'var(--surface-alt)' }}>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full"
-                    style={{ background: s.status === 'active' ? 'var(--success)' : 'var(--fg-muted)', opacity: s.status === 'active' ? 1 : 0.4 }} />
-                  <span className="text-[13px]"
-                    style={{ color: s.status === 'active' ? 'var(--fg-body)' : 'var(--fg-muted)', textDecoration: s.status !== 'active' ? 'line-through' : 'none' }}>
-                    {s.email}
-                  </span>
-                </div>
-                <button onClick={() => handleToggle(s.id, s.status)}
-                  className="text-[11px] px-2 py-1 rounded border transition-colors"
-                  style={{
-                    borderColor: s.status === 'active' ? 'var(--danger)' : 'var(--success)',
-                    color: s.status === 'active' ? 'var(--danger)' : 'var(--success)',
-                  }}>
-                  {s.status === 'active' ? '退订' : '恢复'}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {/* Telegram multi-channel config */}
-      <Card>
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-title)' }}>Telegram Channels</p>
-          <span className="text-[11px]" style={{ color: 'var(--fg-muted)' }}>Bot Token 在 Vercel 环境变量中设置</span>
-        </div>
-        <p className="text-[12px] mb-4" style={{ color: 'var(--fg-muted)' }}>
-          配置多个 Supergroup，日报和周报会发送到所有 Channel。每个 Channel 可独立测试。
-        </p>
-        {tgLoading ? (
-          <p className="text-[12px]" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
-        ) : (
-          <form onSubmit={handleTgSave}>
-            <div className="space-y-4">
-              {tgChannels.length === 0 && (
-                <p className="text-[12px] py-2" style={{ color: 'var(--fg-muted)' }}>暂无配置的 Channel。点击下方「添加 Channel」开始。</p>
-              )}
-              {tgChannels.map((ch, idx) => (
-                <div key={ch.id} className="rounded-md border p-3 space-y-2" style={{ borderColor: 'var(--border)' }}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-medium" style={{ color: 'var(--fg-secondary)' }}>Channel {idx + 1}</span>
-                    <button type="button" onClick={() => removeChannel(ch.id)}
-                      className="text-[11px] px-2 py-0.5 rounded border"
-                      style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
-                      删除
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] mb-0.5" style={{ color: 'var(--fg-muted)' }}>名称</label>
-                      <input type="text" value={ch.name} onChange={e => updateChannel(ch.id, 'name', e.target.value)}
-                        placeholder="e.g. StablePulse CN"
-                        className="w-full px-2 py-1.5 rounded border text-[12px] outline-none"
-                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] mb-0.5" style={{ color: 'var(--fg-muted)' }}>Chat ID</label>
-                      <input type="text" value={ch.chatId} onChange={e => updateChannel(ch.id, 'chatId', e.target.value)}
-                        placeholder="-1001234567890"
-                        className="w-full px-2 py-1.5 rounded border text-[12px] outline-none font-mono"
-                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] mb-0.5" style={{ color: 'var(--fg-muted)' }}>中文 Thread ID</label>
-                      <input type="text" value={ch.threadCn} onChange={e => updateChannel(ch.id, 'threadCn', e.target.value)}
-                        placeholder="15"
-                        className="w-full px-2 py-1.5 rounded border text-[12px] outline-none font-mono"
-                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] mb-0.5" style={{ color: 'var(--fg-muted)' }}>English Thread ID</label>
-                      <input type="text" value={ch.threadEn} onChange={e => updateChannel(ch.id, 'threadEn', e.target.value)}
-                        placeholder="20"
-                        className="w-full px-2 py-1.5 rounded border text-[12px] outline-none font-mono"
-                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }} />
-                    </div>
-                  </div>
-                  {/* Per-channel test buttons */}
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {([
-                      { type: 'main' as const, label: '主群' },
-                      { type: 'cn' as const, label: '中文 Topic' },
-                      { type: 'en' as const, label: 'EN Topic' },
-                    ]).map(({ type, label }) => {
-                      const key = `${ch.id}_${type}`
-                      return (
-                        <div key={type} className="flex items-center gap-1.5">
-                          <button type="button"
-                            onClick={() => handleTgTest(ch.id, type)}
-                            disabled={!ch.chatId || !!tgTestState[key]}
-                            className="px-2.5 py-1 rounded text-[11px] border"
-                            style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)', opacity: (!ch.chatId || !!tgTestState[key]) ? 0.5 : 1 }}>
-                            测试 {label}
-                          </button>
-                          {tgTestState[key] && (
-                            <span className="text-[11px]" style={{ color: tgTestState[key]?.startsWith('✓') ? '#16a34a' : '#ef4444' }}>
-                              {tgTestState[key]}
-                            </span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-3 mt-4">
-              <button type="button" onClick={addChannel}
-                className="px-3 py-1.5 rounded-md text-[12px] border"
-                style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)' }}>
-                + 添加 Channel
-              </button>
-              <button type="submit" disabled={tgSaving}
-                className="px-4 py-1.5 rounded-md text-[12px] font-medium"
-                style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: tgSaving ? 0.6 : 1 }}>
-                {tgSaving ? '保存中...' : '保存所有'}
-              </button>
-              {tgSaveMsg && (
-                <span className="text-[12px]" style={{ color: tgSaveMsg === '已保存' ? '#16a34a' : '#ef4444' }}>
-                  {tgSaveMsg}
-                </span>
-              )}
-            </div>
-          </form>
-        )}
-      </Card>
-
-      {/* Test send full digest */}
-      <Card>
-        <p className="text-[13px] font-semibold mb-1" style={{ color: 'var(--fg-title)' }}>发送测试内容</p>
-        <p className="text-[12px] mb-4" style={{ color: 'var(--fg-muted)' }}>
-          使用真实数据立即发送到所有已配置 Channel。日报取昨天数据，周报取指定周（默认本周）。
-        </p>
-        <div className="space-y-3">
-          {/* Daily test */}
-          <div className="flex items-center gap-3">
-            <button onClick={handleSendDaily} disabled={!!tgSendState.daily}
-              className="px-4 py-1.5 rounded-md text-[12px] font-medium border"
-              style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)', opacity: tgSendState.daily ? 0.6 : 1 }}>
-              {tgSendState.daily === '发送中...' ? '发送中...' : '发送日报'}
-            </button>
-            {tgSendState.daily && tgSendState.daily !== '发送中...' && (
-              <span className="text-[12px]" style={{ color: tgSendState.daily.startsWith('✓') ? '#16a34a' : tgSendState.daily.startsWith('⚠') ? '#d97706' : '#ef4444' }}>
-                {tgSendState.daily}
-              </span>
-            )}
-          </div>
-          {/* Weekly test */}
-          <div className="flex items-center gap-3 flex-wrap">
+    <div className="space-y-4">
+      {/* Add form */}
+      <div className="border rounded p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>Add Entity</h2>
+        <form onSubmit={handleAdd} className="flex flex-wrap gap-2 items-end">
+          <div>
+            <label className="block text-xs mb-1" style={{ color: 'var(--fg-muted)' }}>Name</label>
             <input
               type="text"
-              value={tgSendState.weekInput}
-              onChange={e => setTgSendState(prev => ({ ...prev, weekInput: e.target.value }))}
-              placeholder="留空=本周，或填 2025-W14"
-              className="px-3 py-1.5 rounded-md border text-[12px] outline-none font-mono w-48"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Entity name"
+              className="px-2 py-1.5 rounded border text-xs outline-none w-40"
               style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }}
             />
-            <button onClick={handleSendWeekly} disabled={!!tgSendState.weekly}
-              className="px-4 py-1.5 rounded-md text-[12px] font-medium border"
-              style={{ borderColor: 'var(--border)', color: 'var(--fg-secondary)', opacity: tgSendState.weekly ? 0.6 : 1 }}>
-              {tgSendState.weekly === '发送中...' ? '发送中...' : '发送周报'}
-            </button>
-            {tgSendState.weekly && tgSendState.weekly !== '发送中...' && (
-              <span className="text-[12px]" style={{ color: tgSendState.weekly.startsWith('✓') ? '#16a34a' : tgSendState.weekly.startsWith('⚠') ? '#d97706' : '#ef4444' }}>
-                {tgSendState.weekly}
-              </span>
-            )}
           </div>
-        </div>
-      </Card>
-    </div>
-  )
-}
-
-/* ──────────────────────────────────────────
-   Tab 2: Data Quality (V13 新增)
-   ────────────────────────────────────────── */
-interface QualityData {
-  week: string
-  rawCount: number
-  factCount: number
-  verifiedCount: number
-  contextHitCount: number
-  emailSelectCount: number
-}
-
-function FunnelBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
-  const pct = max > 0 ? (value / max) * 100 : 0
-  const rate = max > 0 ? Math.round((value / max) * 100) : 0
-  return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className="text-[12px] w-20 shrink-0 text-right" style={{ color: 'var(--fg-muted)' }}>{label}</span>
-      <div className="flex-1 h-5 rounded-sm overflow-hidden" style={{ background: 'var(--surface-alt)' }}>
-        <div className="h-full rounded-sm transition-all" style={{ width: `${Math.max(pct, 2)}%`, background: color }} />
-      </div>
-      <span className="text-[12px] font-mono w-16 shrink-0" style={{ color: 'var(--fg-secondary)' }}>
-        {value} <span style={{ color: 'var(--fg-muted)' }}>({rate}%)</span>
-      </span>
-    </div>
-  )
-}
-
-function DataQualityTab() {
-  const [data, setData] = useState<QualityData | null>(null)
-  const [history, setHistory] = useState<QualityData[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    async function load() {
-      try {
-        // Fetch current week snapshot
-        const snapshotRes = await adminFetch('/api/snapshot')
-        if (snapshotRes.ok) {
-          const snapshot = await snapshotRes.json()
-          const sd = snapshot?.snapshot_data as Record<string, unknown> | undefined
-          if (sd) {
-            const total = (sd.total_facts as number) ?? 0
-            const high = (sd.high_confidence as number) ?? 0
-            const medium = (sd.medium_confidence as number) ?? 0
-            // Estimate context hits and email selects from narratives/signals
-            const narrs = Array.isArray(sd.narratives) ? sd.narratives.length : 0
-            setData({
-              week: snapshot.week_number ?? '',
-              rawCount: total + ((sd.rejected as number) ?? 0),
-              factCount: total,
-              verifiedCount: high + medium,
-              contextHitCount: narrs * 2, // rough estimate
-              emailSelectCount: narrs + 5, // 3 narratives + ~5 signals
-            })
-          }
-        }
-
-        // Fetch weekly archive for history
-        const archiveRes = await fetch('/api/snapshot?history=true').catch(() => null)
-        if (archiveRes?.ok) {
-          const archiveData = await archiveRes.json()
-          if (Array.isArray(archiveData)) {
-            setHistory(archiveData.slice(0, 8).map((row: { week_number: string; snapshot_data: Record<string, unknown> }) => {
-              const s = row.snapshot_data ?? {}
-              const total = (s.total_facts as number) ?? 0
-              const high = (s.high_confidence as number) ?? 0
-              const medium = (s.medium_confidence as number) ?? 0
-              return {
-                week: row.week_number,
-                rawCount: total + ((s.rejected as number) ?? 0),
-                factCount: total,
-                verifiedCount: high + medium,
-                contextHitCount: 0,
-                emailSelectCount: 0,
-              }
-            }))
-          }
-        }
-      } catch { /* ignore */ }
-      finally { setLoading(false) }
-    }
-    load()
-  }, [])
-
-  if (loading) return <p className="text-[12px] py-8 text-center" style={{ color: 'var(--fg-muted)' }}>加载中...</p>
-
-  return (
-    <div className="space-y-4 max-w-3xl">
-      {/* Pipeline Funnel */}
-      <Card>
-        <p className="text-[13px] font-semibold mb-1" style={{ color: 'var(--fg-title)' }}>
-          本周 Pipeline 漏斗
-        </p>
-        <p className="text-[11px] mb-4" style={{ color: 'var(--fg-muted)' }}>
-          {data?.week ?? '—'} · 原始数据 → 拆解事实 → 验证通过 → 上下文匹配 → 邮件选取
-        </p>
-        {data ? (
           <div>
-            <FunnelBar label="原始数据" value={data.rawCount} max={data.rawCount} color="var(--fg-muted)" />
-            <FunnelBar label="拆解事实" value={data.factCount} max={data.rawCount} color="var(--info)" />
-            <FunnelBar label="验证通过" value={data.verifiedCount} max={data.rawCount} color="var(--success)" />
-            <FunnelBar label="上下文匹配" value={data.contextHitCount} max={data.rawCount} color="#3b82f6" />
-            <FunnelBar label="邮件选取" value={data.emailSelectCount} max={data.rawCount} color="var(--accent)" />
+            <label className="block text-xs mb-1" style={{ color: 'var(--fg-muted)' }}>Aliases (comma-separated)</label>
+            <input
+              type="text"
+              value={newAliases}
+              onChange={e => setNewAliases(e.target.value)}
+              placeholder="alias1, alias2"
+              className="px-2 py-1.5 rounded border text-xs outline-none w-48"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }}
+            />
           </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: 'var(--fg-muted)' }}>Category</label>
+            <select
+              value={newCategory}
+              onChange={e => setNewCategory(e.target.value)}
+              className="px-2 py-1.5 rounded border text-xs outline-none"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }}>
+              {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <button
+            type="submit"
+            disabled={adding || !newName.trim()}
+            className="px-3 py-1.5 rounded text-xs font-medium"
+            style={{ background: 'var(--accent)', color: 'var(--accent-fg)', opacity: adding ? 0.5 : 1 }}>
+            {adding ? 'Adding...' : 'Add'}
+          </button>
+        </form>
+      </div>
+
+      {/* Entity table */}
+      <div className="border rounded p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>
+          Entities ({entities.length})
+        </h2>
+        {loading ? (
+          <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>Loading...</p>
+        ) : entities.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--fg-muted)' }}>No entities yet.</p>
         ) : (
-          <p className="text-[12px] py-4 text-center" style={{ color: 'var(--fg-muted)' }}>暂无数据</p>
-        )}
-      </Card>
-
-      {/* Key Rates */}
-      {data && (
-        <Card>
-          <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>关键指标</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: '验证通过率', value: data.rawCount > 0 ? Math.round((data.verifiedCount / data.rawCount) * 100) : 0, unit: '%', color: 'var(--success)' },
-              { label: '上下文命中率', value: data.factCount > 0 ? Math.round((data.contextHitCount / data.factCount) * 100) : 0, unit: '%', color: '#3b82f6' },
-              { label: '邮件选取率', value: data.factCount > 0 ? Math.round((data.emailSelectCount / data.factCount) * 100) : 0, unit: '%', color: 'var(--accent)' },
-              { label: '事实总数', value: data.factCount, unit: '', color: 'var(--fg-body)' },
-            ].map(item => (
-              <div key={item.label} className="text-center py-3 rounded-md" style={{ background: 'var(--surface-alt)' }}>
-                <p className="text-[20px] font-bold font-mono" style={{ color: item.color }}>{item.value}{item.unit}</p>
-                <p className="text-[11px] mt-1" style={{ color: 'var(--fg-muted)' }}>{item.label}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Weekly Trend (simple table) */}
-      {history.length > 0 && (
-        <Card>
-          <p className="text-[13px] font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>历史趋势 (最近 8 周)</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr style={{ color: 'var(--fg-muted)' }}>
-                  <th className="text-left py-2 pr-4 font-medium">周</th>
-                  <th className="text-right py-2 px-2 font-medium">原始</th>
-                  <th className="text-right py-2 px-2 font-medium">事实</th>
-                  <th className="text-right py-2 px-2 font-medium">已验证</th>
-                  <th className="text-right py-2 px-2 font-medium">通过率</th>
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ color: 'var(--fg-muted)' }}>
+                <th className="text-left py-1 pr-3 font-medium">Name</th>
+                <th className="text-left py-1 pr-3 font-medium">Aliases</th>
+                <th className="text-left py-1 pr-3 font-medium">Category</th>
+                <th className="text-left py-1 pr-3 font-medium">Active</th>
+                <th className="text-left py-1 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entities.map(entity => (
+                <tr key={entity.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                  {editId === entity.id ? (
+                    <>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          className="px-1 py-0.5 rounded border text-xs w-full outline-none"
+                          style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={editAliases}
+                          onChange={e => setEditAliases(e.target.value)}
+                          className="px-1 py-0.5 rounded border text-xs w-full outline-none"
+                          style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <select
+                          value={editCategory}
+                          onChange={e => setEditCategory(e.target.value)}
+                          className="px-1 py-0.5 rounded border text-xs outline-none"
+                          style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--fg-body)' }}>
+                          {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </td>
+                      <td className="py-2 pr-3" />
+                      <td className="py-2">
+                        <button onClick={saveEdit} className="text-xs underline mr-2" style={{ color: 'var(--accent)' }}>Save</button>
+                        <button onClick={() => setEditId(null)} className="text-xs underline" style={{ color: 'var(--fg-muted)' }}>Cancel</button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="py-2 pr-3 font-medium" style={{ color: 'var(--fg-body)' }}>{entity.name}</td>
+                      <td className="py-2 pr-3 font-mono" style={{ color: 'var(--fg-secondary)' }}>
+                        {entity.aliases.length > 0 ? entity.aliases.join(', ') : '-'}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-xs">{entity.category}</span>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <button
+                          onClick={() => handleToggleActive(entity)}
+                          className={`px-2 py-0.5 rounded text-xs font-medium ${entity.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {entity.active ? 'Active' : 'Inactive'}
+                        </button>
+                      </td>
+                      <td className="py-2">
+                        <button onClick={() => startEdit(entity)} className="text-xs underline mr-2" style={{ color: 'var(--accent)' }}>Edit</button>
+                        <button onClick={() => handleDelete(entity.id)} className="text-xs underline text-red-600">Delete</button>
+                      </td>
+                    </>
+                  )}
                 </tr>
-              </thead>
-              <tbody>
-                {history.map(h => (
-                  <tr key={h.week} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                    <td className="py-2 pr-4 font-mono" style={{ color: 'var(--fg-secondary)' }}>{h.week}</td>
-                    <td className="py-2 px-2 text-right font-mono" style={{ color: 'var(--fg-muted)' }}>{h.rawCount}</td>
-                    <td className="py-2 px-2 text-right font-mono" style={{ color: 'var(--fg-body)' }}>{h.factCount}</td>
-                    <td className="py-2 px-2 text-right font-mono" style={{ color: 'var(--success)' }}>{h.verifiedCount}</td>
-                    <td className="py-2 px-2 text-right font-mono" style={{ color: 'var(--fg-secondary)' }}>
-                      {h.rawCount > 0 ? Math.round((h.verifiedCount / h.rawCount) * 100) : 0}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
 
-
-/*  Main Admin Page: 4 Tabs
-   ────────────────────────────────────────── */
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'pipeline', label: '流水线' },
-  { key: 'quality', label: '数据质量' },
-  { key: 'preview', label: '预览邮件' },
-  { key: 'subscribers', label: '订阅者' },
-]
-
+// ══════════════════════════════════════════
+// Auth Gate
+// ══════════════════════════════════════════
 const ADMIN_PASSWORD = 'ZIAN'
 
 function AdminGate({ children }: { children: React.ReactNode }) {
@@ -1336,14 +436,8 @@ function AdminGate({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex items-center justify-center" style={{ minHeight: '60vh' }}>
-      <div className="w-[320px] text-center">
-        <div className="w-10 h-10 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: 'var(--surface-alt)' }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--fg-muted)" strokeWidth="2" strokeLinecap="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        </div>
-        <p className="text-[14px] font-medium mb-4" style={{ color: 'var(--fg-secondary)' }}>输入密码访问管理后台</p>
+      <div className="w-80 text-center">
+        <p className="text-sm font-medium mb-4" style={{ color: 'var(--fg-secondary)' }}>Enter password</p>
         <form onSubmit={(e) => {
           e.preventDefault()
           if (input === ADMIN_PASSWORD) {
@@ -1360,19 +454,27 @@ function AdminGate({ children }: { children: React.ReactNode }) {
             onChange={(e) => { setInput(e.target.value); setError(false) }}
             placeholder="Password"
             autoFocus
-            className="w-full px-4 py-2.5 text-[14px] rounded-lg border text-center outline-none transition-colors"
+            className="w-full px-4 py-2.5 text-sm rounded border text-center outline-none"
             style={{
               borderColor: error ? '#ef4444' : 'var(--border)',
               background: 'var(--surface)',
               color: 'var(--fg-title)',
             }}
           />
-          {error && <p className="text-[12px] mt-2" style={{ color: '#ef4444' }}>密码错误</p>}
+          {error && <p className="text-xs mt-2 text-red-500">Wrong password</p>}
         </form>
       </div>
     </div>
   )
 }
+
+// ══════════════════════════════════════════
+// Main Page
+// ══════════════════════════════════════════
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'pipeline', label: 'Pipeline' },
+  { key: 'watchlist', label: 'Watchlist' },
+]
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('pipeline')
@@ -1381,14 +483,14 @@ export default function AdminPage() {
     <AdminGate>
       <div>
         <div className="mb-6">
-          <h1 className="text-[18px] font-bold" style={{ color: 'var(--fg-title)' }}>管理后台</h1>
+          <h1 className="text-lg font-bold" style={{ color: 'var(--fg-title)' }}>Admin</h1>
         </div>
 
         {/* Tab bar */}
         <div className="flex items-center gap-1 mb-6 border-b" style={{ borderColor: 'var(--border)' }}>
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className="px-4 py-2 text-[13px] font-medium transition-colors"
+              className="px-4 py-2 text-sm font-medium transition-colors"
               style={{
                 color: tab === t.key ? 'var(--accent)' : 'var(--fg-muted)',
                 borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
@@ -1401,9 +503,7 @@ export default function AdminPage() {
 
         {/* Tab content */}
         {tab === 'pipeline' && <PipelineTab />}
-        {tab === 'quality' && <DataQualityTab />}
-        {tab === 'preview' && <PreviewTab />}
-        {tab === 'subscribers' && <SubscribersTab />}
+        {tab === 'watchlist' && <WatchlistTab />}
       </div>
     </AdminGate>
   )

@@ -1,7 +1,7 @@
 // Twitter 关注账号列表
 // A6 采集器追踪这些特定账号的新帖子
 
-import type { TwitterAuthorCategory } from '@/lib/types'
+export type TwitterAuthorCategory = 'vc' | 'kol' | 'founder' | 'user'
 
 export interface TwitterAccount {
   handle: string

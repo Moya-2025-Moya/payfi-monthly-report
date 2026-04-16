@@ -1,541 +1,205 @@
 // ============================================================
-// StablePulse — Core TypeScript Types
-// Agent 0: 所有模块共享的类型定义
+// StablePulse V2 — Core TypeScript Types
+// Simplified: events > atomic facts, timeliness > accuracy
 // ============================================================
 
-// ─── 基础类型 ───
-
-export type SourceType = 'news' | 'filing' | 'onchain' | 'product' | 'funding' | 'tweet' | 'regulatory'
-export type SourceCredibility = 'official' | 'media' | 'social' | 'derived'
-export type FactType = 'event' | 'metric' | 'quote' | 'relationship' | 'status_change'
-export type Objectivity = 'fact' | 'opinion' | 'analysis'
-export type Confidence = 'high' | 'medium' | 'low'
-export type VerificationStatus = 'pending_verification' | 'verified' | 'partially_verified' | 'rejected'
+// ─── Entity Management ───
 
 export type EntityCategory =
-  | 'stablecoin_issuer'
-  | 'b2c_product'
-  | 'b2b_infra'
-  | 'tradfi'
-  | 'public_company'
+  | 'issuer'
+  | 'payments'
+  | 'institutional'
+  | 'regulatory'
+  | 'infrastructure'
+  | 'enterprise'
+  | 'rwa'
   | 'defi'
-  | 'regulator'
 
-export type Sector = 'issuance' | 'payments' | 'defi' | 'infrastructure' | 'regulatory' | 'capital_markets'
-export type RelationshipType = 'investment' | 'partnership' | 'competition' | 'dependency' | 'acquisition' | 'issuance'
-export type TwitterAuthorCategory = 'vc' | 'kol' | 'founder' | 'user'
-export type CollectorName =
-  | 'defillama' | 'free-crypto-news' | 'rss' | 'sec-edgar' | 'yahoo-finance'
-  | 'defillama_raises' | 'news_extraction' | 'twitterapi_io'
-  | 'github' | 'blog_rss' | 'congress' | 'eu_journal'
-  // [ROADMAP] 后续集成
-  | 'coingecko' | 'cryptorank'
-
-// ─── Raw Data Layer (Module A 写入) ───
-
-export interface RawOnchainMetric {
-  id: string
-  source: 'defillama' | 'coingecko'
-  coin_id: string
-  coin_symbol: string
-  metric_name: string
-  metric_value: number
-  metric_unit: string
-  chain?: string
-  fetched_at: Date
-  created_at: Date
-}
-
-export interface RawNews {
-  id: string
-  collector: 'free-crypto-news' | 'rss'
-  source_name: string
-  source_url: string
-  title: string
-  summary: string | null
-  full_text: string | null
-  published_at: Date
-  tags: string[]
-  language: string
-  processed: boolean
-  created_at: Date
-}
-
-export interface RawFiling {
-  id: string
-  company_cik: string
-  company_name: string
-  filing_type: string // '10-K' | '10-Q' | '8-K' | 'S-1' etc.
-  filing_url: string
-  filing_date: Date
-  description: string | null
-  full_text: string | null
-  processed: boolean
-  created_at: Date
-}
-
-export interface RawStockData {
-  id: string
-  ticker: string
-  company_name: string
-  price: number
-  change_pct: number
-  volume: number
-  market_cap: number | null
-  date: Date
-  created_at: Date
-}
-
-export interface RawProductUpdate {
-  id: string
-  product_name: string
-  source_type: 'blog' | 'github_release' | 'changelog'
-  source_url: string
-  title: string
-  description: string | null
-  version: string | null
-  published_at: Date
-  processed: boolean
-  created_at: Date
-}
-
-export interface RawFunding {
-  id: string
-  collector: 'defillama_raises' | 'news_extraction' | 'cryptorank' /* ROADMAP */
-  project_name: string
-  source_url: string
-  round: string | null
-  amount: number | null
-  amount_unit: string
-  valuation: number | null
-  investors: string[]
-  sector: string | null
-  announced_at: Date
-  processed: boolean
-  created_at: Date
-}
-
-export interface RawTweet {
-  id: string
-  author_handle: string
-  author_name: string
-  author_category: TwitterAuthorCategory
-  source_url: string
-  content: string
-  likes: number
-  retweets: number
-  replies: number
-  posted_at: Date
-  processed: boolean
-  created_at: Date
-}
-
-export interface RawRegulatory {
-  id: string
-  region: string
-  agency: string
-  source_url: string
-  title: string
-  description: string | null
-  doc_type: string // 'bill' | 'enforcement' | 'guidance' | 'license' | 'announcement'
-  published_at: Date
-  processed: boolean
-  created_at: Date
-}
-
-// ─── Atomic Fact Layer (Module B 写入) ───
-
-export interface AtomicFact {
-  id: string
-  // 内容
-  content_en: string
-  content_zh: string | null
-  // 分类
-  fact_type: FactType
-  objectivity: Objectivity
-  speaker: string | null // 观点/分析的归因（人名+头衔 或 机构名）
-  tags: string[]
-  // 来源
-  source_id: string
-  source_table: string // 'raw_news' | 'raw_filings' etc.
-  source_type: SourceType
-  source_url: string
-  source_credibility: SourceCredibility
-  // 指标 (metric类型)
-  metric_name: string | null
-  metric_value: number | null
-  metric_unit: string | null
-  metric_period: string | null
-  metric_change: string | null
-  // 验证
-  verification_status: VerificationStatus
-  confidence: Confidence | null
-  confidence_reasons: string[]
-  v1_result: V1Result | null
-  v2_result: V2Result | null
-  v3_result: V3Result | null
-  v4_result: V4Result | null
-  v5_result: V5Result | null
-  // 时间
-  fact_date: Date
-  collected_at: Date
-  week_number: string // '2026-W10'
-  created_at: Date
-  updated_at: Date
-}
-
-// ─── Verification Layer Types (V0-V6) ───
-
-export interface V1Result {
-  status: 'matched' | 'partial' | 'no_match' | 'source_unavailable'
-  evidence_quote: string | null
-  match_score: number // 0-100
-}
-
-export interface V2Result {
-  source_count: number
-  consistent_count: number
-  cross_validation: 'consistent' | 'partially_consistent' | 'inconsistent' | 'single_source'
-  is_minority: boolean
-  majority_value: string | null
-  // 信息源独立性
-  independent_sources: boolean
-  source_urls: string[]            // 参与交叉验证的精确URL列表
-  source_independence_note: string | null // 独立性判断说明
-  details: string | null
-}
-
-export interface V3Result {
-  sanity: 'normal' | 'anomaly' | 'likely_error' | 'not_applicable'
-  reason: string | null
-  historical_reference: number | null
-}
-
-export interface V4Result {
-  anchor_status: 'anchored' | 'deviation' | 'mismatch' | 'no_anchor_data' | 'not_applicable'
-  claimed_value: number | null
-  actual_value: number | null
-  deviation_pct: number | null
-}
-
-export interface V5Result {
-  temporal_status: 'consistent' | 'conflict' | 'unchecked'
-  conflict_detail: string | null
-}
-
-export interface V6Result {
-  confirmed: boolean
-  confidence: number // 0-100
-  reason: string
-}
-
-export interface Verdict {
-  status: VerificationStatus
-  confidence: Confidence | null
-  reason: string
-}
-
-// B1 中间产物
-export interface CandidateFact {
-  content: string
-  fact_type: FactType
-  objectivity: Objectivity
-  speaker: string | null // 观点/分析的归因
-  evidence_sentence: string
-  tags: string[]
-  metric_name: string | null
-  metric_value: number | null
-  metric_unit: string | null
-  metric_period: string | null
-  metric_change: string | null
-  // B1 Prompt2 自查结果
-  self_check: 'supported' | 'partial' | 'unsupported'
-}
-
-// ─── Knowledge Graph Layer ───
-
-export interface Entity {
+export interface WatchlistEntity {
   id: string
   name: string
   aliases: string[]
   category: EntityCategory
-  description_en: string | null
-  description_zh: string | null
-  logo_url: string | null
-  website: string | null
-  created_at: Date
-  updated_at: Date
+  active: boolean
+  metadata: Record<string, unknown> // sec_cik, ticker, blog_rss, website, etc.
+  created_at: string
+  updated_at: string
 }
 
-export interface FactEntity {
-  fact_id: string
-  entity_id: string
-  role: string | null // 'subject' | 'object' | 'mentioned'
-}
+// ─── Raw Data Layer ───
 
-export interface EntityRelationship {
+export type SourceType = 'rss' | 'twitter' | 'regulatory' | 'sec' | 'brave_search'
+
+export interface RawItem {
   id: string
-  entity_a_id: string
-  entity_b_id: string
-  relationship_type: RelationshipType
-  description: string | null
-  source_fact_id: string | null
-  week_number: string
-  created_at: Date
-}
-
-export interface Timeline {
-  id: string
-  name: string
-  description: string | null
-  entity_id: string | null // 主关联实体
-  status: 'active' | 'completed' | 'stale'
-  created_at: Date
-  updated_at: Date
-}
-
-export interface TimelineFact {
-  timeline_id: string
-  fact_id: string
-  order_index: number
-  v6_result: V6Result | null
-  attribution_status: 'confirmed' | 'uncertain' | 'rejected'
-}
-
-export interface SectorRecord {
-  id: string
-  name: Sector
-  label_en: string
-  label_zh: string
-}
-
-export interface FactSector {
-  fact_id: string
-  sector_id: string
-}
-
-export interface RegulatoryTracker {
-  id: string
-  name: string
-  region: string
-  status: string // 'proposed' | 'hearing' | 'committee' | 'floor_vote' | 'enacted' | 'enforcement'
-  current_stage_date: Date | null
-  entity_id: string | null
-  created_at: Date
-  updated_at: Date
-}
-
-// ─── Quality Layer ───
-
-export interface FactContradiction {
-  id: string
-  fact_id_a: string
-  fact_id_b: string
-  contradiction_type: 'numerical' | 'textual' | 'temporal'
-  difference_description: string
-  status: 'unresolved' | 'resolved' | 'dismissed'
-  resolved_note: string | null
-  detected_at: Date
-  resolved_at: Date | null
-}
-
-export interface BlindSpotReport {
-  id: string
-  entity_type: EntityCategory
-  week_number: string
-  report_data: BlindSpotData
-  created_at: Date
-}
-
-export interface BlindSpotData {
-  template_dimensions: string[]
-  template_source_entity_id: string
-  entities: {
-    entity_id: string
-    entity_name: string
-    coverage: Record<string, 'covered' | 'sparse' | 'missing'>
-  }[]
-}
-
-// ─── Collaboration Layer ───
-
-export interface User {
-  id: string
-  email: string
-  display_name: string
-  role: 'admin' | 'member'
-  created_at: Date
-}
-
-export interface Bookmark {
-  id: string
-  user_id: string
-  fact_id: string
-  label: string | null
-  created_at: Date
-}
-
-export interface Note {
-  id: string
-  user_id: string
-  fact_id: string | null
-  entity_id: string | null
-  timeline_id: string | null
-  content: string
-  created_at: Date
-  updated_at: Date
-}
-
-export interface Comment {
-  id: string
-  user_id: string
-  fact_id: string
-  content: string
-  parent_id: string | null
-  created_at: Date
-}
-
-export interface TeamQuestion {
-  id: string
-  user_id: string
-  question: string
-  entity_id: string | null
-  status: 'open' | 'partially_answered' | 'answered' | 'closed'
-  week_number: string
-  related_fact_ids: string[]
-  created_at: Date
-  updated_at: Date
-}
-
-export interface UserPreference {
-  user_id: string
-  key: string
-  value: string
-}
-
-export interface ChatMessage {
-  id: string
-  user_id: string
-  role: 'user' | 'assistant'
-  content: string
-  context_fact_ids: string[]
-  created_at: Date
-}
-
-// ─── Sharing Layer ───
-
-export interface SharedView {
-  id: string
-  token: string
-  created_by: string
-  query_params: Record<string, unknown>
+  source_type: SourceType
+  source_name: string
+  source_url: string
   title: string | null
-  expires_at: Date
-  view_count: number
-  created_at: Date
+  content: string | null
+  full_text: string | null
+  language: string
+  published_at: string
+  metadata: Record<string, unknown>
+  processed: boolean
+  created_at: string
 }
 
-// ─── System Layer ───
+// Twitter-specific metadata shape
+export interface TwitterMetadata {
+  author_handle: string
+  author_name: string
+  author_category?: string
+  likes: number
+  retweets: number
+  replies: number
+}
 
-export interface WeeklySnapshot {
+// Regulatory-specific metadata shape
+export interface RegulatoryMetadata {
+  region: string
+  agency: string
+  doc_type: string // bill, enforcement, guidance, license, announcement
+}
+
+// ─── Event Layer (Core Output) ───
+
+export type EventCategory =
+  | 'regulatory'
+  | 'partnership'
+  | 'product'
+  | 'funding'
+  | 'market'
+  | 'policy'
+  | 'technical'
+  | 'other'
+
+export type Importance = 1 | 2 | 3 | 4 // 1=critical, 2=high, 3=medium, 4=low
+
+export type V1Status = 'matched' | 'partial' | 'no_match'
+
+export interface Event {
+  id: string
+  title_zh: string
+  title_en: string | null
+  summary_zh: string
+  summary_en: string | null
+  category: EventCategory
+  importance: Importance
+  entity_names: string[]
+  source_urls: string[]
+  source_count: number
+  v1_status: V1Status | null
+  published_at: string
+  pushed_to_tg: boolean
+  included_in_daily: boolean
+  included_in_weekly: boolean
+  created_at: string
+}
+
+// AI extraction output (before DB insert)
+export interface ExtractedEvent {
+  title_zh: string
+  title_en: string
+  summary_zh: string
+  summary_en: string
+  category: EventCategory
+  importance: Importance
+  entity_names: string[]
+  raw_item_ids: string[] // which raw_items contributed
+  source_urls: string[]
+  published_at: string
+}
+
+// ─── Weekly Trends ───
+
+export interface WeeklyTrend {
+  title_zh: string
+  title_en: string
+  description_zh: string
+  description_en: string
+  direction: 'heating' | 'cooling' | 'stable' | 'emerging'
+  event_ids: string[]
+}
+
+export interface WeeklySummary {
   id: string
   week_number: string
-  snapshot_data: {
-    total_facts: number
-    new_facts: number
-    high_confidence: number
-    medium_confidence: number
-    low_confidence: number
-    rejected: number
-    new_entities: number
-    active_entities: number
-    new_contradictions: number
-    resolved_contradictions: number
-    blind_spot_changes: string[]
-    top_density_anomalies: string[]
-    weekly_summary?: string | null
-  }
-  generated_at: Date
+  summary_zh: string
+  summary_en: string | null
+  trends: WeeklyTrend[]
+  stats: WeeklyStats
+  pushed_to_tg: boolean
+  created_at: string
 }
+
+export interface WeeklyStats {
+  event_count: number
+  category_breakdown: Record<EventCategory, number>
+  entity_mentions: Record<string, number>
+}
+
+// ─── Pipeline ───
+
+export type PipelineType = 'collect' | 'process' | 'daily_push' | 'weekly_summary'
+export type PipelineStatus = 'running' | 'completed' | 'failed' | 'cancelled'
 
 export interface PipelineRun {
   id: string
-  pipeline_type: 'daily' | 'weekly'
-  status: 'running' | 'completed' | 'failed'
-  started_at: Date
-  completed_at: Date | null
+  pipeline_type: PipelineType
+  status: PipelineStatus
+  started_at: string
+  completed_at: string | null
+  logs: PipelineLog[]
   stats: PipelineStats | null
   error: string | null
 }
 
+export interface PipelineLog {
+  timestamp: string
+  level: 'info' | 'success' | 'error' | 'progress'
+  message: string
+}
+
 export interface PipelineStats {
-  raw_items_processed: number
-  candidates_extracted: number
-  // V0 裁决统计
-  verified_high: number
-  verified_medium: number
-  partially_verified_low: number
-  rejected: number
-  rejection_reasons: Record<string, number>
-  // 各验证员统计
-  v1_matched: number
-  v1_partial: number
-  v1_no_match: number
-  v1_unavailable: number
-  v2_consistent: number
-  v2_inconsistent: number
-  v2_single_source: number
-  v3_normal: number
-  v3_anomaly: number
-  v3_likely_error: number
-  v4_anchored: number
-  v4_deviation: number
-  v4_mismatch: number
-  v5_consistent: number
-  v5_conflict: number
-  entities_created: number
-  timelines_updated: number
-  contradictions_found: number
+  raw_items_collected?: number
+  raw_items_processed?: number
+  events_extracted?: number
+  events_merged?: number
+  events_pushed?: number
+  v1_checked?: number
+  v1_matched?: number
+  v1_failed?: number
+  duration_ms?: number
 }
 
-// ─── API/Frontend Helper Types ───
+// ─── Collector Types ───
 
-export type FeedView = 'aggregate' | 'timeline'
-
-export interface FactFilters {
-  tags?: string[]
-  entities?: string[]
-  sectors?: Sector[]
-  fact_type?: FactType[]
-  confidence?: Confidence[]
-  week_number?: string
-  from_date?: string
-  to_date?: string
-  search?: string
+export interface CollectorResult {
+  source: string
+  status: 'ok' | 'error'
+  count: number
+  error?: string
 }
 
-export interface DiffResult {
-  week_a: string
-  week_b: string
-  new_entities: { id: string; name: string }[]
-  status_changes: { entity_name: string; from: string; to: string }[]
-  relationship_changes: { type: 'added' | 'removed'; description: string }[]
-  metric_changes: { entity_name: string; metric: string; old_value: number; new_value: number; change_pct: number }[]
-  timeline_updates: { timeline_name: string; new_nodes: number }[]
-  fact_count: { week_a: number; week_b: number; change_pct: number }
-  entity_count: { week_a: number; week_b: number }
-  new_contradictions: number
-  resolved_contradictions: number
-  blind_spot_changes: { newly_covered: string[]; new_gaps: string[] }
+export interface CollectionResult {
+  results: Record<string, CollectorResult>
+  duration_ms: number
 }
 
-export interface DensityAnomaly {
-  topic: string
-  topic_type: 'tag' | 'entity' | 'sector'
-  current_count: number
-  previous_count: number
-  avg_count: number
-  multiple: number // 当前 / 历史均值
-  trend: 'spike' | 'sustained_high' | 'declining' | 'normal'
-  related_entities: string[]
+// ─── V1 Source Traceback ───
+
+export interface V1Result {
+  status: V1Status
+  evidence_quote: string | null
+  match_score: number // 0-100
+}
+
+// ─── Telegram Bot Commands ───
+
+export interface TelegramCommand {
+  command: 'watch' | 'unwatch' | 'list'
+  entity_name?: string
+  chat_id: number
+  user_id: number
 }

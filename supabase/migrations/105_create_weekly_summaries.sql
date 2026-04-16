@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS weekly_summaries (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), week_number text NOT NULL UNIQUE, summary_zh text NOT NULL, summary_en text, trends jsonb NOT NULL DEFAULT '[]', stats jsonb DEFAULT '{}', pushed_to_tg boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now());

@@ -2,23 +2,27 @@ import { REGIONS } from '@/config/regions'
 import { supabaseAdmin } from '@/db/client'
 import { extractContentBatch } from '@/lib/extract-content'
 import RSSParser from 'rss-parser'
-import type { CollectorResult } from '@/modules/collectors'
 
-interface RawRegulatory {
-  region: string
-  agency: string
+// ─── Raw item shape for raw_items table ──────────────────────────────────────
+
+interface RawItem {
+  source_type: 'regulatory' | 'sec'
+  source_name: string
   source_url: string
   title: string
-  description: string | null
+  content: string | null
   full_text: string | null
-  doc_type: string | null
+  language: string
   published_at: string
+  metadata: { region: string; agency: string; doc_type: string }
   processed: boolean
 }
 
 const parser = new RSSParser()
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+// ─── Keyword filtering ───────────────────────────────────────────────────────
 
 const STRONG_REGULATORY_KEYWORDS = [
   'stablecoin',
@@ -61,8 +65,12 @@ const WEAK_REGULATORY_CONTEXT = [
   'stored value',
 ]
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
 const SEC_EFTS_URL = 'https://efts.sec.gov/LATEST/search-index'
 const SEC_NEWS_RSS = 'https://www.sec.gov/cgi-bin/rss/news_feed.atom'
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -108,8 +116,10 @@ function containsRegulatoryKeyword(text: string): boolean {
   return false
 }
 
-async function collectSecRss(): Promise<RawRegulatory[]> {
-  const results: RawRegulatory[] = []
+// ─── Source: SEC RSS ─────────────────────────────────────────────────────────
+
+async function collectSecRss(): Promise<RawItem[]> {
+  const results: RawItem[] = []
   const cutoff = new Date(Date.now() - SEVEN_DAYS_MS)
 
   try {
@@ -125,15 +135,22 @@ async function collectSecRss(): Promise<RawRegulatory[]> {
       const combinedText = `${item.title} ${description ?? ''}`
       if (!containsRegulatoryKeyword(combinedText)) continue
 
+      const agency = inferAgency(item.title, description, 'SEC')
+
       results.push({
-        region: 'US',
-        agency: inferAgency(item.title, description, 'SEC'),
+        source_type: 'regulatory',
+        source_name: agency,
         source_url: item.link,
         title: item.title,
-        description,
+        content: description,
         full_text: null,
-        doc_type: inferDocType(item.title, description),
+        language: 'en',
         published_at: publishedAt.toISOString(),
+        metadata: {
+          region: 'US',
+          agency,
+          doc_type: inferDocType(item.title, description),
+        },
         processed: false,
       })
     }
@@ -144,8 +161,10 @@ async function collectSecRss(): Promise<RawRegulatory[]> {
   return results
 }
 
-async function collectSecEfts(): Promise<RawRegulatory[]> {
-  const results: RawRegulatory[] = []
+// ─── Source: SEC EFTS ────────────────────────────────────────────────────────
+
+async function collectSecEfts(): Promise<RawItem[]> {
+  const results: RawItem[] = []
   const now = new Date()
   const sevenDaysAgo = new Date(Date.now() - SEVEN_DAYS_MS)
 
@@ -200,14 +219,19 @@ async function collectSecEfts(): Promise<RawRegulatory[]> {
       const title = `${source.form_type ?? 'Filing'} — ${entityName}`
 
       results.push({
-        region: 'US',
-        agency: 'SEC',
+        source_type: 'sec',
+        source_name: 'SEC',
         source_url: sourceUrl,
         title,
-        description: null,
+        content: null,
         full_text: null,
-        doc_type: source.form_type ?? 'filing',
+        language: 'en',
         published_at: fileDate.toISOString(),
+        metadata: {
+          region: 'US',
+          agency: 'SEC',
+          doc_type: source.form_type ?? 'filing',
+        },
         processed: false,
       })
     }
@@ -218,8 +242,10 @@ async function collectSecEfts(): Promise<RawRegulatory[]> {
   return results
 }
 
-async function collectRegionRssSources(): Promise<RawRegulatory[]> {
-  const results: RawRegulatory[] = []
+// ─── Source: Regional RSS ────────────────────────────────────────────────────
+
+async function collectRegionRssSources(): Promise<RawItem[]> {
+  const results: RawItem[] = []
   const cutoff = new Date(Date.now() - SEVEN_DAYS_MS)
 
   for (const region of REGIONS) {
@@ -239,15 +265,22 @@ async function collectRegionRssSources(): Promise<RawRegulatory[]> {
           const combinedText = `${item.title} ${description ?? ''}`
           if (!containsRegulatoryKeyword(combinedText)) continue
 
+          const agency = inferAgency(item.title, description, region.agencies[0] ?? 'Unknown')
+
           results.push({
-            region: region.code,
-            agency: inferAgency(item.title, description, region.agencies[0] ?? 'Unknown'),
+            source_type: 'regulatory',
+            source_name: agency,
             source_url: item.link,
             title: item.title,
-            description,
+            content: description,
             full_text: null,
-            doc_type: inferDocType(item.title, description),
+            language: 'en',
             published_at: publishedAt.toISOString(),
+            metadata: {
+              region: region.code,
+              agency,
+              doc_type: inferDocType(item.title, description),
+            },
             processed: false,
           })
         }
@@ -262,8 +295,8 @@ async function collectRegionRssSources(): Promise<RawRegulatory[]> {
 
 // ─── Full-text enrichment ────────────────────────────────────────────────────
 
-async function enrichWithFullText(items: RawRegulatory[]): Promise<void> {
-  const urls = items.map(i => i.source_url)
+async function enrichWithFullText(items: RawItem[]): Promise<void> {
+  const urls = items.map((i) => i.source_url)
   console.log(`[regulatory] Fetching full text for ${urls.length} items...`)
 
   const textMap = await extractContentBatch(urls, 5)
@@ -282,7 +315,7 @@ async function enrichWithFullText(items: RawRegulatory[]): Promise<void> {
 
 // ─── Main collector ──────────────────────────────────────────────────────────
 
-export async function collectRegulatory(): Promise<CollectorResult> {
+export async function collectRegulatory(): Promise<number> {
   console.log('[regulatory] Starting regulatory collection...')
 
   const [secRss, secEfts, regionRss] = await Promise.all([
@@ -291,20 +324,18 @@ export async function collectRegulatory(): Promise<CollectorResult> {
     collectRegionRssSources(),
   ])
 
-  const breakdown = [
-    { source: 'SEC RSS', count: secRss.length },
-    { source: 'SEC EFTS', count: secEfts.length },
-    { source: 'Regional RSS', count: regionRss.length },
-  ]
+  console.log(
+    `[regulatory] Sources — SEC RSS: ${secRss.length}, SEC EFTS: ${secEfts.length}, Regional RSS: ${regionRss.length}`
+  )
 
   const allItems = [...secRss, ...secEfts, ...regionRss]
 
   if (allItems.length === 0) {
     console.log('[regulatory] No regulatory items found.')
-    return { total: 0, breakdown }
+    return 0
   }
 
-  // Deduplicate by source_url
+  // Deduplicate by source_url in-memory
   const seen = new Set<string>()
   const deduped = allItems.filter((item) => {
     if (seen.has(item.source_url)) return false
@@ -315,17 +346,17 @@ export async function collectRegulatory(): Promise<CollectorResult> {
   // Fetch full text for all items
   await enrichWithFullText(deduped)
 
-  console.log(`[regulatory] Upserting ${deduped.length} regulatory items...`)
+  console.log(`[regulatory] Upserting ${deduped.length} items to raw_items...`)
 
   const { error } = await supabaseAdmin
-    .from('raw_regulatory')
+    .from('raw_items')
     .upsert(deduped, { onConflict: 'source_url', ignoreDuplicates: true })
 
   if (error) {
     console.error('[regulatory] Upsert failed:', error)
-    return { total: 0, breakdown }
-  } else {
-    console.log(`[regulatory] Successfully upserted ${deduped.length} regulatory items.`)
-    return { total: deduped.length, breakdown }
+    return 0
   }
+
+  console.log(`[regulatory] Successfully upserted ${deduped.length} items.`)
+  return deduped.length
 }

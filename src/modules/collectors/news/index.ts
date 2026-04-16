@@ -1,4 +1,4 @@
-// A2 News Collector — 稳定币/PayFi 精准采集
+// A2 News Collector — 稳定币/PayFi 精准采集 (V2)
 //
 // 架构：宽采集 → 精提取 → AI 硬过滤
 //   Phase 1: 并行抓取所有 RSS（title + summary + 内联全文）
@@ -8,24 +8,23 @@
 //   Phase 5: 批量入库 + 诊断漏斗日志
 
 import { SOURCES } from '@/config/sources'
-import { WATCHLIST } from '@/config/watchlist'
+import { generateKeywords } from '@/lib/watchlist'
 import { supabaseAdmin } from '@/db/client'
 import { extractContentBatch } from '@/lib/extract-content'
 import RSSParser from 'rss-parser'
-import type { CollectorResult } from '@/modules/collectors'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface RawNews {
-  collector: 'rss'
+interface RawItem {
+  source_type: 'rss'
   source_name: string
   source_url: string
   title: string
-  summary: string | null
+  content: string | null
   full_text: string | null
-  published_at: string
-  tags: string[] | null
   language: string | null
+  published_at: string
+  metadata: { collector: 'rss'; match_strength: MatchStrength }
   processed: boolean
 }
 
@@ -59,99 +58,21 @@ const INSERT_BATCH = 50
 // ─── 三级关键词系统 ────────────────────────────────────────────────────────────
 //
 // 设计原则：
-//   强关键词 = 出现即通过（稳定币核心词 + WATCHLIST 核心实体名）
+//   强关键词 = 出现即通过（稳定币核心词 + watchlist 核心实体名）
 //   弱关键词 = 需配合上下文词共现（TradFi/DeFi/监管 + 必须跟支付/稳定币相关）
 //   拒绝     = 不匹配任何关键词 → 丢弃
-//
-// 为什么不用 "crypto" / "blockchain" 做强关键词：
-//   这些词每天出现在 500+ 篇文章中，会引入大量无关噪音。
-//   我们的定位是稳定币/PayFi，不是通用加密新闻。
 
-// 自动从 WATCHLIST 提取稳定币/支付基础设施实体名
-const WATCHLIST_STRONG_NAMES = (() => {
-  const names = new Set<string>()
-  const CORE_CATS = new Set(['stablecoin_issuer', 'b2b_infra'])
-  for (const e of WATCHLIST) {
-    if (CORE_CATS.has(e.category)) {
-      names.add(e.name.toLowerCase())
-      for (const a of e.aliases) {
-        if (a.length >= 3) names.add(a.toLowerCase())
-      }
-    }
-  }
-  return [...names]
-})()
-
-const STRONG_KEYWORDS = [
-  ...WATCHLIST_STRONG_NAMES,
-  // ── 核心概念 ──
-  'stablecoin', 'stable coin', '稳定币',
-  // ── 稳定币名称（WATCHLIST 可能没覆盖的）──
-  'busd', 'tusd', 'gusd', 'fdusd', 'eurs', 'eurt', 'lusd',
-  // ── PayFi / 加密支付 ──
-  'payfi', 'cross-border payment', '跨境支付',
-  'stablecoin payment', 'crypto payment', 'stablecoin settlement',
-  'stablecoin transfer', 'on-chain payment',
-  // ── 稳定币监管 ──
-  'genius act', 'mica regulation', 'stablecoin regulation',
-  'stablecoin bill', 'stablecoin framework', 'stablecoin legislation',
-  'payment stablecoin',
-  // ── CBDC ──
-  'cbdc', 'digital dollar', 'digital euro', 'digital yuan', '数字货币',
-  // ── 代币化/RWA（跟支付结算强相关）──
-  'tokenization', 'tokenized deposit', 'tokenised',
-  'real world asset', 'rwa',
-  // ── RWA 重点项目 ──
-  'usyc', 'buidl', 'ibenji', 'benji',
-  // ── 跨境支付/汇款 ──
-  'moneygram', 'stellar', 'bitso', 'yellow card',
-  'ripple', 'rlusd',
-]
-
-// 弱关键词（TradFi / DeFi / 监管 / 通用加密 — 必须配合上下文）
-const WEAK_KEYWORDS = [
-  // TradFi / 上市公司
-  'visa', 'mastercard', 'jpmorgan', 'blackrock', 'coinbase', 'robinhood',
-  'square', 'paypal',
-  // DeFi 协议
-  'aave', 'curve', 'uniswap', 'maker', 'compound', 'ethena',
-  // 交易所
-  'binance', 'okx',
-  // 监管机构
-  'sec ', 'occ', 'federal reserve', 'cftc', 'fdic', 'fincen',
-  'hkma', 'hong kong monetary', 'mas singapore', 'mica',
-  'nydfs', 'ny dfs',
-  // 托管/基础设施
-  'bitgo', 'anchorage', 'chainlink', 'bitpay', 'checkout.com',
-  // 企业用户
-  'deel', 'remote.com',
-  // 通用加密词（太宽泛，必须配合支付上下文）
-  'crypto', 'blockchain', 'defi', 'web3', 'digital asset',
-  // 金融动作
-  'ipo', 'etf', 'custody', 'fintech',
-]
-
-// 上下文词 — 弱关键词必须跟这些支付/稳定币相关词共现才算命中
-const CONTEXT_WORDS = [
-  // 稳定币
-  'stablecoin', 'stable', 'usdc', 'usdt', 'pyusd', 'dai', 'usde', 'frax',
-  'peg', 'reserve', 'backing', 'mint', 'redeem',
-  // 支付/结算
-  'payment', 'remittance', 'settlement', 'cross-border', 'transfer',
-  'clearing', 'money transmit',
-  // 代币化
-  'tokeniz', 'rwa', 'real world',
-  // 中文
-  '稳定币', '支付', '跨境', '结算', '铸造',
-]
-
-function classifyArticle(title: string, summary: string | null): MatchStrength | false {
+function classifyArticle(
+  title: string,
+  summary: string | null,
+  keywords: { strong: string[]; weak: string[]; context: string[] },
+): MatchStrength | false {
   const text = `${title} ${summary ?? ''}`.toLowerCase()
 
-  if (STRONG_KEYWORDS.some(kw => text.includes(kw))) return 'strong'
+  if (keywords.strong.some(kw => text.includes(kw))) return 'strong'
 
-  const matchedWeak = WEAK_KEYWORDS.some(kw => text.includes(kw))
-  if (matchedWeak && CONTEXT_WORDS.some(ctx => text.includes(ctx))) return 'weak'
+  const matchedWeak = keywords.weak.some(kw => text.includes(kw))
+  if (matchedWeak && keywords.context.some(ctx => text.includes(ctx))) return 'weak'
 
   return false
 }
@@ -197,7 +118,7 @@ function extractInlineContent(item: RSSItem): string | null {
 // ─── Phase 1: 并行抓取 RSS ───────────────────────────────────────────────────
 
 interface CollectedItem {
-  news: RawNews
+  item: RawItem
   strength: MatchStrength
   hasInlineContent: boolean
 }
@@ -212,7 +133,10 @@ interface FeedResult {
   collected: CollectedItem[]
 }
 
-async function collectFromFeed(feed: { name: string; url: string }): Promise<FeedResult> {
+async function collectFromFeed(
+  feed: { name: string; url: string },
+  keywords: { strong: string[]; weak: string[]; context: string[] },
+): Promise<FeedResult> {
   const cutoff = new Date(Date.now() - SEVEN_DAYS_MS)
   const isZh = isZhSource(feed.name, feed.url)
   const result: FeedResult = {
@@ -238,7 +162,7 @@ async function collectFromFeed(feed: { name: string; url: string }): Promise<Fee
       result.totalItems++
 
       // Phase 2: 分类
-      const strength = classifyArticle(item.title, item.contentSnippet ?? null)
+      const strength = classifyArticle(item.title, item.contentSnippet ?? null, keywords)
       if (!strength) {
         result.rejectedCount++
         continue
@@ -253,16 +177,16 @@ async function collectFromFeed(feed: { name: string; url: string }): Promise<Fee
       result.collected.push({
         strength,
         hasInlineContent: !!inlineText,
-        news: {
-          collector: 'rss',
+        item: {
+          source_type: 'rss',
           source_name: feed.name,
           source_url: item.link,
           title: item.title.trim(),
-          summary: item.contentSnippet?.slice(0, 500) ?? null,
+          content: item.contentSnippet?.slice(0, 500) ?? null,
           full_text: inlineText, // 可能为 null，Phase 4 会补充
           published_at: publishedAt.toISOString(),
-          tags: null,
           language: isZh ? 'zh' : 'en',
+          metadata: { collector: 'rss', match_strength: strength },
           processed: false,
         },
       })
@@ -283,21 +207,21 @@ async function deduplicateItems(items: CollectedItem[]): Promise<CollectedItem[]
 
   // 内存去重
   const seen = new Set<string>()
-  const unique = items.filter(item => {
-    if (seen.has(item.news.source_url)) return false
-    seen.add(item.news.source_url)
+  const unique = items.filter(ci => {
+    if (seen.has(ci.item.source_url)) return false
+    seen.add(ci.item.source_url)
     return true
   })
 
   // DB 去重（单次批量查询）
-  const urls = unique.map(i => i.news.source_url)
+  const urls = unique.map(ci => ci.item.source_url)
   const existingUrls = new Set<string>()
   const BATCH = 200
 
   for (let i = 0; i < urls.length; i += BATCH) {
     const batch = urls.slice(i, i + BATCH)
     const { data, error } = await supabaseAdmin
-      .from('raw_news')
+      .from('raw_items')
       .select('source_url')
       .in('source_url', batch)
 
@@ -310,14 +234,14 @@ async function deduplicateItems(items: CollectedItem[]): Promise<CollectedItem[]
     }
   }
 
-  return unique.filter(item => !existingUrls.has(item.news.source_url))
+  return unique.filter(ci => !existingUrls.has(ci.item.source_url))
 }
 
 // ─── Phase 4: 智能全文提取 ────────────────────────────────────────────────────
 // 核心优化：
 //   - 强匹配 + 已有内联内容 → 跳过（已从 RSS 提取）
 //   - 强匹配 + 无内联内容 → HTTP 抓取全文（V1 源回溯验证需要）
-//   - 弱匹配 → 不抓全文（title + summary 足够 B1 fact-splitter 使用）
+//   - 弱匹配 → 不抓全文（title + content 足够 fact-splitter 使用）
 
 async function enrichFullText(items: CollectedItem[]): Promise<void> {
   const needFetch = items.filter(i => i.strength === 'strong' && !i.hasInlineContent)
@@ -327,17 +251,17 @@ async function enrichFullText(items: CollectedItem[]): Promise<void> {
     return
   }
 
-  const urls = needFetch.map(i => i.news.source_url)
+  const urls = needFetch.map(i => i.item.source_url)
   console.log(`[A2] 全文提取: ${needFetch.length} 篇强匹配需 HTTP 抓取 (concurrency=${FULL_TEXT_CONCURRENCY})`)
 
   const textMap = await extractContentBatch(urls, FULL_TEXT_CONCURRENCY)
 
   let enriched = 0
-  for (const item of needFetch) {
-    const text = textMap.get(item.news.source_url)
+  for (const ci of needFetch) {
+    const text = textMap.get(ci.item.source_url)
     if (text) {
-      item.news.full_text = text
-      item.hasInlineContent = true // 标记已有全文
+      ci.item.full_text = text
+      ci.hasInlineContent = true // 标记已有全文
       enriched++
     }
   }
@@ -350,13 +274,13 @@ async function enrichFullText(items: CollectedItem[]): Promise<void> {
 async function upsertItems(items: CollectedItem[]): Promise<number> {
   if (items.length === 0) return 0
 
-  const rows = items.map(i => i.news)
+  const rows = items.map(ci => ci.item)
   let inserted = 0
 
   for (let i = 0; i < rows.length; i += INSERT_BATCH) {
     const batch = rows.slice(i, i + INSERT_BATCH)
     const { error } = await supabaseAdmin
-      .from('raw_news')
+      .from('raw_items')
       .upsert(batch, { onConflict: 'source_url', ignoreDuplicates: true })
 
     if (error) {
@@ -371,12 +295,16 @@ async function upsertItems(items: CollectedItem[]): Promise<number> {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export async function collectNews(): Promise<CollectorResult> {
+export async function collectNews(): Promise<number> {
   const feeds = SOURCES.rssFeeds
   console.log(`[A2] ═══ 开始采集 — ${feeds.length} 个 RSS 源 ═══`)
 
+  // Load keywords from watchlist DB
+  const keywords = await generateKeywords()
+  console.log(`[A2] 关键词已加载: ${keywords.strong.length} 强 / ${keywords.weak.length} 弱 / ${keywords.context.length} 上下文`)
+
   // ── Phase 1: 并行抓取 ──
-  const feedResults = await Promise.allSettled(feeds.map(f => collectFromFeed(f)))
+  const feedResults = await Promise.allSettled(feeds.map(f => collectFromFeed(f, keywords)))
 
   const allItems: CollectedItem[] = []
   let totalRssItems = 0
@@ -385,7 +313,6 @@ export async function collectNews(): Promise<CollectorResult> {
   let totalRejected = 0
   let feedsOk = 0
   let feedsFail = 0
-  const feedCounts: { source: string; count: number }[] = []
 
   for (let i = 0; i < feedResults.length; i++) {
     const r = feedResults[i]
@@ -397,10 +324,8 @@ export async function collectNews(): Promise<CollectorResult> {
       totalWeak += fr.weakCount
       totalRejected += fr.rejectedCount
       allItems.push(...fr.collected)
-      feedCounts.push({ source: fr.feedName, count: fr.collected.length })
     } else {
       feedsFail++
-      feedCounts.push({ source: `${feeds[i].name} (异常)`, count: 0 })
     }
   }
 
@@ -418,7 +343,7 @@ export async function collectNews(): Promise<CollectorResult> {
 
   if (newItems.length === 0) {
     console.log('[A2] ═══ 无新增，采集结束 ═══')
-    return { total: 0, breakdown: feedCounts }
+    return 0
   }
 
   // ── Phase 4: 智能全文提取 ──
@@ -427,11 +352,11 @@ export async function collectNews(): Promise<CollectorResult> {
   // ── Phase 5: 入库 ──
   const strongItems = newItems.filter(i => i.strength === 'strong')
   const weakItems = newItems.filter(i => i.strength === 'weak')
-  const withFullText = newItems.filter(i => i.news.full_text)
+  const withFullText = newItems.filter(i => i.item.full_text)
   console.log(`[A2]   入库: ${newItems.length} 篇 (${strongItems.length} 强 + ${weakItems.length} 弱, ${withFullText.length} 含全文)`)
 
   const inserted = await upsertItems(newItems)
 
   console.log(`[A2] ═══ 采集完成 — ${inserted} 篇入库 ═══`)
-  return { total: inserted, breakdown: feedCounts }
+  return inserted
 }

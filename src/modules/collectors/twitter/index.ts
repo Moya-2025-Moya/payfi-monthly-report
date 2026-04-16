@@ -1,4 +1,4 @@
-// A6 Twitter Collector — 双策略采集
+// Twitter Collector — 双策略采集 (V2: writes to raw_items)
 //
 // 策略 1: 关键词搜索 — 全网搜索稳定币/PayFi 相关推文（高召回）
 // 策略 2: 账号搜索 — 搜索核心人物的推文（高精度）
@@ -13,16 +13,23 @@ import { supabaseAdmin } from '@/db/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface RawTweet {
-  author_handle: string
-  author_name: string
-  author_category: string
+interface RawItem {
+  source_type: 'twitter'
+  source_name: string
   source_url: string
+  title: string | null
   content: string
-  likes: number
-  retweets: number
-  replies: number
-  posted_at: string
+  full_text: null
+  language: string | null
+  published_at: string
+  metadata: {
+    author_handle: string
+    author_name: string
+    author_category: string
+    likes: number
+    retweets: number
+    replies: number
+  }
   processed: boolean
 }
 
@@ -170,7 +177,7 @@ function getAuthorCategory(handle: string): string {
   return account?.category ?? 'general'
 }
 
-function mapTweet(tweet: SearchTweet): RawTweet | null {
+function mapTweet(tweet: SearchTweet): RawItem | null {
   if (!tweet.id || !tweet.text) return null
 
   const handle = tweet.author?.userName ?? 'unknown'
@@ -178,15 +185,22 @@ function mapTweet(tweet: SearchTweet): RawTweet | null {
   const url = tweet.twitterUrl ?? tweet.url ?? `https://twitter.com/${handle}/status/${tweet.id}`
 
   return {
-    author_handle: handle,
-    author_name: name,
-    author_category: getAuthorCategory(handle),
+    source_type: 'twitter',
+    source_name: handle,
     source_url: url,
+    title: tweet.text.length > 80 ? tweet.text.slice(0, 80) : tweet.text,
     content: tweet.text,
-    likes: tweet.likeCount ?? 0,
-    retweets: tweet.retweetCount ?? 0,
-    replies: tweet.replyCount ?? 0,
-    posted_at: tweet.createdAt ? new Date(tweet.createdAt).toISOString() : new Date().toISOString(),
+    full_text: null,
+    language: tweet.lang ?? null,
+    published_at: tweet.createdAt ? new Date(tweet.createdAt).toISOString() : new Date().toISOString(),
+    metadata: {
+      author_handle: handle,
+      author_name: name,
+      author_category: getAuthorCategory(handle),
+      likes: tweet.likeCount ?? 0,
+      retweets: tweet.retweetCount ?? 0,
+      replies: tweet.replyCount ?? 0,
+    },
     processed: false,
   }
 }
@@ -201,7 +215,7 @@ export async function collectTweets(): Promise<number> {
 
   console.log('[twitter] ═══ 开始采集 ═══')
 
-  const allTweets = new Map<string, RawTweet>() // dedup by tweet URL
+  const allItems = new Map<string, RawItem>() // dedup by source_url
 
   // ── 策略 1: 关键词搜索 ──
   console.log(`[twitter] 策略1: ${KEYWORD_QUERIES.length} 组关键词搜索`)
@@ -211,8 +225,8 @@ export async function collectTweets(): Promise<number> {
     for (const tweet of results) {
       if (!isWithinWindow(tweet) || !isQualityTweet(tweet)) continue
       const mapped = mapTweet(tweet)
-      if (mapped && !allTweets.has(mapped.source_url)) {
-        allTweets.set(mapped.source_url, mapped)
+      if (mapped && !allItems.has(mapped.source_url)) {
+        allItems.set(mapped.source_url, mapped)
         accepted++
       }
     }
@@ -232,8 +246,8 @@ export async function collectTweets(): Promise<number> {
       if (!isWithinWindow(tweet)) continue
       // 核心账号不做质量过滤（他们的推文都是有价值的）
       const mapped = mapTweet(tweet)
-      if (mapped && !allTweets.has(mapped.source_url)) {
-        allTweets.set(mapped.source_url, mapped)
+      if (mapped && !allItems.has(mapped.source_url)) {
+        allItems.set(mapped.source_url, mapped)
         accepted++
       }
     }
@@ -241,23 +255,23 @@ export async function collectTweets(): Promise<number> {
   }
 
   // ── 入库 ──
-  const tweets = [...allTweets.values()]
-  console.log(`[twitter] 合计去重后: ${tweets.length} 条`)
+  const items = [...allItems.values()]
+  console.log(`[twitter] 合计去重后: ${items.length} 条`)
 
-  if (tweets.length === 0) {
+  if (items.length === 0) {
     console.log('[twitter] ═══ 无推文，采集结束 ═══')
     return 0
   }
 
   const { error } = await supabaseAdmin
-    .from('raw_tweets')
-    .upsert(tweets, { onConflict: 'source_url', ignoreDuplicates: true })
+    .from('raw_items')
+    .upsert(items, { onConflict: 'source_url', ignoreDuplicates: true })
 
   if (error) {
     console.error('[twitter] 入库失败:', error.message)
     return 0
   }
 
-  console.log(`[twitter] ═══ 采集完成 — ${tweets.length} 条入库 ═══`)
-  return tweets.length
+  console.log(`[twitter] ═══ 采集完成 — ${items.length} 条入库 ═══`)
+  return items.length
 }
