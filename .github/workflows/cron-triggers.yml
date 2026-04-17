@@ -6,19 +6,19 @@ concurrency:
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # UTC 00:00 daily  → collect → process → daily-news
-    - cron: '0 1 * * 1'   # UTC 01:00 Monday → snapshot
-    - cron: '0 5 * * 0'   # UTC 05:00 Sunday → knowledge
+    - cron: '0 0 * * *'   # UTC 00:00 daily  → collect → process
+    - cron: '0 14 * * *'  # UTC 14:00 daily  → daily-push (Beijing 22:00)
+    - cron: '0 1 * * 1'   # UTC 01:00 Monday → weekly-summary
   workflow_dispatch:
     inputs:
       endpoint:
-        description: 'Endpoint to trigger (e.g. /api/cron/daily-news or /api/cron/process/stream); leave empty to run the full daily chain'
+        description: 'Endpoint to trigger (e.g. /api/cron/collect). Leave empty to run the full daily chain (collect → process).'
         required: false
 
 jobs:
   trigger:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - name: Trigger cron endpoints
         env:
@@ -36,118 +36,49 @@ jobs:
               -H "Authorization: Bearer $CRON_SECRET" \
               --max-time 600 \
               "$BASE_URL$path")
-            STATUS=$(echo "$RESPONSE" | tail -1)
+            local http_status
+            http_status=$(echo "$RESPONSE" | tail -1)
             BODY=$(echo "$RESPONSE" | sed '$d')
-            echo "  Status: $STATUS"
+            echo "  Status: $http_status"
             echo "  Body:   $BODY"
-            if [ "$STATUS" != "200" ]; then
-              echo "::error::$path returned HTTP $STATUS"
+            if [ "$http_status" != "200" ]; then
+              echo "::error::$path returned HTTP $http_status"
               exit 1
             fi
           }
 
-          run_process_stream() {
-            local path="${1:-/api/cron/process/stream}"
-            local attempt=1
-
-            while true; do
-              echo "→ Triggering $path ..."
-              tmp_file=$(mktemp)
-
-              if ! curl -fsS -N \
-                -H "Authorization: Bearer $CRON_SECRET" \
-                --max-time 900 \
-                "$BASE_URL$path" | tee "$tmp_file"; then
-                echo "::error::$path stream request failed"
-                rm -f "$tmp_file"
-                exit 1
-              fi
-
-              if grep -q '"type":"error"' "$tmp_file"; then
-                echo "::error::$path emitted an error event"
-                rm -f "$tmp_file"
-                exit 1
-              fi
-
-              next_from=$(sed -n 's/.*"type":"timeout_continue","fromStage":\([0-9][0-9]*\).*/\1/p' "$tmp_file" | tail -1)
-              continue_run_id=$(sed -n 's/.*"continueFromRunId":"\([^"]*\)".*/\1/p' "$tmp_file" | tail -1)
-              next_is_test=$(sed -n 's/.*"type":"timeout_continue".*"isTest":\(true\|false\).*/\1/p' "$tmp_file" | tail -1)
-              saw_done=$(grep -c '"type":"done"' "$tmp_file" || true)
-              rm -f "$tmp_file"
-
-              if [ -n "$next_from" ]; then
-                attempt=$((attempt + 1))
-                path="/api/cron/process/stream?from=$next_from"
-                if [ "$next_is_test" = "true" ]; then
-                  path="${path}&test=true"
-                fi
-                if [ -n "$continue_run_id" ]; then
-                  path="${path}&continueFromRunId=$continue_run_id"
-                fi
-                echo "↻ Process timed out safely, continuing from stage $next_from (attempt $attempt)"
-                continue
-              fi
-
-              if [ "$saw_done" -eq 0 ]; then
-                echo "::error::$path finished without a done event"
-                exit 1
-              fi
-
-              echo "✓ Process pipeline finished"
-              break
-            done
-          }
-
           run_daily_chain() {
-            local dow="$1"
-
             call "/api/cron/collect"
-            [ "$dow" = "7" ] && call "/api/cron/twitter"
-            run_process_stream "/api/cron/process/stream"
-
-            if [ "$dow" != "1" ]; then
-              call "/api/cron/daily-news"
-            else
-              echo "Skipping daily-news on Monday; snapshot has its own schedule."
-            fi
+            call "/api/cron/process"
           }
 
           # Manual trigger with specific endpoint
           if [ -n "$MANUAL_ENDPOINT" ]; then
-            case "$MANUAL_ENDPOINT" in
-              /api/cron/process|/api/cron/process/stream|/api/cron/process\?*|/api/cron/process/stream\?*)
-                run_process_stream "$MANUAL_ENDPOINT"
-                ;;
-              *)
-                call "$MANUAL_ENDPOINT"
-                ;;
-            esac
+            call "$MANUAL_ENDPOINT"
             exit 0
           fi
 
           # Manual trigger without endpoint defaults to the full daily chain
           if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
-            DOW=$(date -u +%u)  # 1=Mon … 7=Sun
-            echo "Manual run — executing full daily chain (day=$DOW)"
-            run_daily_chain "$DOW"
+            echo "Manual run — executing full daily chain"
+            run_daily_chain
             exit 0
           fi
 
           # Branch on the cron expression that actually fired.
           # GitHub Actions schedules are frequently delayed by 5–30+ minutes,
           # so using the wall-clock hour to dispatch would miss the intended branch.
-          DOW=$(date -u +%u)  # 1=Mon … 7=Sun
-          echo "Triggered by cron='$TRIGGER_CRON', day=$DOW"
+          echo "Triggered by cron='$TRIGGER_CRON'"
 
           case "$TRIGGER_CRON" in
             "0 0 * * *")
-              run_daily_chain "$DOW"
+              run_daily_chain
+              ;;
+            "0 14 * * *")
+              call "/api/cron/daily-push"
               ;;
             "0 1 * * 1")
-              call "/api/cron/snapshot"
-              ;;
-            "0 5 * * 0")
-              call "/api/cron/knowledge"
+              call "/api/cron/weekly-summary"
               ;;
             "")
               echo "::error::TRIGGER_CRON is empty — this job expects a schedule event"
