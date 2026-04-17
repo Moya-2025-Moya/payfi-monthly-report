@@ -169,9 +169,11 @@ export async function pushDailySummary(): Promise<number> {
 
   const allEvents = events as Event[]
 
-  // Split into top events (importance 1-3) and brief mentions (importance 4)
-  const topEvents = allEvents.filter(e => e.importance <= 3).slice(0, 10)
-  const briefs = allEvents.filter(e => e.importance === 4).slice(0, 8)
+  // First 10 as top stories (already sorted by importance asc, then recency);
+  // anything beyond goes to the briefs section so the footer count matches
+  // what the reader actually sees.
+  const topEvents = allEvents.slice(0, 10)
+  const briefs = allEvents.slice(10)
 
   // Format CN message
   let cnMsg = `📰 <b>$U Daily News 日报</b> · ${todayLabel()}\n`
