@@ -18,7 +18,6 @@ import type { Event, WeeklySummary } from '@/lib/types'
 const BOT_TOKEN = SOURCES.telegram.botToken
 const CHAT_ID = SOURCES.telegram.chatId
 const THREAD_CN = SOURCES.telegram.threadCn
-const THREAD_EN = SOURCES.telegram.threadEn
 
 // ─── Core send ─────────────────────────────────────────────────────────────
 
@@ -120,15 +119,8 @@ export async function pushRealtimeEvent(eventId: string): Promise<void> {
 
   const event = data as Event
 
-  // Send to CN thread
   const cnMessage = formatRealtimeEvent(event)
   await sendToThread(cnMessage, THREAD_CN)
-
-  // Send to EN thread if EN content available
-  if (event.title_en && event.summary_en) {
-    const enEvent = { ...event, title_zh: event.title_en, summary_zh: event.summary_en }
-    await sendToThread(formatRealtimeEvent(enEvent), THREAD_EN)
-  }
 
   // Mark as pushed
   await supabaseAdmin
@@ -203,19 +195,6 @@ export async function pushDailySummary(): Promise<number> {
 
   await sendToThread(cnMsg, THREAD_CN)
 
-  // EN version
-  const enTopEvents = topEvents.filter(e => e.title_en && e.summary_en)
-  if (enTopEvents.length > 0) {
-    let enMsg = `📰 <b>$U Daily News Daily</b> · ${todayLabel()}\n`
-    enMsg += `\n━━ Top Stories ━━\n`
-    enTopEvents.forEach((e, i) => {
-      const cat = CATEGORY_EMOJI[e.category] ?? ''
-      enMsg += `\n${i + 1}. ${cat} <b>${esc(e.title_en!)}</b>\n${esc((e.summary_en ?? '').slice(0, 100))}${sourceLink(e.source_urls)}\n`
-    })
-    enMsg += `\n── ${allEvents.length} events today`
-    await sendToThread(enMsg, THREAD_EN)
-  }
-
   // Mark as included
   const ids = allEvents.map(e => e.id)
   await supabaseAdmin
@@ -256,29 +235,6 @@ export async function pushWeeklySummary(summary: WeeklySummary): Promise<void> {
   }
 
   await sendToThread(cnMsg, THREAD_CN)
-
-  // EN version
-  if (summary.summary_en || summary.trends.some(t => t.title_en)) {
-    let enMsg = `📊 <b>$U Daily News Weekly</b> · ${summary.week_number}\n`
-
-    if (summary.trends.length > 0) {
-      enMsg += `\n━━ Trend Analysis ━━\n`
-      for (const trend of summary.trends) {
-        const directionEmoji = trend.direction === 'heating' ? '🔥'
-          : trend.direction === 'cooling' ? '❄️'
-          : trend.direction === 'emerging' ? '🌱'
-          : '➡️'
-        enMsg += `\n📌 <b>${esc(trend.title_en)}</b> ${directionEmoji}\n`
-        enMsg += `${esc(trend.description_en)}\n`
-      }
-    }
-
-    if (stats.event_count) {
-      enMsg += `\n── ${stats.event_count} events this week`
-    }
-
-    await sendToThread(enMsg, THREAD_EN)
-  }
 
   // Mark as pushed
   await supabaseAdmin
