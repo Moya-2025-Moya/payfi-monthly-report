@@ -25,6 +25,7 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           BASE_URL: https://payfi-monthly-report.vercel.app
           MANUAL_ENDPOINT: ${{ github.event.inputs.endpoint }}
+          TRIGGER_CRON: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
 
@@ -132,25 +133,30 @@ jobs:
             exit 0
           fi
 
-          # Auto-detect based on current UTC time
-          HOUR=$(date -u +%-H)
+          # Branch on the cron expression that actually fired.
+          # GitHub Actions schedules are frequently delayed by 5–30+ minutes,
+          # so using the wall-clock hour to dispatch would miss the intended branch.
           DOW=$(date -u +%u)  # 1=Mon … 7=Sun
+          echo "Triggered by cron='$TRIGGER_CRON', day=$DOW"
 
-          echo "UTC hour=$HOUR, day=$DOW"
-
-          # UTC 00:00 (Beijing 08:00) — full daily chain
-          if [ "$HOUR" = "0" ]; then
-            run_daily_chain "$DOW"
-          fi
-
-          # UTC 01:00 Monday (Beijing 09:00) — weekly snapshot
-          if [ "$HOUR" = "1" ] && [ "$DOW" = "1" ]; then
-            call "/api/cron/snapshot"
-          fi
-
-          # UTC 05:00 Sunday (Beijing 13:00) — knowledge engine
-          if [ "$HOUR" = "5" ] && [ "$DOW" = "7" ]; then
-            call "/api/cron/knowledge"
-          fi
+          case "$TRIGGER_CRON" in
+            "0 0 * * *")
+              run_daily_chain "$DOW"
+              ;;
+            "0 1 * * 1")
+              call "/api/cron/snapshot"
+              ;;
+            "0 5 * * 0")
+              call "/api/cron/knowledge"
+              ;;
+            "")
+              echo "::error::TRIGGER_CRON is empty — this job expects a schedule event"
+              exit 1
+              ;;
+            *)
+              echo "::error::Unknown cron expression: $TRIGGER_CRON"
+              exit 1
+              ;;
+          esac
 
           echo "Done."
