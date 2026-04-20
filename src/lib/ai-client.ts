@@ -46,6 +46,9 @@ interface AICallOptions {
   maxTokens?: number
   temperature?: number
   system?: string
+  // When true, the system prompt is sent as a cached block so repeated calls
+  // within ~5 minutes (e.g. the extractor looping over batches) reuse it.
+  cacheSystem?: boolean
 }
 
 export async function callAI(
@@ -57,6 +60,7 @@ export async function callAI(
     maxTokens = 4096,
     temperature = 0,
     system,
+    cacheSystem = false,
   } = options
 
   const body: Record<string, unknown> = {
@@ -65,7 +69,11 @@ export async function callAI(
     temperature,
     messages,
   }
-  if (system) body.system = system
+  if (system) {
+    body.system = cacheSystem
+      ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+      : system
+  }
 
   await acquireAISlot()
   try {
@@ -131,7 +139,7 @@ export async function callAI(
 // 便捷方法: 单轮调用 Haiku (大部分 Agent 用)
 export async function callHaiku(
   prompt: string,
-  options: { system?: string; maxTokens?: number; temperature?: number } = {}
+  options: { system?: string; maxTokens?: number; temperature?: number; cacheSystem?: boolean } = {}
 ): Promise<string> {
   return callAI(
     [{ role: 'user', content: prompt }],
@@ -150,11 +158,12 @@ export async function callSonnet(
 // 便捷方法: 调用 AI 返回 JSON
 export async function callHaikuJSON<T>(
   prompt: string,
-  options: { system?: string; maxTokens?: number } = {}
+  options: { system?: string; maxTokens?: number; cacheSystem?: boolean } = {}
 ): Promise<T> {
-  const { system, maxTokens } = options
+  const { system, maxTokens, cacheSystem } = options
   const response = await callHaiku(prompt, {
     maxTokens,
+    cacheSystem,
     system: (system || '') + '\n\nYou MUST respond with valid JSON only. No markdown, no explanation.',
   })
 

@@ -6,8 +6,9 @@ concurrency:
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # UTC 00:00 daily  → collect → process
-    - cron: '0 14 * * *'  # UTC 14:00 daily  → daily-push (Beijing 22:00)
+    - cron: '0 */6 * * *' # UTC every 6h     → collect (raw items only)
+    - cron: '0 1 * * *'   # UTC 01:00 daily  → process (Beijing 09:00)
+    - cron: '0 2 * * *'   # UTC 02:00 daily  → daily-push (Beijing 10:00)
     - cron: '0 1 * * 1'   # UTC 01:00 Monday → weekly-summary
   workflow_dispatch:
     inputs:
@@ -50,6 +51,7 @@ jobs:
           run_daily_chain() {
             call "/api/cron/collect"
             call "/api/cron/process"
+            call "/api/cron/daily-push"
           }
 
           # Manual trigger with specific endpoint
@@ -71,10 +73,13 @@ jobs:
           echo "Triggered by cron='$TRIGGER_CRON'"
 
           case "$TRIGGER_CRON" in
-            "0 0 * * *")
-              run_daily_chain
+            "0 */6 * * *")
+              call "/api/cron/collect"
               ;;
-            "0 14 * * *")
+            "0 1 * * *")
+              call "/api/cron/process"
+              ;;
+            "0 2 * * *")
               call "/api/cron/daily-push"
               ;;
             "0 1 * * 1")

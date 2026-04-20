@@ -1,9 +1,8 @@
 // ============================================================
 // $U Daily News V2 — Telegram Distributor
 //
-// Three output formats:
-//   pushRealtimeEvent()  — importance 1-2 events, pushed immediately
-//   pushDailySummary()   — EOD digest of today's events
+// Two output formats:
+//   pushDailySummary()   — 10:00 Beijing digest, ALL events grouped by category
 //   pushWeeklySummary()  — Monday trend analysis (AI opinion allowed)
 //
 // Also: bot commands (/watch, /unwatch, /list)
@@ -18,6 +17,10 @@ import type { Event, WeeklySummary } from '@/lib/types'
 const BOT_TOKEN = SOURCES.telegram.botToken
 const CHAT_ID = SOURCES.telegram.chatId
 const THREAD_CN = SOURCES.telegram.threadCn
+
+// Telegram hard limit is 4096 chars per message; leave headroom for the
+// footer line and any final-count text we append.
+const TG_MESSAGE_SOFT_LIMIT = 3900
 
 // ─── Core send ─────────────────────────────────────────────────────────────
 
@@ -78,6 +81,29 @@ const CATEGORY_EMOJI: Record<string, string> = {
   other: '📌',
 }
 
+const CATEGORY_LABEL_ZH: Record<string, string> = {
+  regulatory: '监管动态',
+  policy: '政策风向',
+  funding: '融资并购',
+  partnership: '合作生态',
+  product: '产品发布',
+  market: '市场数据',
+  technical: '技术进展',
+  other: '其他',
+}
+
+// Output order for the daily digest sections.
+const CATEGORY_ORDER: string[] = [
+  'regulatory',
+  'policy',
+  'funding',
+  'partnership',
+  'product',
+  'market',
+  'technical',
+  'other',
+]
+
 const IMPORTANCE_EMOJI: Record<number, string> = {
   1: '🔴',
   2: '🟠',
@@ -91,76 +117,51 @@ function sourceLink(urls: string[]): string {
   return ` <a href="${urls[0]}">🔗</a> +${urls.length - 1}`
 }
 
-// ─── Real-time Event Card (importance 1-2) ─────────────────────────────────
+// ─── Daily Summary (10:00 Beijing, single message, category-grouped) ───────
 
-function formatRealtimeEvent(event: Event): string {
-  const emoji = IMPORTANCE_EMOJI[event.importance] ?? '📌'
-  const catEmoji = CATEGORY_EMOJI[event.category] ?? ''
-  const entities = event.entity_names.length > 0
-    ? `\n\n${event.entity_names.join(' · ')}`
-    : ''
-
-  return `${emoji} ${catEmoji} <b>${esc(event.title_zh)}</b>
-
-${esc(event.summary_zh)}${entities}${sourceLink(event.source_urls)}`
+// Compact one-line format: importance marker (1/2 only) + clickable title.
+// Title links to the first source URL; additional sources noted as "+N".
+function formatEventLine(e: Event): string {
+  const impEmoji = e.importance <= 2 ? `${IMPORTANCE_EMOJI[e.importance]} ` : '· '
+  const primaryUrl = e.source_urls[0]
+  const extra = e.source_urls.length > 1 ? ` +${e.source_urls.length - 1}` : ''
+  const title = esc(e.title_zh)
+  const linked = primaryUrl ? `<a href="${primaryUrl}">${title}</a>` : title
+  return `${impEmoji}${linked}${extra}\n`
 }
 
-export async function pushRealtimeEvent(eventId: string): Promise<void> {
-  const { data, error } = await supabaseAdmin
-    .from('events')
-    .select('*')
-    .eq('id', eventId)
-    .single()
-
-  if (error || !data) {
-    console.error('[telegram] Failed to fetch event:', error?.message)
-    return
+function buildDigestBody(
+  byCategory: Map<string, Event[]>,
+  total: number,
+  omitted: number,
+): string {
+  let body = `📰 <b>$U Daily News 日报</b> · ${todayLabel()}\n`
+  for (const cat of CATEGORY_ORDER) {
+    const bucket = byCategory.get(cat)
+    if (!bucket || bucket.length === 0) continue
+    const catEmoji = CATEGORY_EMOJI[cat] ?? '📌'
+    const catLabel = CATEGORY_LABEL_ZH[cat] ?? cat
+    body += `\n━━ ${catEmoji} ${catLabel} (${bucket.length}) ━━\n`
+    for (const e of bucket) body += formatEventLine(e)
   }
-
-  const event = data as Event
-
-  const cnMessage = formatRealtimeEvent(event)
-  await sendToThread(cnMessage, THREAD_CN)
-
-  // Mark as pushed
-  await supabaseAdmin
-    .from('events')
-    .update({ pushed_to_tg: true })
-    .eq('id', eventId)
-
-  console.log(`[telegram] Pushed real-time event: ${event.title_zh.slice(0, 40)}`)
+  const footer = omitted > 0
+    ? `\n── 今日 ${total} 条，另有 ${omitted} 条略`
+    : `\n── 今日共 ${total} 条事件`
+  return body + footer
 }
-
-export async function pushRealtimeEvents(eventIds: string[]): Promise<number> {
-  let pushed = 0
-  for (const id of eventIds) {
-    try {
-      await pushRealtimeEvent(id)
-      pushed++
-    } catch (err) {
-      console.error(`[telegram] Failed to push event ${id}:`, err instanceof Error ? err.message : String(err))
-    }
-  }
-  return pushed
-}
-
-// ─── Daily Summary (EOD) ───────────────────────────────────────────────────
 
 export async function pushDailySummary(): Promise<number> {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
+  // 36h window gives late-published items a chance; the real dedup key is
+  // `included_in_daily=false`.
+  const since = new Date(Date.now() - 36 * 60 * 60 * 1000)
 
   const { data: events, error } = await supabaseAdmin
     .from('events')
     .select('*')
-    .gte('published_at', today.toISOString())
-    .lt('published_at', tomorrow.toISOString())
+    .gte('published_at', since.toISOString())
     .eq('included_in_daily', false)
     .order('importance', { ascending: true })
     .order('published_at', { ascending: false })
-    .limit(20)
 
   if (error || !events || events.length === 0) {
     console.log('[telegram] No events for daily summary')
@@ -168,44 +169,53 @@ export async function pushDailySummary(): Promise<number> {
   }
 
   const allEvents = events as Event[]
+  const total = allEvents.length
 
-  // First 10 as top stories (already sorted by importance asc, then recency);
-  // anything beyond goes to the briefs section so the footer count matches
-  // what the reader actually sees.
-  const topEvents = allEvents.slice(0, 10)
-  const briefs = allEvents.slice(10)
-
-  // Format CN message
-  let cnMsg = `📰 <b>$U Daily News 日报</b> · ${todayLabel()}\n`
-
-  if (topEvents.length > 0) {
-    cnMsg += `\n━━ 今日要闻 ━━\n`
-    topEvents.forEach((e, i) => {
-      const cat = CATEGORY_EMOJI[e.category] ?? ''
-      cnMsg += `\n${i + 1}. ${cat} <b>${esc(e.title_zh)}</b>\n${esc(e.summary_zh.slice(0, 100))}${sourceLink(e.source_urls)}\n`
-    })
+  // Bucket by category, preserving the importance/recency order within each.
+  const byCategory = new Map<string, Event[]>()
+  for (const e of allEvents) {
+    const cat = e.category in CATEGORY_EMOJI ? e.category : 'other'
+    const bucket = byCategory.get(cat) ?? []
+    bucket.push(e)
+    byCategory.set(cat, bucket)
   }
 
-  if (briefs.length > 0) {
-    cnMsg += `\n━━ 更多动态 ━━\n`
-    briefs.forEach(e => {
-      cnMsg += `· ${esc(e.title_zh)}${sourceLink(e.source_urls)}\n`
-    })
+  // Enforce single-message delivery. If the full digest would exceed the
+  // Telegram soft limit, drop trailing items starting from the lowest-priority
+  // category (CATEGORY_ORDER is reverse-priority order for dropping) until it
+  // fits. Within a category, drop the least-important item first.
+  let omitted = 0
+  const dropOrder = [...CATEGORY_ORDER].reverse()
+  let body = buildDigestBody(byCategory, total, omitted)
+
+  while (body.length > TG_MESSAGE_SOFT_LIMIT) {
+    let dropped = false
+    for (const cat of dropOrder) {
+      const bucket = byCategory.get(cat)
+      if (bucket && bucket.length > 0) {
+        bucket.pop() // drop the last (already sorted: lowest importance/oldest last)
+        if (bucket.length === 0) byCategory.delete(cat)
+        omitted++
+        dropped = true
+        break
+      }
+    }
+    if (!dropped) break // nothing left to trim
+    body = buildDigestBody(byCategory, total, omitted)
   }
 
-  cnMsg += `\n── 今日 ${allEvents.length} 条事件`
+  await sendToThread(body, THREAD_CN)
 
-  await sendToThread(cnMsg, THREAD_CN)
-
-  // Mark as included
+  // Mark ALL events (including omitted) as included_in_daily to prevent
+  // re-surfacing in subsequent daily runs.
   const ids = allEvents.map(e => e.id)
   await supabaseAdmin
     .from('events')
     .update({ included_in_daily: true })
     .in('id', ids)
 
-  console.log(`[telegram] Daily summary pushed: ${allEvents.length} events`)
-  return allEvents.length
+  console.log(`[telegram] Daily summary pushed: ${total - omitted}/${total} events (${body.length} chars)`)
+  return total
 }
 
 // ─── Weekly Trend Summary (Monday) ─────────────────────────────────────────

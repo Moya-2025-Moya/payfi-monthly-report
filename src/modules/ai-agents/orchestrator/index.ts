@@ -1,25 +1,21 @@
 // ============================================================
 // $U Daily News — Pipeline Orchestrator
-// Simplified: extract → merge → V1 check → translate → save → push
+// Simplified: extract → merge → translate → save
+// Runs once daily; realtime push + V1 source-check removed for token savings.
 // ============================================================
 
 import { supabaseAdmin } from '@/db/client'
 import { extractEvents } from '@/modules/ai-agents/event-extractor'
 import { mergeEvents } from '@/modules/ai-agents/event-merger'
-import { checkSources } from '@/modules/ai-agents/source-check'
 import { translateEvents } from '@/modules/ai-agents/translator'
-import type { ExtractedEvent, PipelineStats, V1Status } from '@/lib/types'
+import type { ExtractedEvent, PipelineStats } from '@/lib/types'
 
 // ─── Save events to DB ────────────────────────────────────────────────────
 
-async function saveEvents(
-  events: ExtractedEvent[],
-  v1Results: Map<number, { status: V1Status; evidence_quote: string | null; match_score: number }>
-): Promise<string[]> {
+async function saveEvents(events: ExtractedEvent[]): Promise<string[]> {
   if (events.length === 0) return []
 
-  const rows = events.map((e, i) => {
-    const v1 = v1Results.get(i)
+  const rows = events.map(e => {
     return {
       title_zh: e.title_zh,
       title_en: e.title_en || null,
@@ -30,7 +26,7 @@ async function saveEvents(
       entity_names: e.entity_names,
       source_urls: e.source_urls,
       source_count: e.source_urls.length,
-      v1_status: v1?.status ?? null,
+      v1_status: null,
       published_at: e.published_at,
     }
   })
@@ -102,27 +98,13 @@ export async function runProcessingPipeline(): Promise<ProcessResult> {
   stats.events_merged = merged.length
   console.log(`[orchestrator]   → ${extracted.length} → ${merged.length} after merge`)
 
-  // Step 3: V1 source check (importance 1-2 only)
-  console.log('[orchestrator] Step 3: V1 source check...')
-  const v1Results = await checkSources(merged)
-  stats.v1_checked = v1Results.size
-  stats.v1_matched = [...v1Results.values()].filter(r => r.status === 'matched').length
-  stats.v1_failed = [...v1Results.values()].filter(r => r.status === 'no_match').length
+  // Step 3: Translate (EN→ZH where needed)
+  console.log('[orchestrator] Step 3: Translating...')
+  await translateEvents(merged)
 
-  // Filter out V1 failures (no_match = likely fabricated)
-  const verified = merged.filter((_, i) => {
-    const v1 = v1Results.get(i)
-    return !v1 || v1.status !== 'no_match'
-  })
-  console.log(`[orchestrator]   → ${merged.length - verified.length} events rejected by V1`)
-
-  // Step 4: Translate (EN→ZH where needed)
-  console.log('[orchestrator] Step 4: Translating...')
-  await translateEvents(verified)
-
-  // Step 5: Save to DB
-  console.log('[orchestrator] Step 5: Saving events...')
-  const eventIds = await saveEvents(verified, v1Results)
+  // Step 4: Save to DB
+  console.log('[orchestrator] Step 4: Saving events...')
+  const eventIds = await saveEvents(merged)
   stats.events_pushed = eventIds.length
 
   stats.duration_ms = Date.now() - start

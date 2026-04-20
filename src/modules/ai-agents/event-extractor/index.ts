@@ -166,7 +166,7 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
     try {
       const result = await callHaikuJSON<AIExtractionResponse>(
         buildUserPrompt(batch),
-        { system: systemPrompt, maxTokens: 4096 }
+        { system: systemPrompt, maxTokens: 4096, cacheSystem: true }
       )
 
       const events = result.events ?? []
