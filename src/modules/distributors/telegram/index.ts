@@ -119,23 +119,27 @@ function sourceLink(urls: string[]): string {
 
 // ─── Daily Summary (10:00 Beijing, single message, category-grouped) ───────
 
-// Compact one-line format: importance marker (1/2 only) + clickable title.
-// Title links to the first source URL; additional sources noted as "+N".
+// Public digest page. Source links live on the web, not in the Telegram
+// message, so the TG body stays short enough to always fit in one message.
+const DIGEST_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.SITE_URL ||
+  'https://payfi-monthly-report.vercel.app'
+
+// Plain-text event line: importance marker + title. No per-item link.
+// (All source URLs are rendered on the /digest page linked at the top.)
 function formatEventLine(e: Event): string {
   const impEmoji = e.importance <= 2 ? `${IMPORTANCE_EMOJI[e.importance]} ` : '· '
-  const primaryUrl = e.source_urls[0]
-  const extra = e.source_urls.length > 1 ? ` +${e.source_urls.length - 1}` : ''
-  const title = esc(e.title_zh)
-  const linked = primaryUrl ? `<a href="${primaryUrl}">${title}</a>` : title
-  return `${impEmoji}${linked}${extra}\n`
+  return `${impEmoji}${esc(e.title_zh)}\n`
 }
 
 function buildDigestBody(
   byCategory: Map<string, Event[]>,
   total: number,
-  omitted: number,
 ): string {
+  const digestLink = `${DIGEST_URL.replace(/\/$/, '')}/digest`
   let body = `📰 <b>$U Daily News 日报</b> · ${todayLabel()}\n`
+  body += `<a href="${digestLink}">→ 查看完整内容（含所有源站链接）</a>\n`
   for (const cat of CATEGORY_ORDER) {
     const bucket = byCategory.get(cat)
     if (!bucket || bucket.length === 0) continue
@@ -144,10 +148,8 @@ function buildDigestBody(
     body += `\n━━ ${catEmoji} ${catLabel} (${bucket.length}) ━━\n`
     for (const e of bucket) body += formatEventLine(e)
   }
-  const footer = omitted > 0
-    ? `\n── 今日 ${total} 条，另有 ${omitted} 条略`
-    : `\n── 今日共 ${total} 条事件`
-  return body + footer
+  body += `\n── 今日共 ${total} 条事件`
+  return body
 }
 
 export async function pushDailySummary(): Promise<number> {
@@ -180,28 +182,11 @@ export async function pushDailySummary(): Promise<number> {
     byCategory.set(cat, bucket)
   }
 
-  // Enforce single-message delivery. If the full digest would exceed the
-  // Telegram soft limit, drop trailing items starting from the lowest-priority
-  // category (CATEGORY_ORDER is reverse-priority order for dropping) until it
-  // fits. Within a category, drop the least-important item first.
-  let omitted = 0
-  const dropOrder = [...CATEGORY_ORDER].reverse()
-  let body = buildDigestBody(byCategory, total, omitted)
-
-  while (body.length > TG_MESSAGE_SOFT_LIMIT) {
-    let dropped = false
-    for (const cat of dropOrder) {
-      const bucket = byCategory.get(cat)
-      if (bucket && bucket.length > 0) {
-        bucket.pop() // drop the last (already sorted: lowest importance/oldest last)
-        if (bucket.length === 0) byCategory.delete(cat)
-        omitted++
-        dropped = true
-        break
-      }
-    }
-    if (!dropped) break // nothing left to trim
-    body = buildDigestBody(byCategory, total, omitted)
+  // Plain-text titles keep the digest well under the 4096-char limit even for
+  // 100+ events, so no truncation path is needed. Guard just in case.
+  const body = buildDigestBody(byCategory, total)
+  if (body.length > TG_MESSAGE_SOFT_LIMIT) {
+    console.warn(`[telegram] Daily summary is ${body.length} chars — approaching Telegram limit`)
   }
 
   await sendToThread(body, THREAD_CN)
@@ -214,7 +199,7 @@ export async function pushDailySummary(): Promise<number> {
     .update({ included_in_daily: true })
     .in('id', ids)
 
-  console.log(`[telegram] Daily summary pushed: ${total - omitted}/${total} events (${body.length} chars)`)
+  console.log(`[telegram] Daily summary pushed: ${total} events (${body.length} chars)`)
   return total
 }
 
