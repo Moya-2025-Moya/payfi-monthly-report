@@ -5,11 +5,6 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  schedule:
-    - cron: '0 */6 * * *' # UTC every 6h     → collect (raw items only)
-    - cron: '0 1 * * *'   # UTC 01:00 daily  → process (Beijing 09:00)
-    - cron: '0 2 * * *'   # UTC 02:00 daily  → daily-push (Beijing 10:00)
-    - cron: '0 1 * * 1'   # UTC 01:00 Monday → weekly-summary
   workflow_dispatch:
     inputs:
       endpoint:
@@ -26,7 +21,6 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           BASE_URL: https://payfi-monthly-report.vercel.app
           MANUAL_ENDPOINT: ${{ github.event.inputs.endpoint }}
-          TRIGGER_CRON: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
 
@@ -48,12 +42,6 @@ jobs:
             fi
           }
 
-          run_daily_chain() {
-            call "/api/cron/collect"
-            call "/api/cron/process"
-            call "/api/cron/daily-push"
-          }
-
           # Manual trigger with specific endpoint
           if [ -n "$MANUAL_ENDPOINT" ]; then
             call "$MANUAL_ENDPOINT"
@@ -61,38 +49,8 @@ jobs:
           fi
 
           # Manual trigger without endpoint defaults to the full daily chain
-          if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
-            echo "Manual run — executing full daily chain"
-            run_daily_chain
-            exit 0
-          fi
-
-          # Branch on the cron expression that actually fired.
-          # GitHub Actions schedules are frequently delayed by 5–30+ minutes,
-          # so using the wall-clock hour to dispatch would miss the intended branch.
-          echo "Triggered by cron='$TRIGGER_CRON'"
-
-          case "$TRIGGER_CRON" in
-            "0 */6 * * *")
-              call "/api/cron/collect"
-              ;;
-            "0 1 * * *")
-              call "/api/cron/process"
-              ;;
-            "0 2 * * *")
-              call "/api/cron/daily-push"
-              ;;
-            "0 1 * * 1")
-              call "/api/cron/weekly-summary"
-              ;;
-            "")
-              echo "::error::TRIGGER_CRON is empty — this job expects a schedule event"
-              exit 1
-              ;;
-            *)
-              echo "::error::Unknown cron expression: $TRIGGER_CRON"
-              exit 1
-              ;;
-          esac
-
+          echo "Manual run — executing full daily chain"
+          call "/api/cron/collect"
+          call "/api/cron/process"
+          call "/api/cron/daily-push"
           echo "Done."

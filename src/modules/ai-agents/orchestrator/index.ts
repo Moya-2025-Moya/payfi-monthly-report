@@ -1,35 +1,124 @@
 // ============================================================
 // $U Daily News — Pipeline Orchestrator
-// Simplified: extract → merge → translate → save
+// Simplified: extract → merge → translate → save (with cross-day dedup)
 // Runs once daily; realtime push + V1 source-check removed for token savings.
 // ============================================================
 
 import { supabaseAdmin } from '@/db/client'
 import { extractEvents } from '@/modules/ai-agents/event-extractor'
-import { mergeEvents } from '@/modules/ai-agents/event-merger'
+import { mergeEvents, findSimilarDbEvent, type DbEventLite } from '@/modules/ai-agents/event-merger'
 import { translateEvents } from '@/modules/ai-agents/translator'
 import type { ExtractedEvent, PipelineStats } from '@/lib/types'
 
-// ─── Save events to DB ────────────────────────────────────────────────────
+// Cross-day dedup window. An event reported over several days (e.g. a multi-
+// day incident) shouldn't create a new row each day — we merge into the
+// already-saved row instead.
+const CROSS_DAY_DEDUP_WINDOW_DAYS = 7
 
-async function saveEvents(events: ExtractedEvent[]): Promise<string[]> {
-  if (events.length === 0) return []
+// ─── Save: cross-day dedup, then insert remainder ─────────────────────────
 
-  const rows = events.map(e => {
-    return {
-      title_zh: e.title_zh,
-      title_en: e.title_en || null,
-      summary_zh: e.summary_zh,
-      summary_en: e.summary_en || null,
-      category: e.category,
-      importance: e.importance,
-      entity_names: e.entity_names,
-      source_urls: e.source_urls,
-      source_count: e.source_urls.length,
-      v1_status: null,
-      published_at: e.published_at,
+async function loadRecentEventsForDedup(): Promise<DbEventLite[]> {
+  const since = new Date(
+    Date.now() - CROSS_DAY_DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString()
+
+  const { data, error } = await supabaseAdmin
+    .from('events')
+    .select('id, title_zh, title_en, entity_names, category, source_urls')
+    .gte('published_at', since)
+    .limit(1000)
+
+  if (error) {
+    console.warn('[orchestrator] Failed to load existing events for dedup:', error.message)
+    return []
+  }
+  return (data ?? []) as DbEventLite[]
+}
+
+async function mergeIntoExisting(
+  existingId: string,
+  existing: DbEventLite,
+  incoming: ExtractedEvent,
+): Promise<void> {
+  const mergedUrls = [...new Set([...(existing.source_urls ?? []), ...incoming.source_urls])]
+  const mergedEntities = [...new Set([
+    ...(existing.entity_names ?? []).map(n => n.trim()),
+    ...incoming.entity_names.map(n => n.trim()),
+  ].filter(Boolean))]
+
+  const { error } = await supabaseAdmin
+    .from('events')
+    .update({
+      source_urls: mergedUrls,
+      source_count: mergedUrls.length,
+      entity_names: mergedEntities,
+      // Intentionally don't touch included_in_daily / included_in_weekly /
+      // pushed_to_tg — re-pushing a days-old event on every update would
+      // spam Telegram.
+    })
+    .eq('id', existingId)
+
+  if (error) {
+    console.error('[orchestrator] Failed to merge into existing event:', error.message)
+    return
+  }
+
+  // Link newly-seen raw_items. Composite PK (event_id, raw_item_id) handles
+  // dedup at the DB layer.
+  if (incoming.raw_item_ids.length > 0) {
+    const junction = incoming.raw_item_ids.map(raw_item_id => ({
+      event_id: existingId,
+      raw_item_id,
+    }))
+    const { error: jErr } = await supabaseAdmin
+      .from('event_sources')
+      .upsert(junction, { onConflict: 'event_id,raw_item_id', ignoreDuplicates: true })
+    if (jErr) {
+      console.warn('[orchestrator] event_sources upsert warning:', jErr.message)
     }
-  })
+  }
+}
+
+async function saveEvents(events: ExtractedEvent[]): Promise<{
+  insertedIds: string[]
+  mergedCount: number
+}> {
+  if (events.length === 0) return { insertedIds: [], mergedCount: 0 }
+
+  const existingPool = await loadRecentEventsForDedup()
+  console.log(`[orchestrator]   → ${existingPool.length} recent events loaded for cross-day dedup`)
+
+  const toInsert: ExtractedEvent[] = []
+  let mergedCount = 0
+
+  for (const event of events) {
+    const match = await findSimilarDbEvent(event, existingPool)
+    if (match) {
+      await mergeIntoExisting(match.id, match, event)
+      mergedCount++
+    } else {
+      toInsert.push(event)
+    }
+  }
+
+  if (toInsert.length === 0) {
+    console.log(`[orchestrator]   → All ${events.length} events matched existing rows (no new inserts)`)
+    return { insertedIds: [], mergedCount }
+  }
+
+  const rows = toInsert.map(e => ({
+    title_zh: e.title_zh,
+    title_en: e.title_en || null,
+    summary_zh: e.summary_zh,
+    summary_en: e.summary_en || null,
+    category: e.category,
+    importance: e.importance,
+    entity_names: e.entity_names,
+    source_urls: e.source_urls,
+    source_count: e.source_urls.length,
+    v1_status: null,
+    published_at: e.published_at,
+  }))
 
   const { data, error } = await supabaseAdmin
     .from('events')
@@ -38,32 +127,31 @@ async function saveEvents(events: ExtractedEvent[]): Promise<string[]> {
 
   if (error) {
     console.error('[orchestrator] Failed to save events:', error.message)
-    return []
+    return { insertedIds: [], mergedCount }
   }
 
-  const eventIds = (data ?? []).map((r: { id: string }) => r.id)
+  const insertedIds = (data ?? []).map((r: { id: string }) => r.id)
 
-  // Save event_sources junction
+  // Save event_sources junction for newly-inserted events
   const junctionRows: { event_id: string; raw_item_id: string }[] = []
-  for (let i = 0; i < events.length; i++) {
-    const eventId = eventIds[i]
+  for (let i = 0; i < toInsert.length; i++) {
+    const eventId = insertedIds[i]
     if (!eventId) continue
-    for (const rawItemId of events[i].raw_item_ids) {
+    for (const rawItemId of toInsert[i].raw_item_ids) {
       junctionRows.push({ event_id: eventId, raw_item_id: rawItemId })
     }
   }
 
   if (junctionRows.length > 0) {
-    const { error: junctionError } = await supabaseAdmin
+    const { error: jErr } = await supabaseAdmin
       .from('event_sources')
-      .insert(junctionRows)
-
-    if (junctionError) {
-      console.error('[orchestrator] Failed to save event_sources:', junctionError.message)
+      .upsert(junctionRows, { onConflict: 'event_id,raw_item_id', ignoreDuplicates: true })
+    if (jErr) {
+      console.error('[orchestrator] Failed to save event_sources:', jErr.message)
     }
   }
 
-  return eventIds
+  return { insertedIds, mergedCount }
 }
 
 // ─── Main Pipeline ─────────────────────────────────────────────────────────
@@ -92,23 +180,28 @@ export async function runProcessingPipeline(): Promise<ProcessResult> {
     return { eventIds: [], stats }
   }
 
-  // Step 2: Merge duplicate events
-  console.log('[orchestrator] Step 2: Merging duplicates...')
+  // Step 2: Merge duplicate events within this batch
+  console.log('[orchestrator] Step 2: Merging intra-batch duplicates...')
   const merged = await mergeEvents(extracted)
   stats.events_merged = merged.length
-  console.log(`[orchestrator]   → ${extracted.length} → ${merged.length} after merge`)
+  console.log(`[orchestrator]   → ${extracted.length} → ${merged.length} after intra-batch merge`)
 
   // Step 3: Translate (EN→ZH where needed)
   console.log('[orchestrator] Step 3: Translating...')
   await translateEvents(merged)
 
-  // Step 4: Save to DB
-  console.log('[orchestrator] Step 4: Saving events...')
-  const eventIds = await saveEvents(merged)
-  stats.events_pushed = eventIds.length
+  // Step 4: Save — with cross-day dedup against events from the last 7 days
+  console.log('[orchestrator] Step 4: Cross-day dedup + save...')
+  const { insertedIds, mergedCount } = await saveEvents(merged)
+  stats.events_pushed = insertedIds.length
+  console.log(
+    `[orchestrator]   → ${insertedIds.length} new rows inserted, ${mergedCount} merged into existing`,
+  )
 
   stats.duration_ms = Date.now() - start
-  console.log(`[orchestrator] ═══ Pipeline Complete — ${eventIds.length} events saved in ${stats.duration_ms}ms ═══`)
+  console.log(
+    `[orchestrator] ═══ Pipeline Complete — ${insertedIds.length} new + ${mergedCount} merged in ${stats.duration_ms}ms ═══`,
+  )
 
-  return { eventIds, stats }
+  return { eventIds: insertedIds, stats }
 }

@@ -27,6 +27,9 @@ interface AIExtractedEvent {
   category: string
   importance: number
   entity_names: string[]
+  // Batch-local indices of articles that describe this event. Required so we
+  // don't attribute every extracted event to every article in the batch.
+  source_indices: number[]
 }
 
 interface AIExtractionResponse {
@@ -40,11 +43,12 @@ function buildSystemPrompt(entityNames: string[]): string {
 
 ## Rules
 1. Each event is a SINGLE, self-contained development (not a summary of an article)
-2. Merge information that describes the same event across articles into one event
+2. Merge information that describes the same event across articles into one event — and set source_indices to ALL articles that contribute to it
 3. Skip: opinion pieces, price speculation, generic market commentary, duplicate events
 4. Title: concise, factual, ≤30 characters in Chinese
 5. Summary: 2-3 sentences max, factual only, NO opinions/predictions
 6. Language: Chinese for title_zh/summary_zh, English for title_en/summary_en
+7. source_indices: REQUIRED — array of article numbers (0-indexed) from the input that describe this event. Never invent indices. Never include articles that don't actually support the event.
 
 ## Categories
 - regulatory: laws, bills, enforcement, licenses, compliance actions
@@ -66,24 +70,25 @@ function buildSystemPrompt(entityNames: string[]): string {
 ${entityNames.join(', ')}
 
 ## Output format
-Respond with JSON: {"events": [{"title_zh", "title_en", "summary_zh", "summary_en", "category", "importance", "entity_names"}]}
+Respond with JSON: {"events": [{"title_zh", "title_en", "summary_zh", "summary_en", "category", "importance", "entity_names", "source_indices": [0,2]}]}
 If no events worth extracting, return {"events": []}`
 }
 
 function buildUserPrompt(items: RawItem[]): string {
+  // Index articles 0..N-1 so AI's source_indices field aligns with batch positions.
   const parts = items.map((item, i) => {
     const title = item.title ?? '(no title)'
     const content = item.content?.slice(0, MAX_CONTENT_LEN) ?? ''
     const fullText = item.full_text?.slice(0, MAX_CONTENT_LEN) ?? ''
     const text = fullText || content
-    return `--- Article ${i + 1} [${item.source_type}/${item.source_name}] ---
+    return `--- Article ${i} [${item.source_type}/${item.source_name}] ---
 Title: ${title}
 Content: ${text}
 URL: ${item.source_url}
 Date: ${item.published_at}`
   })
 
-  return `Extract events from these ${items.length} articles:\n\n${parts.join('\n\n')}`
+  return `Extract events from these ${items.length} articles (indexed 0..${items.length - 1}):\n\n${parts.join('\n\n')}`
 }
 
 // ─── Validation ────────────────────────────────────────────────────────────
@@ -93,7 +98,7 @@ const VALID_CATEGORIES = new Set<string>([
   'market', 'policy', 'technical', 'other',
 ])
 
-function validateEvent(e: AIExtractedEvent): ExtractedEvent | null {
+function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndices: number[] } | null {
   if (!e.title_zh || !e.summary_zh) return null
   if (e.title_zh.length < 3 || e.summary_zh.length < 10) return null
 
@@ -105,17 +110,24 @@ function validateEvent(e: AIExtractedEvent): ExtractedEvent | null {
     ? (e.importance as Importance)
     : 3
 
+  const sourceIndices = Array.isArray(e.source_indices)
+    ? e.source_indices.filter(i => Number.isInteger(i) && i >= 0)
+    : []
+
   return {
-    title_zh: e.title_zh,
-    title_en: e.title_en || '',
-    summary_zh: e.summary_zh,
-    summary_en: e.summary_en || '',
-    category,
-    importance,
-    entity_names: Array.isArray(e.entity_names) ? e.entity_names : [],
-    raw_item_ids: [], // filled by caller
-    source_urls: [],  // filled by caller
-    published_at: new Date().toISOString(), // overridden by caller
+    event: {
+      title_zh: e.title_zh,
+      title_en: e.title_en || '',
+      summary_zh: e.summary_zh,
+      summary_en: e.summary_en || '',
+      category,
+      importance,
+      entity_names: Array.isArray(e.entity_names) ? e.entity_names : [],
+      raw_item_ids: [], // filled by caller from sourceIndices
+      source_urls: [],  // filled by caller from sourceIndices
+      published_at: new Date().toISOString(), // overridden by caller
+    },
+    sourceIndices,
   }
 }
 
@@ -170,22 +182,33 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
       )
 
       const events = result.events ?? []
+      let validCount = 0
       for (const rawEvent of events) {
         const validated = validateEvent(rawEvent)
         if (!validated) continue
+        const { event, sourceIndices } = validated
 
-        // Attach source info from the batch
-        validated.raw_item_ids = batch.map(item => item.id)
-        validated.source_urls = batch.map(item => item.source_url)
-        // Use earliest published_at from the batch
-        validated.published_at = batch
-          .map(item => item.published_at)
-          .sort()[0]
+        // Resolve source_indices → actual articles. If AI didn't supply valid
+        // indices, fall back to the whole batch (old behavior) with a warning,
+        // since dropping the event silently would hide extraction bugs.
+        const inRange = sourceIndices.filter(i => i < batch.length)
+        const cited = inRange.length > 0 ? inRange.map(i => batch[i]) : batch
+        if (inRange.length === 0) {
+          console.warn(
+            `[event-extractor] Event "${event.title_zh}" missing valid source_indices; ` +
+            `attributing to whole batch of ${batch.length}.`,
+          )
+        }
 
-        allEvents.push(validated)
+        event.raw_item_ids = cited.map(item => item.id)
+        event.source_urls = [...new Set(cited.map(item => item.source_url))]
+        event.published_at = cited.map(item => item.published_at).sort()[0]
+
+        allEvents.push(event)
+        validCount++
       }
 
-      console.log(`[event-extractor]   → ${events.length} events extracted, ${events.length - allEvents.length + allEvents.length} valid`)
+      console.log(`[event-extractor]   → ${events.length} events extracted, ${validCount} valid`)
     } catch (err) {
       console.error(`[event-extractor] Batch ${batchNum} failed:`, err instanceof Error ? err.message : String(err))
     }
