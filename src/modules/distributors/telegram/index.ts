@@ -129,8 +129,7 @@ const DIGEST_URL =
 // Plain-text event line: importance marker + title. No per-item link.
 // (All source URLs are rendered on the /digest page linked at the top.)
 function formatEventLine(e: Event): string {
-  const impEmoji = e.importance <= 2 ? `${IMPORTANCE_EMOJI[e.importance]} ` : '· '
-  return `${impEmoji}${esc(e.title_zh)}\n`
+  return `${IMPORTANCE_EMOJI[e.importance]} ${esc(e.title_zh)}\n`
 }
 
 function buildDigestBody(
