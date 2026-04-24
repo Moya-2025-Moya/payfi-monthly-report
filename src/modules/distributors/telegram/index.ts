@@ -165,8 +165,9 @@ function formatEventBlock(e: Event, liveUrl: string): string {
     detailText.length < 10 ||
     detailText.trim().startsWith(e.title_zh.trim())
   if (skipDetail) return `${title}\n`
-  // <i>— annotation</i> gives the "footnote" feel without a blockquote box.
-  return `${title}\n<i>— ${esc(detailText)}</i>\n`
+  // Middle-dot prefix + italic gives a light "annotation" feel. em-dash is
+  // forbidden by user preference.
+  return `${title}\n<i>· ${esc(detailText)}</i>\n`
 }
 
 // Full-digest web page URL. Rendered as a footer link so readers can get

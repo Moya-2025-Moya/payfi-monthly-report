@@ -239,21 +239,23 @@ async function deduplicateItems(items: CollectedItem[]): Promise<CollectedItem[]
 }
 
 // ─── Phase 4: 智能全文提取 ────────────────────────────────────────────────────
-// 核心优化：
-//   - 强匹配 + 已有内联内容 → 跳过（已从 RSS 提取）
-//   - 强匹配 + 无内联内容 → HTTP 抓取全文（V1 源回溯验证需要）
-//   - 弱匹配 → 不抓全文（title + content 足够 fact-splitter 使用）
+// 原则：LLM 抽取器必须能读到文章正文里的具体数字/命名方，光靠 RSS snippet
+// (~500 字符) 不够。所以 strong 和 weak 匹配都跑全文抓取——仅在已经有
+// 内联 RSS 全文时跳过。
+//   - strong / weak + 有内联全文 → 跳过（已从 RSS 提取 30KB 以内）
+//   - strong / weak + 无内联全文 → HTTP 抓取全文
 
 async function enrichFullText(items: CollectedItem[]): Promise<void> {
-  const needFetch = items.filter(i => i.strength === 'strong' && !i.hasInlineContent)
+  const needFetch = items.filter(i => !i.hasInlineContent)
 
   if (needFetch.length === 0) {
-    console.log('[A2] 全文提取: 无需 HTTP 抓取（全部已有内联内容或为弱匹配）')
+    console.log('[A2] 全文提取: 所有条目都已有内联全文，无需 HTTP 抓取')
     return
   }
 
   const urls = needFetch.map(i => i.item.source_url)
-  console.log(`[A2] 全文提取: ${needFetch.length} 篇强匹配需 HTTP 抓取 (concurrency=${FULL_TEXT_CONCURRENCY})`)
+  const strongCnt = needFetch.filter(i => i.strength === 'strong').length
+  console.log(`[A2] 全文提取: ${needFetch.length} 篇需 HTTP 抓取 (${strongCnt} 强 + ${needFetch.length - strongCnt} 弱, concurrency=${FULL_TEXT_CONCURRENCY})`)
 
   const textMap = await extractContentBatch(urls, FULL_TEXT_CONCURRENCY)
 
@@ -262,7 +264,7 @@ async function enrichFullText(items: CollectedItem[]): Promise<void> {
     const text = textMap.get(ci.item.source_url)
     if (text) {
       ci.item.full_text = text
-      ci.hasInlineContent = true // 标记已有全文
+      ci.hasInlineContent = true
       enriched++
     }
   }

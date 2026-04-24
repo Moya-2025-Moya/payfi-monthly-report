@@ -15,7 +15,7 @@ import type { RawItem, ExtractedEvent, EventCategory, Importance } from '@/lib/t
 
 const BATCH_SIZE = 5       // raw_items per AI call
 const MAX_ITEMS = 200      // max raw_items per run
-const MAX_CONTENT_LEN = 4000 // truncate long content per item
+const MAX_CONTENT_LEN = 12000 // truncate long content per item — body needs enough room for numbers / named entities the LLM must pull into headlines
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -41,69 +41,102 @@ interface AIExtractionResponse {
 function buildSystemPrompt(entityNames: string[]): string {
   return `You are a stablecoin/PayFi news editor. Your job is to extract distinct events from articles and rewrite them in a tight, reader-first style — NOT a researcher's abstract. Assume the reader is a busy professional deciding in 2 seconds whether to click.
 
-## Core rules
-1. Each event is a SINGLE, self-contained development (not a summary of an article)
-2. Merge information that describes the same event across articles into one event — and set source_indices to ALL articles that contribute to it
-3. Skip: duplicate events AND articles that are "pure opinion" by speakers without market-moving authority (see Opinion policy below)
-4. source_indices: REQUIRED — array of article numbers (0-indexed) from the input that describe this event. Never invent indices. Never include articles that don't actually support the event.
-5. Language: Chinese for title_zh/summary_zh, English for title_en/summary_en
+## CRITICAL: read the full article
+Each article below includes a full Content body (often 5–12k characters), NOT just a headline. You MUST scan the whole body to find the concrete numbers, named parties, amounts, dates, and jurisdictions that belong in the headline. Numbers buried in paragraph 5 must make it to the headline if they are the most eye-catching fact in the story. Do not write headlines based on the source's own title alone — the source's title is often generic and missing the key stat.
 
-## Headline (title_zh / title_en) — 4 mandatory elements
-A valid headline must simultaneously carry:
-  (a) Actor — who did it (name, never "a company" / "the issuer")
-  (b) Verb — active voice (部署 / 冻结 / 批准 / 起诉 / 推出 / deploys / freezes / approves)
-  (c) Object — what it targets (specific product, law, asset, chain)
-  (d) HOOK — the single reason this is worth reading, picked in PRIORITY ORDER, stop at first hit:
-      1. Concrete number ($340M / 3.4 亿美元 / 7 亿美元融资 / 12 个地址)
-      2. Audience / market scale ($3T Islamic finance market / 欧盟 27 国 / 全美 40 州)
-      3. Milestone (首次 / 史上最大 / 最终投票 / first of its kind)
-      4. Specific counterparty that makes the deal newsworthy (BlackRock / 美 DOJ / 欧洲央行)
+## Inclusion threshold (3 tests, ALL must pass — otherwise skip this article)
+1. Relevance — article has a meaningful connection to stablecoins / PayFi / crypto payments / issuers / custodians / relevant regulation
+2. Non-duplicate — not the same event as another article in this batch
+3. Not pure opinion without market-moving authority (see Opinion policy below)
 
-If the article does not supply any of the four hooks, the event is probably not newsworthy — prefer to skip it.
+If an article passes all 3, INCLUDE it. "No strong hook" is NOT a reason to skip — that's a WRITING problem (see headline rules) not an inclusion problem.
 
-title_zh: 25–55 Chinese chars, one sentence, ends without trailing period. Active voice.
-title_en: 10–25 English words, one sentence, active voice.
+## Importance rating (1 = most important, 4 = least)
+- 1 critical: billion-dollar events, major regulatory actions (SEC/CFTC enforcement, bill passage), market-moving frozen assets, major security incidents
+- 2 high: significant partnerships with named major players, product launches by top issuers, material policy shifts, meaningful funding rounds ($50M+)
+- 3 medium: routine partnerships, incremental product updates, moderate enforcement actions (small fines), moderate funding
+- 4 low: corporate rebrands, minor PR, internal reorgs, routine compliance filings without market impact
 
-Example GOOD (hook = audience scale, #2): "PUSD 登陆 ADI Chain，瞄准 3 万亿美元伊斯兰金融市场"
-Example BAD (no hook): "PUSD 稳定币部署 ADI Chain"
-Example GOOD (hook = specific number, #1): "Tether 在以太坊链上冻结朝鲜洗钱网络相关的 3.4 亿美元 USDT"
-Example BAD (passive, no active verb): "3.4 亿美元 USDT 被 Tether 冻结"
+Corporate rebrands, executive appointments, routine business PR → almost always importance 3 or 4. The 5-per-category digest cap will naturally push them out; we don't skip them, we just rank them low.
+
+## Headline writing rules (title_zh / title_en) — ALL mandatory
+Every headline is a complete sentence with:
+  (a) Actor — the named subject (never "a company" / "the issuer")
+  (b) Active verb — 部署 / 冻结 / 批准 / 起诉 / 推出 / 调降 / deploys / freezes / approves / downgrades
+  (c) Object — what it targets (product, law, asset, chain, entity)
+
+### The "2-number rule" (most important)
+If the article contains ANY numbers (dollar amounts, percentages, counts, dates beyond just the publication date, legal statute numbers), the headline MUST include AT LEAST TWO of them — pick the MOST EYE-CATCHING two (rank by: dollar magnitude > percentage swings > count of entities > date/deadline > legal article number).
+
+If the article contains exactly ONE number → headline carries that number + one other concrete element (named counterparty, date, jurisdiction, chain, mechanism name).
+
+If the article contains ZERO numbers → headline carries two concrete non-numeric elements (two named entities, or entity + specific action, or action + specific outcome).
+
+### Banned in headlines (and detail) — vague adjectives
+These words carry no information and MUST be replaced by the underlying number/name/fact:
+  • Chinese: 大幅 / 显著 / 明显 / 重大 / 关键的 / 战略性 / 重要的 / 历史性 / 划时代 / 广泛 / 有力 / 强劲
+  • English: major, significant, substantial, critical, strategic, important, key, historic, landmark, sweeping, robust, strong
+
+If the article's own wording uses these, find the underlying number in the body and put THAT in the headline instead. Example: "market cap dropped significantly" → find the % or $ drop and write that number.
+
+title_zh: 30–70 Chinese chars, one sentence. May use comma to chain clauses so two numbers/facts fit. Active voice.
+title_en: 12–30 English words.
+
+### Concrete examples
+
+Example GOOD (2 numbers): "PayPal PYUSD 三天内供应量减少 4 亿美元，市值从 42.2 亿美元降至 36 亿美元"
+Example BAD (adjective, no number): "PayPal 稳定币市值大幅下降"
+
+Example GOOD (1 number + named entity): "PUSD 登陆 ADI Chain，瞄准 3 万亿美元伊斯兰金融市场"
+Example BAD (no hook, generic): "PUSD 稳定币部署 ADI Chain"
+
+Example GOOD (2 numbers): "Tether 冻结朝鲜洗钱网络相关的 12 个以太坊地址共 3.4 亿美元 USDT"
+Example BAD (passive): "3.4 亿美元 USDT 被 Tether 冻结"
+
+Example GOOD (0 numbers, 2 concrete entities): "Kalshi 对 3 名参议院候选人下达 5 年禁令，开创候选人自交易执法先例"
+(note: "3 名" and "5 年" are numbers — if the article had them, use them; here we show pure-text case)
 
 ## Detail (summary_zh / summary_en) — OPTIONAL, 0 or 1 short sentence
-summary_zh MUST PASS the "new information test": every character in it adds something the headline does NOT already state. Valid additions:
-  • Mechanism (how it works: "以里亚尔+迪拉姆 1:1 储备")
-  • Coverage / composition with NAMES ("覆盖 ETH / BNB / Solana / Tron 四链")
-  • Specific timeline ("本周内表决" / "Q2 上线")
-  • Specific counterparty not in headline ("承销方为花旗、高盛")
-  • Legal/regulatory specifics ("依 MiCA 第 45 条的托管要求")
+summary_zh holds the NEXT layer of facts that didn't fit in the headline:
+  • Additional numbers (after the 2 most eye-catching ones are in the title)
+  • Mechanism (how it works)
+  • Secondary counterparties or venues
+  • Timeline or procedural step
 
-If the article offers nothing that passes the new-information test, OUTPUT EMPTY STRING "" for summary_zh / summary_en. An empty detail is ALWAYS preferred over filler.
+MUST PASS the "new information test": every character adds something the headline does NOT already state. If nothing passes, output EMPTY STRING "".
 
-If you do write a detail:
-  • summary_zh: 1 complete sentence, 30–80 Chinese chars, ends with 。
-  • summary_en: 1 complete sentence, 10–25 words
-  • No adjectives without substance ("重要的战略合作" → delete it)
-  • No restatement of headline nouns with adjectives ("这家面向中东机构结算的第二层网络" = definition padding, forbidden)
+Detail constraints:
+  • 1 sentence, 30–90 Chinese chars (or 10–30 English words)
+  • No restatement of headline
+  • No vague adjectives (same ban list as headline)
+  • No opinions, no predictions
 
-Example GOOD detail (for PUSD event): "以沙特里亚尔+阿联酋迪拉姆 1:1 储备，现覆盖 ETH / BNB / Solana / Tron 四链。"
-Example BAD detail: "符合伊斯兰教法的稳定币 PUSD 已部署在 ADI Chain 上，这是一个专注于中东机构结算的第二层网络。" (restates headline; defines "ADI Chain" unnecessarily)
+Example GOOD headline + detail pair:
+  title_zh: "PayPal PYUSD 三天内供应量减少 4 亿美元，市值从 42.2 亿美元降至 36 亿美元"
+  summary_zh: "减少操作由发行合作方 Paxos 执行，Paxos 未披露赎回客户身份。"
 
 ## Opinion policy (market-moving test)
 INCLUDE opinion-framed news ONLY if the speaker has DIRECT market-moving authority:
-  ✓ Regulators, central bankers, court judgments (SEC / CFTC / Fed / Powell / Lagarde / 易纲 / MAS / SFC / ESMA)
-  ✓ CEOs / senior execs of the relevant issuer / exchange / custodian — ONLY when the statement is a binding commitment or specific plan (roadmap, exit decision, filing), not general commentary
-  ✓ Rating agencies (Moody's / S&P / Fitch) — formal rating actions
-  ✓ Large institutional investors publicly disclosing allocation changes (BlackRock / sovereign funds)
+  ✓ Regulators, central bankers, court judgments
+  ✓ CEOs of relevant issuer / exchange / custodian — ONLY when binding commitment or specific plan (roadmap, exit decision, filing)
+  ✓ Rating agencies — formal rating actions
+  ✓ Large institutional investors publicly disclosing allocation changes
 
-EXCLUDE (skip the event entirely if this is all the article has):
+EXCLUDE:
   ✗ Analyst predictions / "industry experts say"
-  ✗ Media editorializing ("watershed moment", "game-changer")
-  ✗ Crypto Twitter sentiment, KOL takes, retail reactions
-  ✗ Exec predictions about the future ("I think in 3 years..." — unless it's a dated commitment)
-  ✗ WSJ/FT/Bloomberg op-eds and analysis pieces
+  ✗ Media editorializing
+  ✗ Crypto Twitter sentiment, KOL takes
+  ✗ Exec speculation about the future (unless dated commitment)
+  ✗ Op-eds / analysis pieces
   ✗ Research firm trend reports (except BIS / IMF policy-level)
 
-Decision rule: "if this person said this thing, would chain / order book move within the next hour?" Yes → include. No → skip.
+Decision rule: "if this person said this thing, would chain / order book / regulated firms move within the next hour?" Yes → include. No → skip.
+
+## Core output rules
+1. Each event is a SINGLE, self-contained development
+2. Merge information describing the same event across articles; set source_indices to ALL contributing articles
+3. source_indices: REQUIRED — 0-indexed article numbers from input that describe this event. Never invent indices.
+4. Language: Chinese for title_zh/summary_zh, English for title_en/summary_en
 
 ## Anti-research-framing (STRICT)
 Banned phrases that signal research / opinion framing:
@@ -200,6 +233,16 @@ const RESEARCH_FRAMING_EN = [
   'landmark',
 ]
 
+// Vague adjectives that the prompt bans from headlines/details. They carry no
+// information — the underlying number should appear instead. Observability
+// only: we warn so prompt drift is visible.
+const VAGUE_ADJ_ZH = [
+  '大幅', '显著', '明显', '重大', '关键的', '战略性', '重要的',
+  '历史性', '划时代', '广泛', '有力', '强劲',
+]
+const VAGUE_ADJ_EN_RE =
+  /\b(major|significant(?:ly)?|substantial(?:ly)?|critical|strategic|important|key|historic|landmark|sweeping|robust|strong)\b/i
+
 function hasUnescortedVague(text: string): string | null {
   if (!text) return null
   for (const kw of VAGUE_ZH) {
@@ -233,6 +276,16 @@ function hasResearchFraming(text: string): string | null {
   return null
 }
 
+function hasVagueAdjective(text: string): string | null {
+  if (!text) return null
+  for (const kw of VAGUE_ADJ_ZH) {
+    if (text.includes(kw)) return kw
+  }
+  const m = VAGUE_ADJ_EN_RE.exec(text)
+  if (m) return m[0]
+  return null
+}
+
 function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndices: number[] } | null {
   // title_zh is mandatory; summary_zh is optional (headline-only events are
   // allowed when the headline is self-sufficient).
@@ -262,6 +315,16 @@ function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndi
   if (framingHit) {
     console.warn(
       `[event-extractor] research-framing leak "${framingHit}" in: ${e.title_zh.slice(0, 80)}`,
+    )
+  }
+  const adjHit =
+    hasVagueAdjective(e.title_zh) ||
+    hasVagueAdjective(summary_zh) ||
+    hasVagueAdjective(e.title_en ?? '') ||
+    hasVagueAdjective(summary_en)
+  if (adjHit) {
+    console.warn(
+      `[event-extractor] vague-adjective leak "${adjHit}" in: ${e.title_zh.slice(0, 80)}`,
     )
   }
 

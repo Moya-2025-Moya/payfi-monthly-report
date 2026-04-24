@@ -7,6 +7,9 @@ import { SOURCES } from '@/config/sources'
 import { supabaseAdmin } from '@/db/client'
 import { generateKeywords } from '@/lib/watchlist'
 import { filterLiveItems } from '@/lib/url-check'
+import { extractContentBatch } from '@/lib/extract-content'
+
+const FULL_TEXT_CONCURRENCY = 8
 
 const API_KEY = SOURCES.braveSearch.apiKey
 const NEWS_URL = `${SOURCES.braveSearch.baseUrl}${SOURCES.braveSearch.endpoints.news}`
@@ -116,7 +119,7 @@ export async function collectBraveSearch(): Promise<number> {
     source_url: string
     title: string
     content: string | null
-    full_text: null
+    full_text: string | null
     language: string
     published_at: string
     metadata: Record<string, unknown>
@@ -177,6 +180,21 @@ export async function collectBraveSearch(): Promise<number> {
     console.log('[brave-search] ═══ 全部死链，采集结束 ═══')
     return 0
   }
+
+  // 全文抓取——LLM 必须读到正文里的数字/命名方才能写出合格的 headline。
+  // Brave search 只给 description (~300-500 字符)，远不够。
+  console.log(`[brave-search] 全文提取: ${items.length} 篇 (concurrency=${FULL_TEXT_CONCURRENCY})`)
+  const urls = items.map(it => it.source_url)
+  const textMap = await extractContentBatch(urls, FULL_TEXT_CONCURRENCY)
+  let enriched = 0
+  for (const it of items) {
+    const text = textMap.get(it.source_url)
+    if (text) {
+      it.full_text = text
+      enriched++
+    }
+  }
+  console.log(`[brave-search] 全文提取完成: ${enriched}/${items.length} 成功`)
 
   // Batch upsert
   const BATCH = 50
