@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react'
 
 // ─── Admin auth helper ───
 function getAdminHeaders(): Record<string, string> {
@@ -16,13 +16,19 @@ function adminFetch(url: string, init?: RequestInit): Promise<Response> {
 // ─── Types ───
 type Tab = 'pipeline' | 'watchlist'
 
+interface PipelineLog {
+  timestamp: string
+  level: 'info' | 'success' | 'error' | 'progress'
+  message: string
+}
+
 interface PipelineRun {
   id: string
   pipeline_type: string
   status: 'running' | 'completed' | 'failed' | 'cancelled'
   started_at: string
   completed_at: string | null
-  logs: { time: string; message: string; level: string }[]
+  logs: PipelineLog[] | null
   stats: Record<string, unknown> | null
   error: string | null
 }
@@ -98,6 +104,7 @@ function PipelineTab() {
   const [loading, setLoading] = useState(true)
   const [triggerStatus, setTriggerStatus] = useState<Record<string, string>>({})
   const [logOutput, setLogOutput] = useState<string[]>([])
+  const [expandedLogs, setExpandedLogs] = useState<Record<string, boolean>>({})
 
   const loadRuns = useCallback(async () => {
     try {
@@ -109,31 +116,110 @@ function PipelineTab() {
 
   useEffect(() => { loadRuns() }, [loadRuns])
 
-  async function triggerPipeline(key: string, endpoint: string, method: 'GET' | 'POST' = 'GET') {
-    setTriggerStatus(prev => ({ ...prev, [key]: 'running...' }))
-    setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] Triggering ${key}...`])
-    try {
-      const res = await adminFetch(endpoint, { method })
-      const data = await res.json().catch(() => ({}))
-      if (res.ok) {
-        setTriggerStatus(prev => ({ ...prev, [key]: 'done' }))
-        setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${key} completed: ${JSON.stringify(data).slice(0, 200)}`])
-      } else {
-        setTriggerStatus(prev => ({ ...prev, [key]: 'failed' }))
-        setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${key} FAILED: ${data.error || data.message || res.statusText}`])
-      }
-    } catch (err) {
-      setTriggerStatus(prev => ({ ...prev, [key]: 'error' }))
-      setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${key} ERROR: ${err instanceof Error ? err.message : 'network error'}`])
+  // Poll every 2s while any pipeline is in 'running' state. Stop as soon as
+  // they all settle — no point burning requests when nothing's live.
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const anyRunning = Object.values(runs).some(r => r?.status === 'running')
+  useEffect(() => {
+    if (anyRunning && !pollTimer.current) {
+      pollTimer.current = setInterval(loadRuns, 2000)
+    } else if (!anyRunning && pollTimer.current) {
+      clearInterval(pollTimer.current)
+      pollTimer.current = null
     }
-    // Refresh runs after trigger
-    setTimeout(loadRuns, 1000)
-    setTimeout(() => setTriggerStatus(prev => ({ ...prev, [key]: '' })), 5000)
+    return () => {
+      if (pollTimer.current) {
+        clearInterval(pollTimer.current)
+        pollTimer.current = null
+      }
+    }
+  }, [anyRunning, loadRuns])
+
+  // `statusKey` is the triggerStatus map slot used purely for the button's
+  // transient "I just clicked" spinner (cleared when the trigger request
+  // resolves). The actual pipeline running state is driven by polled DB
+  // rows and rendered separately in the table.
+  async function triggerPipeline(statusKey: string, endpoint: string, method: 'GET' | 'POST' = 'GET') {
+    setTriggerStatus(prev => ({ ...prev, [statusKey]: 'running' }))
+    setLogOutput(prev => [
+      ...prev,
+      `[${new Date().toLocaleTimeString()}] → ${statusKey}: request sent (backend may take up to 5 min)`,
+    ])
+
+    // Fire trigger as a background promise — don't await the full roundtrip,
+    // so the UI can poll /api/pipeline/runs and surface live logs while the
+    // long-running backend task is still executing.
+    adminFetch(endpoint, { method })
+      .then(async res => {
+        const data = await res.json().catch(() => ({}))
+        const tag = res.ok ? 'completed' : `FAILED (${res.status})`
+        setLogOutput(prev => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] ← ${statusKey}: ${tag} ${JSON.stringify(data).slice(0, 200)}`,
+        ])
+        loadRuns()
+      })
+      .catch(err => {
+        setLogOutput(prev => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] ← ${statusKey}: network error: ${err instanceof Error ? err.message : String(err)}`,
+        ])
+        loadRuns()
+      })
+      .finally(() => {
+        setTriggerStatus(prev => ({ ...prev, [statusKey]: '' }))
+      })
+
+    // Kick off the first poll quickly so the pipeline_runs row appears
+    // before the 2s polling interval's first tick.
+    setTimeout(loadRuns, 500)
+  }
+
+  async function cancelPipeline(pipelineType: string) {
+    if (!confirm(`取消正在运行的 ${pipelineType}？注意：后端任务会继续跑完，仅 UI 停止跟进。`)) return
+    setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] Cancelling ${pipelineType}…`])
+    try {
+      const res = await adminFetch('/api/pipeline/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pipeline_type: pipelineType }),
+      })
+      const data = await res.json().catch(() => ({}))
+      setLogOutput(prev => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] Cancel result: ${JSON.stringify(data).slice(0, 200)}`,
+      ])
+    } catch (err) {
+      setLogOutput(prev => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] Cancel error: ${err instanceof Error ? err.message : String(err)}`,
+      ])
+    }
+    loadRuns()
   }
 
   async function triggerAction(action: typeof ACTION_BUTTONS[number]) {
     if (!confirm(action.confirm)) return
     await triggerPipeline(action.key, action.endpoint, action.method)
+  }
+
+  function toggleLogs(key: string) {
+    setExpandedLogs(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  function renderLogLine(log: PipelineLog, i: number) {
+    const color =
+      log.level === 'error' ? '#ef4444'
+      : log.level === 'success' ? '#16a34a'
+      : log.level === 'progress' ? '#3b82f6'
+      : 'var(--fg-secondary)'
+    const t = new Date(log.timestamp).toLocaleTimeString()
+    return (
+      <div key={i} style={{ color }}>
+        <span style={{ color: 'var(--fg-muted)' }}>{t}</span>{' '}
+        {log.message}
+      </div>
+    )
   }
 
   return (
@@ -157,35 +243,94 @@ function PipelineTab() {
             <tbody>
               {PIPELINE_TYPES.map(p => {
                 const run = runs[p.key]
-                const ts = triggerStatus[p.key]
+                const isRunning = run?.status === 'running'
+                const logs = run?.logs ?? []
+                const latestLog = logs[logs.length - 1]
+                const isOpen = !!expandedLogs[p.key]
+                const elapsed = isRunning && run?.started_at
+                  ? Math.floor((Date.now() - new Date(run.started_at).getTime()) / 1000)
+                  : null
+
                 return (
-                  <tr key={p.key} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                    <td className="py-2 pr-4 font-medium" style={{ color: 'var(--fg-body)' }}>{p.label}</td>
-                    <td className="py-2 pr-4">{statusBadge(run?.status)}</td>
-                    <td className="py-2 pr-4 font-mono" style={{ color: 'var(--fg-secondary)' }}>
-                      {formatTime(run?.started_at ?? null)}
-                    </td>
-                    <td className="py-2 pr-4 font-mono" style={{ color: 'var(--fg-secondary)' }}>
-                      {formatTime(run?.completed_at ?? null)}
-                    </td>
-                    <td className="py-2">
-                      <button
-                        onClick={() => triggerPipeline(p.key, p.endpoint)}
-                        disabled={!!ts && ts === 'running...'}
-                        className="px-3 py-1 rounded text-xs font-medium border"
-                        style={{
-                          borderColor: 'var(--border)',
-                          color: ts === 'running...' ? 'var(--fg-muted)' : 'var(--fg-body)',
-                          opacity: ts === 'running...' ? 0.5 : 1,
-                          background: 'var(--surface)',
-                        }}>
-                        {ts === 'running...' ? 'Running...' : p.buttonLabel}
-                      </button>
-                      {ts && ts !== 'running...' && (
-                        <span className={`ml-2 text-xs ${ts === 'done' ? 'text-green-600' : 'text-red-600'}`}>{ts}</span>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={p.key}>
+                    <tr className="border-t" style={{ borderColor: 'var(--border)' }}>
+                      <td className="py-2 pr-4 font-medium" style={{ color: 'var(--fg-body)' }}>{p.label}</td>
+                      <td className="py-2 pr-4">
+                        {statusBadge(run?.status)}
+                        {elapsed !== null && (
+                          <span className="ml-2 font-mono text-xs" style={{ color: 'var(--fg-muted)' }}>
+                            {elapsed}s
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-4 font-mono" style={{ color: 'var(--fg-secondary)' }}>
+                        {formatTime(run?.started_at ?? null)}
+                      </td>
+                      <td className="py-2 pr-4 font-mono" style={{ color: 'var(--fg-secondary)' }}>
+                        {formatTime(run?.completed_at ?? null)}
+                      </td>
+                      <td className="py-2">
+                        {isRunning ? (
+                          <button
+                            onClick={() => cancelPipeline(p.key)}
+                            className="px-3 py-1 rounded text-xs font-medium border"
+                            style={{
+                              borderColor: '#ef4444',
+                              color: '#ef4444',
+                              background: 'var(--surface)',
+                            }}>
+                            Cancel
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => triggerPipeline(p.key, p.endpoint)}
+                            className="px-3 py-1 rounded text-xs font-medium border"
+                            style={{
+                              borderColor: 'var(--border)',
+                              color: 'var(--fg-body)',
+                              background: 'var(--surface)',
+                            }}>
+                            {p.buttonLabel}
+                          </button>
+                        )}
+                        {logs.length > 0 && (
+                          <button
+                            onClick={() => toggleLogs(p.key)}
+                            className="ml-2 text-xs underline"
+                            style={{ color: 'var(--fg-muted)' }}>
+                            {isOpen ? 'Hide logs' : `Logs (${logs.length})`}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {latestLog && !isOpen && (
+                      <tr style={{ borderColor: 'var(--border)' }}>
+                        <td colSpan={5} className="pb-2 pl-4 text-xs font-mono" style={{ color: 'var(--fg-muted)' }}>
+                          ↳ {latestLog.message.slice(0, 200)}
+                        </td>
+                      </tr>
+                    )}
+                    {isOpen && logs.length > 0 && (
+                      <tr>
+                        <td colSpan={5} className="pb-2 pl-4 pr-4">
+                          <div className="font-mono text-xs leading-relaxed rounded p-2 max-h-64 overflow-auto"
+                            style={{ background: 'var(--surface-alt)' }}>
+                            {logs.map(renderLogLine)}
+                          </div>
+                          {run?.error && (
+                            <div className="mt-1 font-mono text-xs text-red-600">
+                              error: {run.error}
+                            </div>
+                          )}
+                          {run?.stats && (
+                            <div className="mt-1 font-mono text-xs" style={{ color: 'var(--fg-muted)' }}>
+                              stats: {JSON.stringify(run.stats)}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -201,8 +346,7 @@ function PipelineTab() {
         </p>
         <div className="flex flex-wrap gap-2">
           {ACTION_BUTTONS.map(action => {
-            const ts = triggerStatus[action.key]
-            const running = ts === 'running...'
+            const running = triggerStatus[action.key] === 'running'
             return (
               <button
                 key={action.key}
@@ -216,9 +360,6 @@ function PipelineTab() {
                   background: 'var(--surface)',
                 }}>
                 {running ? action.running : action.label}
-                {ts && !running && (
-                  <span className={`ml-2 ${ts === 'done' ? 'text-green-600' : 'text-red-600'}`}>{ts}</span>
-                )}
               </button>
             )
           })}

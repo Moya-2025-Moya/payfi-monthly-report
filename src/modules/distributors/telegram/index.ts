@@ -12,6 +12,7 @@ import { supabaseAdmin } from '@/db/client'
 import { SOURCES } from '@/config/sources'
 import { pickLiveUrl } from '@/lib/url-check'
 import type { Event, WeeklySummary } from '@/lib/types'
+import type { ProgressReporter } from '@/lib/pipeline-progress'
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -117,17 +118,16 @@ const CATEGORY_ORDER: string[] = [
 // highest-importance items first (already sorted by the DB query).
 const DIGEST_PER_CATEGORY_LIMIT = 5
 
-// Events are pre-validated: each rendered event carries a guaranteed-live URL.
-// Layout D2: 2 lines per event — bold title, then 2-3 supporting sentences
-// with 🔗 pinned at the end. Summary must add concrete detail (names, amounts,
-// counterparties, timeline, legal context); vague quantifiers like "三家公司"
-// without enumeration are forbidden upstream in the extractor prompt.
+// Each rendered event carries a guaranteed-live URL. The headline itself is
+// the link (no separate 🔗 icon). An optional italic "annotation" line sits
+// below the headline and only renders if summary_zh passed the extractor's
+// new-information test. Events between sections get one blank line for
+// breathing room.
 //
-// Summary cap: we take at most the first 3 sentences from `summary_zh` to keep
-// a predictable character budget per event. Old (pre-prompt-change) events may
-// have 2-3 sentences already; new events are produced to the same cap.
-const SUMMARY_MAX_SENTENCES = 3
-const SUMMARY_HARD_CHAR_CAP = 220
+// Legacy events may still have multi-sentence summaries; we clip to the first
+// sentence and char-cap so layout stays predictable across old/new rows.
+const DETAIL_MAX_SENTENCES = 1
+const DETAIL_HARD_CHAR_CAP = 140
 
 function takeLeadingSentences(s: string, n: number): string {
   const trimmed = s.trim()
@@ -139,16 +139,13 @@ function takeLeadingSentences(s: string, n: number): string {
     parts.push(m[0])
   }
   const joined = parts.join('').trim()
-  // No punctuation found → use whole text (will be truncated by caller's cap).
   return joined || trimmed
 }
 
-function clipSummary(s: string): string {
-  const sliced = takeLeadingSentences(s, SUMMARY_MAX_SENTENCES)
-  if (sliced.length <= SUMMARY_HARD_CHAR_CAP) return sliced
-  // Cut at the last sentence terminator within the cap to avoid mid-word
-  // truncation; ellipsize if that too overshoots.
-  const head = sliced.slice(0, SUMMARY_HARD_CHAR_CAP)
+function clipDetail(s: string): string {
+  const sliced = takeLeadingSentences(s, DETAIL_MAX_SENTENCES)
+  if (sliced.length <= DETAIL_HARD_CHAR_CAP) return sliced
+  const head = sliced.slice(0, DETAIL_HARD_CHAR_CAP)
   const lastTerm = Math.max(
     head.lastIndexOf('。'), head.lastIndexOf('！'), head.lastIndexOf('？'),
     head.lastIndexOf('!'), head.lastIndexOf('?'),
@@ -157,11 +154,27 @@ function clipSummary(s: string): string {
 }
 
 function formatEventBlock(e: Event, liveUrl: string): string {
-  const title = `<b>${esc(e.title_zh)}</b>`
-  const summary = esc(clipSummary(e.summary_zh))
-  const link = `<a href="${escAttr(liveUrl)}">🔗</a>`
-  return `${title}\n${summary} ${link}\n`
+  // The headline IS the link. <b> inside <a> is permitted by Telegram HTML.
+  const title = `<a href="${escAttr(liveUrl)}"><b>${esc(e.title_zh)}</b></a>`
+  const detailText = clipDetail(e.summary_zh ?? '')
+  // Skip the detail line when empty, too short to carry detail, or when it
+  // starts with the literal headline (legacy pre-prompt events sometimes
+  // restate the title — for new events the extractor is told to output "").
+  const skipDetail =
+    !detailText ||
+    detailText.length < 10 ||
+    detailText.trim().startsWith(e.title_zh.trim())
+  if (skipDetail) return `${title}\n`
+  // <i>— annotation</i> gives the "footnote" feel without a blockquote box.
+  return `${title}\n<i>— ${esc(detailText)}</i>\n`
 }
+
+// Full-digest web page URL. Rendered as a footer link so readers can get
+// the unabridged list.
+const DIGEST_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.SITE_URL ||
+  'https://payfi-monthly-report.vercel.app'
 
 // Render a single digest message from the already-trimmed per-category
 // buckets. Section count labels reflect `shown` vs the ORIGINAL bucket size
@@ -191,6 +204,8 @@ function buildDigestBody(
     }
   }
   body += `\n── 今日共 ${total} 条事件`
+  const fullListUrl = `${DIGEST_URL.replace(/\/$/, '')}/digest`
+  body += `\n<a href="${escAttr(fullListUrl)}">📋 查看完整新闻列表 →</a>`
   return body
 }
 
@@ -240,11 +255,16 @@ function trimDigestToFit(
   return { body, droppedCount: dropped }
 }
 
-export async function pushDailySummary(): Promise<number> {
+export async function pushDailySummary(
+  opts: { reportProgress?: ProgressReporter } = {},
+): Promise<number> {
+  const report = opts.reportProgress ?? (async () => {})
+
   // 36h window gives late-published items a chance; the real dedup key is
   // `included_in_daily=false`.
   const since = new Date(Date.now() - 36 * 60 * 60 * 1000)
 
+  await report({ level: 'progress', message: 'Loading events (36h window, not yet pushed)…' })
   const { data: events, error } = await supabaseAdmin
     .from('events')
     .select('*')
@@ -254,17 +274,19 @@ export async function pushDailySummary(): Promise<number> {
     .order('published_at', { ascending: false })
 
   if (error || !events || events.length === 0) {
-    console.log('[telegram] No events for daily summary')
+    await report({ level: 'info', message: 'No events to push.' })
     return 0
   }
 
   const allEvents = events as Event[]
   const total = allEvents.length
+  await report({ level: 'info', message: `Loaded ${total} candidate events` })
 
   // Step A: URL liveness check, in parallel. Every event needs at least one
   // HEAD-verified URL to be included — user policy is no broken links in the
   // digest. Events where all source_urls fail are DROPPED (but still marked
   // included_in_daily below so they don't re-queue tomorrow).
+  await report({ level: 'progress', message: `Validating source URLs for ${total} events…` })
   const liveUrlByEvent = new Map<string, string>()
   const liveChecks = await Promise.all(
     allEvents.map(async e => ({
@@ -277,9 +299,10 @@ export async function pushDailySummary(): Promise<number> {
   }
   const aliveEvents = allEvents.filter(e => liveUrlByEvent.has(e.id))
   const droppedDead = allEvents.length - aliveEvents.length
-  if (droppedDead > 0) {
-    console.warn(`[telegram] Dropped ${droppedDead}/${allEvents.length} events with no live source URL.`)
-  }
+  await report({
+    level: droppedDead > 0 ? 'info' : 'success',
+    message: `URL check: ${aliveEvents.length} alive / ${droppedDead} dead`,
+  })
 
   if (aliveEvents.length === 0) {
     // Still mark all as included_in_daily to prevent re-queueing.
@@ -287,7 +310,7 @@ export async function pushDailySummary(): Promise<number> {
       .from('events')
       .update({ included_in_daily: true })
       .in('id', allEvents.map(e => e.id))
-    console.log('[telegram] No events with live URLs — nothing to send.')
+    await report({ level: 'info', message: 'No events with live URLs — nothing to send.' })
     return 0
   }
 
@@ -331,6 +354,7 @@ export async function pushDailySummary(): Promise<number> {
     )
   }
 
+  await report({ level: 'progress', message: `Sending to Telegram (${body.length} chars)…` })
   await sendToThread(body, THREAD_CN)
 
   // Mark ALL events (alive, dead-link, cap-omitted, trim-dropped) as
@@ -342,11 +366,13 @@ export async function pushDailySummary(): Promise<number> {
     .update({ included_in_daily: true })
     .in('id', allEvents.map(e => e.id))
 
-  console.log(
-    `[telegram] Daily summary pushed: ${aliveEvents.length}/${total} events, ${body.length} chars` +
+  await report({
+    level: 'success',
+    message: `Pushed ${aliveEvents.length}/${total} events, ${body.length} chars` +
       (droppedDead > 0 ? `, ${droppedDead} dead-link dropped` : '') +
       (droppedCount > 0 ? `, ${droppedCount} trimmed to fit` : ''),
-  )
+    stats: { events_pushed: aliveEvents.length },
+  })
   return aliveEvents.length
 }
 

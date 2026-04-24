@@ -9,6 +9,8 @@ import { extractEvents } from '@/modules/ai-agents/event-extractor'
 import { mergeEvents, findSimilarDbEvent, type DbEventLite } from '@/modules/ai-agents/event-merger'
 import { translateEvents } from '@/modules/ai-agents/translator'
 import type { ExtractedEvent, PipelineStats } from '@/lib/types'
+import type { ProgressReporter } from '@/lib/pipeline-progress'
+import { isRunCancelled } from '@/lib/pipeline-progress'
 
 // Cross-day dedup window. An event reported over several days (e.g. a multi-
 // day incident) shouldn't create a new row each day — we merge into the
@@ -161,47 +163,80 @@ export interface ProcessResult {
   stats: PipelineStats
 }
 
-export async function runProcessingPipeline(): Promise<ProcessResult> {
+export async function runProcessingPipeline(
+  opts: { reportProgress?: ProgressReporter; runId?: string | null } = {},
+): Promise<ProcessResult> {
   const start = Date.now()
   const stats: PipelineStats = {}
+  const report = opts.reportProgress ?? (async () => {})
+  const runId = opts.runId ?? null
 
   console.log('[orchestrator] ═══ V2 Processing Pipeline Start ═══')
+  await report({ level: 'info', message: 'Processing pipeline start' })
 
   // Step 1: Extract events from unprocessed raw_items
-  console.log('[orchestrator] Step 1: Extracting events...')
+  await report({ level: 'progress', message: 'Step 1/4: extracting events from raw_items…' })
   const { events: extracted, processedCount } = await extractEvents()
   stats.raw_items_processed = processedCount
   stats.events_extracted = extracted.length
-  console.log(`[orchestrator]   → ${extracted.length} events from ${processedCount} raw items`)
+  await report({
+    level: 'success',
+    message: `Step 1/4: extracted ${extracted.length} events from ${processedCount} raw items`,
+    stats: { raw_items_processed: processedCount, events_extracted: extracted.length },
+  })
 
   if (extracted.length === 0) {
-    console.log('[orchestrator] ═══ No events extracted, pipeline complete ═══')
     stats.duration_ms = Date.now() - start
+    await report({ level: 'info', message: 'No events extracted; pipeline complete.', stats })
     return { eventIds: [], stats }
   }
 
+  if (await isRunCancelled(runId)) {
+    await report({ level: 'error', message: 'Cancelled after extract — aborting.' })
+    return { eventIds: [], stats: { ...stats, duration_ms: Date.now() - start } }
+  }
+
   // Step 2: Merge duplicate events within this batch
-  console.log('[orchestrator] Step 2: Merging intra-batch duplicates...')
+  await report({ level: 'progress', message: 'Step 2/4: intra-batch merge…' })
   const merged = await mergeEvents(extracted)
   stats.events_merged = merged.length
-  console.log(`[orchestrator]   → ${extracted.length} → ${merged.length} after intra-batch merge`)
+  await report({
+    level: 'success',
+    message: `Step 2/4: ${extracted.length} → ${merged.length} after intra-batch merge`,
+    stats: { events_merged: merged.length },
+  })
+
+  if (await isRunCancelled(runId)) {
+    await report({ level: 'error', message: 'Cancelled after merge — aborting.' })
+    return { eventIds: [], stats: { ...stats, duration_ms: Date.now() - start } }
+  }
 
   // Step 3: Translate (EN→ZH where needed)
-  console.log('[orchestrator] Step 3: Translating...')
+  await report({ level: 'progress', message: 'Step 3/4: translating EN→ZH…' })
   await translateEvents(merged)
+  await report({ level: 'success', message: `Step 3/4: translation done` })
+
+  if (await isRunCancelled(runId)) {
+    await report({ level: 'error', message: 'Cancelled after translate — aborting.' })
+    return { eventIds: [], stats: { ...stats, duration_ms: Date.now() - start } }
+  }
 
   // Step 4: Save — with cross-day dedup against events from the last 7 days
-  console.log('[orchestrator] Step 4: Cross-day dedup + save...')
+  await report({ level: 'progress', message: 'Step 4/4: cross-day dedup + save…' })
   const { insertedIds, mergedCount } = await saveEvents(merged)
   stats.events_pushed = insertedIds.length
-  console.log(
-    `[orchestrator]   → ${insertedIds.length} new rows inserted, ${mergedCount} merged into existing`,
-  )
+  await report({
+    level: 'success',
+    message: `Step 4/4: ${insertedIds.length} new rows, ${mergedCount} merged into existing`,
+    stats: { events_pushed: insertedIds.length },
+  })
 
   stats.duration_ms = Date.now() - start
-  console.log(
-    `[orchestrator] ═══ Pipeline Complete — ${insertedIds.length} new + ${mergedCount} merged in ${stats.duration_ms}ms ═══`,
-  )
+  await report({
+    level: 'success',
+    message: `Pipeline complete — ${insertedIds.length} new + ${mergedCount} merged in ${stats.duration_ms}ms`,
+    stats: { duration_ms: stats.duration_ms },
+  })
 
   return { eventIds: insertedIds, stats }
 }

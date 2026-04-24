@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { pushDailySummary } from '@/modules/distributors/telegram'
 import { verifyAdminToken } from '@/lib/admin-auth'
 import { supabaseAdmin } from '@/db/client'
+import { makeProgressReporter } from '@/lib/pipeline-progress'
 
 export const maxDuration = 60
 
@@ -18,8 +19,10 @@ export async function GET(request: Request) {
     .select('id')
     .single()
 
+  const reportProgress = makeProgressReporter(run?.id ?? null)
+
   try {
-    const count = await pushDailySummary()
+    const count = await pushDailySummary({ reportProgress })
 
     if (run) {
       await supabaseAdmin

@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { runProcessingPipeline } from '@/modules/ai-agents/orchestrator'
 import { verifyAdminToken } from '@/lib/admin-auth'
 import { supabaseAdmin } from '@/db/client'
+import { makeProgressReporter } from '@/lib/pipeline-progress'
 
 export const maxDuration = 300
 
@@ -18,8 +19,13 @@ export async function GET(request: Request) {
     .select('id')
     .single()
 
+  const reportProgress = makeProgressReporter(run?.id ?? null)
+
   try {
-    const { eventIds, stats } = await runProcessingPipeline()
+    const { eventIds, stats } = await runProcessingPipeline({
+      reportProgress,
+      runId: run?.id ?? null,
+    })
 
     if (run) {
       await supabaseAdmin

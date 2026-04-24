@@ -39,18 +39,78 @@ interface AIExtractionResponse {
 // ─── Prompt ────────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(entityNames: string[]): string {
-  return `You are a stablecoin/PayFi news analyst. Your job is to extract distinct events from news articles.
+  return `You are a stablecoin/PayFi news editor. Your job is to extract distinct events from articles and rewrite them in a tight, reader-first style — NOT a researcher's abstract. Assume the reader is a busy professional deciding in 2 seconds whether to click.
 
-## Rules
+## Core rules
 1. Each event is a SINGLE, self-contained development (not a summary of an article)
 2. Merge information that describes the same event across articles into one event — and set source_indices to ALL articles that contribute to it
-3. Skip: opinion pieces, price speculation, generic market commentary, duplicate events
-4. title_zh: MUST be a COMPLETE Chinese sentence with clear subject + verb + object, readable standalone without any other context. 25–55 Chinese characters. Include the key actor, action, and the most important concrete detail (amount / target / counterparty / date / jurisdiction). Do NOT use bare noun phrases, headlines-style fragments, or vague verbs like "相关" / "引发关注". Example GOOD: "Tether 在以太坊链上冻结了与朝鲜洗钱活动相关的 3.4 亿美元 USDT"。Example BAD: "Tether 冻结 3.4 亿美元 USDT"。
-5. title_en: mirror title_zh — a complete English sentence with subject-verb-object and the same key detail. 10–25 words.
-6. summary_zh: 2–3 complete Chinese sentences, total 90–200 characters, each sentence adding NEW concrete detail the title does not state. Cover whichever of these the source supports: mechanism / counterparty / timeline / legal or regulatory context / supporting numbers / downstream consequence / traceability. Must end each sentence with 。!? terminator. No opinions, no predictions, no speculation.
-7. summary_en: mirror summary_zh — 2-3 complete English sentences, 30–80 words total, with the same supporting detail.
-8. Language: Chinese for title_zh/summary_zh, English for title_en/summary_en
-9. source_indices: REQUIRED — array of article numbers (0-indexed) from the input that describe this event. Never invent indices. Never include articles that don't actually support the event.
+3. Skip: duplicate events AND articles that are "pure opinion" by speakers without market-moving authority (see Opinion policy below)
+4. source_indices: REQUIRED — array of article numbers (0-indexed) from the input that describe this event. Never invent indices. Never include articles that don't actually support the event.
+5. Language: Chinese for title_zh/summary_zh, English for title_en/summary_en
+
+## Headline (title_zh / title_en) — 4 mandatory elements
+A valid headline must simultaneously carry:
+  (a) Actor — who did it (name, never "a company" / "the issuer")
+  (b) Verb — active voice (部署 / 冻结 / 批准 / 起诉 / 推出 / deploys / freezes / approves)
+  (c) Object — what it targets (specific product, law, asset, chain)
+  (d) HOOK — the single reason this is worth reading, picked in PRIORITY ORDER, stop at first hit:
+      1. Concrete number ($340M / 3.4 亿美元 / 7 亿美元融资 / 12 个地址)
+      2. Audience / market scale ($3T Islamic finance market / 欧盟 27 国 / 全美 40 州)
+      3. Milestone (首次 / 史上最大 / 最终投票 / first of its kind)
+      4. Specific counterparty that makes the deal newsworthy (BlackRock / 美 DOJ / 欧洲央行)
+
+If the article does not supply any of the four hooks, the event is probably not newsworthy — prefer to skip it.
+
+title_zh: 25–55 Chinese chars, one sentence, ends without trailing period. Active voice.
+title_en: 10–25 English words, one sentence, active voice.
+
+Example GOOD (hook = audience scale, #2): "PUSD 登陆 ADI Chain，瞄准 3 万亿美元伊斯兰金融市场"
+Example BAD (no hook): "PUSD 稳定币部署 ADI Chain"
+Example GOOD (hook = specific number, #1): "Tether 在以太坊链上冻结朝鲜洗钱网络相关的 3.4 亿美元 USDT"
+Example BAD (passive, no active verb): "3.4 亿美元 USDT 被 Tether 冻结"
+
+## Detail (summary_zh / summary_en) — OPTIONAL, 0 or 1 short sentence
+summary_zh MUST PASS the "new information test": every character in it adds something the headline does NOT already state. Valid additions:
+  • Mechanism (how it works: "以里亚尔+迪拉姆 1:1 储备")
+  • Coverage / composition with NAMES ("覆盖 ETH / BNB / Solana / Tron 四链")
+  • Specific timeline ("本周内表决" / "Q2 上线")
+  • Specific counterparty not in headline ("承销方为花旗、高盛")
+  • Legal/regulatory specifics ("依 MiCA 第 45 条的托管要求")
+
+If the article offers nothing that passes the new-information test, OUTPUT EMPTY STRING "" for summary_zh / summary_en. An empty detail is ALWAYS preferred over filler.
+
+If you do write a detail:
+  • summary_zh: 1 complete sentence, 30–80 Chinese chars, ends with 。
+  • summary_en: 1 complete sentence, 10–25 words
+  • No adjectives without substance ("重要的战略合作" → delete it)
+  • No restatement of headline nouns with adjectives ("这家面向中东机构结算的第二层网络" = definition padding, forbidden)
+
+Example GOOD detail (for PUSD event): "以沙特里亚尔+阿联酋迪拉姆 1:1 储备，现覆盖 ETH / BNB / Solana / Tron 四链。"
+Example BAD detail: "符合伊斯兰教法的稳定币 PUSD 已部署在 ADI Chain 上，这是一个专注于中东机构结算的第二层网络。" (restates headline; defines "ADI Chain" unnecessarily)
+
+## Opinion policy (market-moving test)
+INCLUDE opinion-framed news ONLY if the speaker has DIRECT market-moving authority:
+  ✓ Regulators, central bankers, court judgments (SEC / CFTC / Fed / Powell / Lagarde / 易纲 / MAS / SFC / ESMA)
+  ✓ CEOs / senior execs of the relevant issuer / exchange / custodian — ONLY when the statement is a binding commitment or specific plan (roadmap, exit decision, filing), not general commentary
+  ✓ Rating agencies (Moody's / S&P / Fitch) — formal rating actions
+  ✓ Large institutional investors publicly disclosing allocation changes (BlackRock / sovereign funds)
+
+EXCLUDE (skip the event entirely if this is all the article has):
+  ✗ Analyst predictions / "industry experts say"
+  ✗ Media editorializing ("watershed moment", "game-changer")
+  ✗ Crypto Twitter sentiment, KOL takes, retail reactions
+  ✗ Exec predictions about the future ("I think in 3 years..." — unless it's a dated commitment)
+  ✗ WSJ/FT/Bloomberg op-eds and analysis pieces
+  ✗ Research firm trend reports (except BIS / IMF policy-level)
+
+Decision rule: "if this person said this thing, would chain / order book move within the next hour?" Yes → include. No → skip.
+
+## Anti-research-framing (STRICT)
+Banned phrases that signal research / opinion framing:
+  • Chinese: 据报道 / 有消息称 / 据悉 / 业内人士认为 / 分析师指出 / 分析认为 / 业内认为 / 市场普遍认为 / 或将 / 有望 / 被视为 / 引发关注 / 意味着 / 值得关注 / 众所周知
+  • English: analysts say, industry experts believe, reportedly, sources say, could usher in, is seen as, signals a shift, watershed moment, landmark
+
+If the original article uses these, rewrite in direct factual voice. The headline / detail should state facts, not frame them.
 
 ## Anti-vague-quantifier policy (STRICT)
 Bare quantifiers without enumeration are BANNED in title_zh / title_en / summary_zh / summary_en. Banned phrases include (not exhaustive):
@@ -58,16 +118,11 @@ Bare quantifiers without enumeration are BANNED in title_zh / title_en / summary
   • English: several, multiple, some, various, numerous, many, a few, a handful of, a number of, dozens of, multiple parties, several exchanges
 
 When the source article states a vague quantity, you MUST do one of the following — DO NOT simply omit the detail:
-  A. ENUMERATE if the article names the items. Example: source says "several exchanges including Binance, OKX, Bybit froze accounts" → write "Binance、OKX、Bybit 三家交易所冻结账户".
+  A. ENUMERATE if the article names the items. Example: "Binance、OKX、Bybit 三家交易所冻结账户".
   B. PARTIALLY-ENUMERATE + explicit remainder count. Example: "8 家稳定币发行方（已披露 Circle、Paxos、PayPal，其余 5 家未具名）".
-  C. EXPLICITLY FLAG as undisclosed. Example: "三家混币服务（具体名称未披露）" or "three mixing services (identities not disclosed)". This is REQUIRED if you cannot enumerate.
+  C. EXPLICITLY FLAG as undisclosed. Example: "三家混币服务（具体名称未披露）" / "three mixing services (identities not disclosed)". REQUIRED if you cannot enumerate.
 
-NEVER write something like "the funds flowed through several mixers" without the "(不具名)" / "(not disclosed)" tag. Omitting the detail entirely to avoid vagueness is FORBIDDEN — the reader must see either the names or an explicit "不具名/未披露" marker.
-
-Good example: "美司法部扣押令显示资金经 Tornado Cash、Wasabi、Sinbad 三家混币服务流入 Lazarus Group 关联地址。此次为 Tether 发行历史最大单次冻结。"
-Good fallback: "美司法部扣押令显示资金经三家混币服务（具体名称未披露）流入朝鲜 Lazarus Group 关联地址。涉案金额 $340M，为 Tether 史上最大单次冻结。"
-Bad (omits detail): "美司法部扣押令显示资金经混币服务流入朝鲜关联地址。"
-Bad (vague without tag): "美司法部扣押令显示资金经几家混币服务流入朝鲜关联地址。"
+Omitting the detail entirely to avoid vagueness is FORBIDDEN — the reader must see either the names or an explicit "未披露" marker.
 
 ## Categories
 - regulatory: laws, bills, enforcement, licenses, compliance actions
@@ -132,19 +187,30 @@ const VAGUE_EN = [
 const DISCLOSURE_TAG_RE =
   /（\s*(具体)?(名称|身份)?\s*(未|暂未|尚未)?\s*(披露|公开|具名|公布)\s*）|\(\s*(not\s*disclosed|undisclosed|not\s*named|identities?\s*not\s*disclosed)\s*\)/i
 
+// Research / opinion framing phrases. We log (don't reject) when these leak
+// through, so prompt drift is visible in logs.
+const RESEARCH_FRAMING_ZH = [
+  '据报道', '有消息称', '据悉', '业内人士', '分析师指出', '分析认为',
+  '业内认为', '市场普遍认为', '或将', '有望', '被视为', '引发关注',
+  '意味着', '值得关注', '众所周知',
+]
+const RESEARCH_FRAMING_EN = [
+  'analysts say', 'industry experts', 'reportedly', 'sources say',
+  'could usher in', 'is seen as', 'signals a shift', 'watershed moment',
+  'landmark',
+]
+
 function hasUnescortedVague(text: string): string | null {
   if (!text) return null
   for (const kw of VAGUE_ZH) {
     const idx = text.indexOf(kw)
     if (idx >= 0) {
-      // Allow if a disclosure tag appears within the next 60 chars.
       const tail = text.slice(idx, idx + kw.length + 60)
       if (!DISCLOSURE_TAG_RE.test(tail)) return kw
     }
   }
   const lower = text.toLowerCase()
   for (const kw of VAGUE_EN) {
-    // word-boundary match (simple check)
     const re = new RegExp(`\\b${kw.replace(/\s+/g, '\\s+')}\\b`, 'i')
     const m = re.exec(lower)
     if (m) {
@@ -155,21 +221,47 @@ function hasUnescortedVague(text: string): string | null {
   return null
 }
 
-function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndices: number[] } | null {
-  if (!e.title_zh || !e.summary_zh) return null
-  if (e.title_zh.length < 3 || e.summary_zh.length < 10) return null
+function hasResearchFraming(text: string): string | null {
+  if (!text) return null
+  for (const kw of RESEARCH_FRAMING_ZH) {
+    if (text.includes(kw)) return kw
+  }
+  const lower = text.toLowerCase()
+  for (const kw of RESEARCH_FRAMING_EN) {
+    if (lower.includes(kw)) return kw
+  }
+  return null
+}
 
-  // Observability only: log (don't reject) vague quantifiers that slipped
-  // through without a "(未披露)" / "(not disclosed)" tag. Rejection would cost
-  // events we'd rather keep; a warning lets us tighten the prompt over time.
+function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndices: number[] } | null {
+  // title_zh is mandatory; summary_zh is optional (headline-only events are
+  // allowed when the headline is self-sufficient).
+  if (!e.title_zh || e.title_zh.length < 3) return null
+  // Normalise missing/whitespace-only summaries to empty string so downstream
+  // rendering can branch on e.summary_zh === ''.
+  const summary_zh = typeof e.summary_zh === 'string' ? e.summary_zh.trim() : ''
+  const summary_en = typeof e.summary_en === 'string' ? e.summary_en.trim() : ''
+
+  // Observability: log drift on anti-vague + anti-research-framing rules.
+  // Rejection would cost events we'd rather keep; warnings let us tighten.
   const vagueHit =
     hasUnescortedVague(e.title_zh) ||
-    hasUnescortedVague(e.summary_zh) ||
-    hasUnescortedVague(e.title_en) ||
-    hasUnescortedVague(e.summary_en)
+    hasUnescortedVague(summary_zh) ||
+    hasUnescortedVague(e.title_en ?? '') ||
+    hasUnescortedVague(summary_en)
   if (vagueHit) {
     console.warn(
       `[event-extractor] vague-quantifier leak "${vagueHit}" in: ${e.title_zh.slice(0, 80)}`,
+    )
+  }
+  const framingHit =
+    hasResearchFraming(e.title_zh) ||
+    hasResearchFraming(summary_zh) ||
+    hasResearchFraming(e.title_en ?? '') ||
+    hasResearchFraming(summary_en)
+  if (framingHit) {
+    console.warn(
+      `[event-extractor] research-framing leak "${framingHit}" in: ${e.title_zh.slice(0, 80)}`,
     )
   }
 
@@ -189,8 +281,8 @@ function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndi
     event: {
       title_zh: e.title_zh,
       title_en: e.title_en || '',
-      summary_zh: e.summary_zh,
-      summary_en: e.summary_en || '',
+      summary_zh, // may be '' (headline-only event)
+      summary_en,
       category,
       importance,
       entity_names: Array.isArray(e.entity_names) ? e.entity_names : [],

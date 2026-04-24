@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { verifyAdminToken } from '@/lib/admin-auth'
 import { supabaseAdmin } from '@/db/client'
 import { pushDailySummary } from '@/modules/distributors/telegram'
+import { makeProgressReporter } from '@/lib/pipeline-progress'
 
 export const maxDuration = 60
 
@@ -20,7 +21,10 @@ export async function POST(request: Request) {
     .select('id')
     .single()
 
+  const reportProgress = makeProgressReporter(run?.id ?? null)
+
   try {
+    await reportProgress({ level: 'progress', message: 'Clearing included_in_daily on last-36h events…' })
     const since = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
     const { error: flagErr, count: clearedFlagCount } = await supabaseAdmin
       .from('events')
@@ -28,8 +32,9 @@ export async function POST(request: Request) {
       .gte('published_at', since)
       .eq('included_in_daily', true)
     if (flagErr) throw new Error(`clear included_in_daily: ${flagErr.message}`)
+    await reportProgress({ level: 'info', message: `Cleared ${clearedFlagCount ?? 0} daily flags` })
 
-    const pushed = await pushDailySummary()
+    const pushed = await pushDailySummary({ reportProgress })
 
     if (run) {
       await supabaseAdmin
