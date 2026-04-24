@@ -1,6 +1,7 @@
 import { REGIONS } from '@/config/regions'
 import { supabaseAdmin } from '@/db/client'
 import { extractContentBatch } from '@/lib/extract-content'
+import { filterLiveItems } from '@/lib/url-check'
 import RSSParser from 'rss-parser'
 
 // ─── Raw item shape for raw_items table ──────────────────────────────────────
@@ -343,20 +344,38 @@ export async function collectRegulatory(): Promise<number> {
     return true
   })
 
-  // Fetch full text for all items
-  await enrichWithFullText(deduped)
+  // URL liveness filter — SEC EDGAR URLs are very stable but RSS items from
+  // non-US regulators occasionally 404 (feed mirrors that roll off, etc.).
+  const liveCheck = await filterLiveItems(
+    deduped,
+    it => it.source_url,
+    { concurrency: 8, timeoutMs: 6000 },
+  )
+  if (liveCheck.dead.length > 0) {
+    console.log(
+      `[regulatory] URL check: ${liveCheck.alive.length} live / ${liveCheck.dead.length} dead (dropped)`,
+    )
+  }
+  const liveItems = liveCheck.alive
+  if (liveItems.length === 0) {
+    console.log('[regulatory] No live URLs; skipping upsert.')
+    return 0
+  }
 
-  console.log(`[regulatory] Upserting ${deduped.length} items to raw_items...`)
+  // Fetch full text for all items
+  await enrichWithFullText(liveItems)
+
+  console.log(`[regulatory] Upserting ${liveItems.length} items to raw_items...`)
 
   const { error } = await supabaseAdmin
     .from('raw_items')
-    .upsert(deduped, { onConflict: 'source_url', ignoreDuplicates: true })
+    .upsert(liveItems, { onConflict: 'source_url', ignoreDuplicates: true })
 
   if (error) {
     console.error('[regulatory] Upsert failed:', error)
     return 0
   }
 
-  console.log(`[regulatory] Successfully upserted ${deduped.length} items.`)
-  return deduped.length
+  console.log(`[regulatory] Successfully upserted ${liveItems.length} items.`)
+  return liveItems.length
 }

@@ -10,6 +10,7 @@
 import { SOURCES } from '@/config/sources'
 import { TWITTER_ACCOUNTS } from '@/config/twitter-accounts'
 import { supabaseAdmin } from '@/db/client'
+import { filterLiveItems } from '@/lib/url-check'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -255,11 +256,30 @@ export async function collectTweets(): Promise<number> {
   }
 
   // ── 入库 ──
-  const items = [...allItems.values()]
-  console.log(`[twitter] 合计去重后: ${items.length} 条`)
+  const dedupedItems = [...allItems.values()]
+  console.log(`[twitter] 合计去重后: ${dedupedItems.length} 条`)
 
-  if (items.length === 0) {
+  if (dedupedItems.length === 0) {
     console.log('[twitter] ═══ 无推文，采集结束 ═══')
+    return 0
+  }
+
+  // ── URL 活性校验 ──
+  // isUrlAlive 对 twitter.com / x.com 走专用 publish.twitter.com/oembed
+  // 端点，已删推文会被该端点以 404 返回。
+  const liveCheck = await filterLiveItems(
+    dedupedItems,
+    i => i.source_url,
+    { concurrency: 10, timeoutMs: 6000 },
+  )
+  if (liveCheck.dead.length > 0) {
+    console.log(
+      `[twitter]   URL 校验: ${liveCheck.alive.length} 活 / ${liveCheck.dead.length} 死（死推丢弃）`,
+    )
+  }
+  const items = liveCheck.alive
+  if (items.length === 0) {
+    console.log('[twitter] ═══ 全部死链，采集结束 ═══')
     return 0
   }
 

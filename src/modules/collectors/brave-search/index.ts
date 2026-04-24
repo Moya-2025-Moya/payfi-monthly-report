@@ -6,6 +6,7 @@
 import { SOURCES } from '@/config/sources'
 import { supabaseAdmin } from '@/db/client'
 import { generateKeywords } from '@/lib/watchlist'
+import { filterLiveItems } from '@/lib/url-check'
 
 const API_KEY = SOURCES.braveSearch.apiKey
 const NEWS_URL = `${SOURCES.braveSearch.baseUrl}${SOURCES.braveSearch.endpoints.news}`
@@ -151,11 +152,29 @@ export async function collectBraveSearch(): Promise<number> {
     console.log(`[brave-search]   "${query.slice(0, 40)}..." → ${results.length} 条`)
   }
 
-  const items = [...allItems.values()]
-  console.log(`[brave-search] 去重后: ${items.length} 条`)
+  const dedupedItems = [...allItems.values()]
+  console.log(`[brave-search] 去重后: ${dedupedItems.length} 条`)
 
-  if (items.length === 0) {
+  if (dedupedItems.length === 0) {
     console.log('[brave-search] ═══ 无新增，采集结束 ═══')
+    return 0
+  }
+
+  // URL 活性校验 — Brave 搜索结果是 4 个 collector 里死链风险最高的，
+  // 索引可能指向已被撤下或搬迁的文章。
+  const liveCheck = await filterLiveItems(
+    dedupedItems,
+    it => it.source_url,
+    { concurrency: 10, timeoutMs: 6000 },
+  )
+  if (liveCheck.dead.length > 0) {
+    console.log(
+      `[brave-search] URL 校验: ${liveCheck.alive.length} 活 / ${liveCheck.dead.length} 死（死链丢弃）`,
+    )
+  }
+  const items = liveCheck.alive
+  if (items.length === 0) {
+    console.log('[brave-search] ═══ 全部死链，采集结束 ═══')
     return 0
   }
 

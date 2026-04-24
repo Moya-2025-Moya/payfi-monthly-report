@@ -11,6 +11,7 @@ import { SOURCES } from '@/config/sources'
 import { generateKeywords } from '@/lib/watchlist'
 import { supabaseAdmin } from '@/db/client'
 import { extractContentBatch } from '@/lib/extract-content'
+import { filterLiveItems } from '@/lib/url-check'
 import RSSParser from 'rss-parser'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -337,12 +338,38 @@ export async function collectNews(): Promise<number> {
   console.log(`[A2]   通过率: ${totalRssItems > 0 ? ((totalStrong + totalWeak) / totalRssItems * 100).toFixed(1) : 0}%`)
 
   // ── Phase 3: 去重 ──
-  const newItems = await deduplicateItems(allItems)
-  const inlineCount = newItems.filter(i => i.hasInlineContent).length
-  console.log(`[A2]   去重后新增: ${newItems.length} (${inlineCount} 篇已有内联全文)`)
+  const dedupedItems = await deduplicateItems(allItems)
+  const inlineCount = dedupedItems.filter(i => i.hasInlineContent).length
+  console.log(`[A2]   去重后新增: ${dedupedItems.length} (${inlineCount} 篇已有内联全文)`)
+
+  if (dedupedItems.length === 0) {
+    console.log('[A2] ═══ 无新增，采集结束 ═══')
+    return 0
+  }
+
+  // ── Phase 3.5: URL 活性校验 ──
+  // RSS 源给的 URL 绝大多数活着，但偶尔有 feed-侧 bug、文章被撤、typo 等
+  // 问题。把明确死掉的 raw_items 挡在入库之前。Cloudflare 受挑战的站
+  // (The Block / Blockworks) 我们从 Vercel IP 过不去，故意 err-on-ALIVE。
+  const liveCheck = await filterLiveItems(
+    dedupedItems,
+    ci => ci.item.source_url,
+    { concurrency: 12, timeoutMs: 6000 },
+  )
+  if (liveCheck.dead.length > 0) {
+    console.log(
+      `[A2]   URL 校验: ${liveCheck.alive.length} 活 / ${liveCheck.dead.length} 死 （死链丢弃）`,
+    )
+    for (const d of liveCheck.dead.slice(0, 5)) {
+      console.log(`[A2]     dead: ${d.item.source_url.slice(0, 120)}`)
+    }
+  } else {
+    console.log(`[A2]   URL 校验: ${liveCheck.alive.length}/${dedupedItems.length} 全活`)
+  }
+  const newItems = liveCheck.alive
 
   if (newItems.length === 0) {
-    console.log('[A2] ═══ 无新增，采集结束 ═══')
+    console.log('[A2] ═══ 活链为零，采集结束 ═══')
     return 0
   }
 

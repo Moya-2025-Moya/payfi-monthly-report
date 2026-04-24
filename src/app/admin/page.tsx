@@ -74,6 +74,25 @@ function statusBadge(status: string | undefined) {
 // ══════════════════════════════════════════
 // Tab 1: Pipeline
 // ══════════════════════════════════════════
+const ACTION_BUTTONS = [
+  {
+    key: 'undo_today',
+    endpoint: '/api/admin/undo-today',
+    label: '撤回今日处理',
+    running: '撤回中…',
+    confirm: '确认撤回今日处理？将删除今日创建的事件并重置 raw_items 的 processed 状态（不影响采集）。',
+    method: 'POST' as const,
+  },
+  {
+    key: 'repush_daily',
+    endpoint: '/api/admin/repush-daily',
+    label: '重新发送今日日报',
+    running: '发送中…',
+    confirm: '确认重新发送今日日报？',
+    method: 'POST' as const,
+  },
+] as const
+
 function PipelineTab() {
   const [runs, setRuns] = useState<Record<string, PipelineRun | null>>({})
   const [loading, setLoading] = useState(true)
@@ -90,11 +109,11 @@ function PipelineTab() {
 
   useEffect(() => { loadRuns() }, [loadRuns])
 
-  async function triggerPipeline(key: string, endpoint: string) {
+  async function triggerPipeline(key: string, endpoint: string, method: 'GET' | 'POST' = 'GET') {
     setTriggerStatus(prev => ({ ...prev, [key]: 'running...' }))
     setLogOutput(prev => [...prev, `[${new Date().toLocaleTimeString()}] Triggering ${key}...`])
     try {
-      const res = await adminFetch(endpoint)
+      const res = await adminFetch(endpoint, { method })
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setTriggerStatus(prev => ({ ...prev, [key]: 'done' }))
@@ -110,6 +129,11 @@ function PipelineTab() {
     // Refresh runs after trigger
     setTimeout(loadRuns, 1000)
     setTimeout(() => setTriggerStatus(prev => ({ ...prev, [key]: '' })), 5000)
+  }
+
+  async function triggerAction(action: typeof ACTION_BUTTONS[number]) {
+    if (!confirm(action.confirm)) return
+    await triggerPipeline(action.key, action.endpoint, action.method)
   }
 
   return (
@@ -167,6 +191,38 @@ function PipelineTab() {
             </tbody>
           </table>
         )}
+      </div>
+
+      {/* Quick actions: undo today's processing + re-push daily */}
+      <div className="border rounded p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+        <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--fg-title)' }}>Daily Digest Actions</h2>
+        <p className="text-xs mb-3" style={{ color: 'var(--fg-muted)' }}>
+          撤回今日的数据处理（仅删除今日事件和重置 raw_items 的 processed 状态，<b>不会撤回采集</b>），或直接重新发送今日日报以测试排版。
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {ACTION_BUTTONS.map(action => {
+            const ts = triggerStatus[action.key]
+            const running = ts === 'running...'
+            return (
+              <button
+                key={action.key}
+                onClick={() => triggerAction(action)}
+                disabled={running}
+                className="px-3 py-1.5 rounded text-xs font-medium border"
+                style={{
+                  borderColor: 'var(--border)',
+                  color: running ? 'var(--fg-muted)' : 'var(--fg-body)',
+                  opacity: running ? 0.5 : 1,
+                  background: 'var(--surface)',
+                }}>
+                {running ? action.running : action.label}
+                {ts && !running && (
+                  <span className={`ml-2 ${ts === 'done' ? 'text-green-600' : 'text-red-600'}`}>{ts}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Log output */}

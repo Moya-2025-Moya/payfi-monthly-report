@@ -45,10 +45,29 @@ function buildSystemPrompt(entityNames: string[]): string {
 1. Each event is a SINGLE, self-contained development (not a summary of an article)
 2. Merge information that describes the same event across articles into one event — and set source_indices to ALL articles that contribute to it
 3. Skip: opinion pieces, price speculation, generic market commentary, duplicate events
-4. Title: concise, factual, ≤30 characters in Chinese
-5. Summary: 2-3 sentences max, factual only, NO opinions/predictions
-6. Language: Chinese for title_zh/summary_zh, English for title_en/summary_en
-7. source_indices: REQUIRED — array of article numbers (0-indexed) from the input that describe this event. Never invent indices. Never include articles that don't actually support the event.
+4. title_zh: MUST be a COMPLETE Chinese sentence with clear subject + verb + object, readable standalone without any other context. 25–55 Chinese characters. Include the key actor, action, and the most important concrete detail (amount / target / counterparty / date / jurisdiction). Do NOT use bare noun phrases, headlines-style fragments, or vague verbs like "相关" / "引发关注". Example GOOD: "Tether 在以太坊链上冻结了与朝鲜洗钱活动相关的 3.4 亿美元 USDT"。Example BAD: "Tether 冻结 3.4 亿美元 USDT"。
+5. title_en: mirror title_zh — a complete English sentence with subject-verb-object and the same key detail. 10–25 words.
+6. summary_zh: 2–3 complete Chinese sentences, total 90–200 characters, each sentence adding NEW concrete detail the title does not state. Cover whichever of these the source supports: mechanism / counterparty / timeline / legal or regulatory context / supporting numbers / downstream consequence / traceability. Must end each sentence with 。!? terminator. No opinions, no predictions, no speculation.
+7. summary_en: mirror summary_zh — 2-3 complete English sentences, 30–80 words total, with the same supporting detail.
+8. Language: Chinese for title_zh/summary_zh, English for title_en/summary_en
+9. source_indices: REQUIRED — array of article numbers (0-indexed) from the input that describe this event. Never invent indices. Never include articles that don't actually support the event.
+
+## Anti-vague-quantifier policy (STRICT)
+Bare quantifiers without enumeration are BANNED in title_zh / title_en / summary_zh / summary_en. Banned phrases include (not exhaustive):
+  • Chinese: 几家 / 多家 / 若干 / 数家 / 一些 / 多个 / 一批 / 部分 / 大量 / 不少 / 少数 / 许多 / 数十家 / 数百 / 多国 / 多方 / 多家交易所 / 多个地址 / 多名
+  • English: several, multiple, some, various, numerous, many, a few, a handful of, a number of, dozens of, multiple parties, several exchanges
+
+When the source article states a vague quantity, you MUST do one of the following — DO NOT simply omit the detail:
+  A. ENUMERATE if the article names the items. Example: source says "several exchanges including Binance, OKX, Bybit froze accounts" → write "Binance、OKX、Bybit 三家交易所冻结账户".
+  B. PARTIALLY-ENUMERATE + explicit remainder count. Example: "8 家稳定币发行方（已披露 Circle、Paxos、PayPal，其余 5 家未具名）".
+  C. EXPLICITLY FLAG as undisclosed. Example: "三家混币服务（具体名称未披露）" or "three mixing services (identities not disclosed)". This is REQUIRED if you cannot enumerate.
+
+NEVER write something like "the funds flowed through several mixers" without the "(不具名)" / "(not disclosed)" tag. Omitting the detail entirely to avoid vagueness is FORBIDDEN — the reader must see either the names or an explicit "不具名/未披露" marker.
+
+Good example: "美司法部扣押令显示资金经 Tornado Cash、Wasabi、Sinbad 三家混币服务流入 Lazarus Group 关联地址。此次为 Tether 发行历史最大单次冻结。"
+Good fallback: "美司法部扣押令显示资金经三家混币服务（具体名称未披露）流入朝鲜 Lazarus Group 关联地址。涉案金额 $340M，为 Tether 史上最大单次冻结。"
+Bad (omits detail): "美司法部扣押令显示资金经混币服务流入朝鲜关联地址。"
+Bad (vague without tag): "美司法部扣押令显示资金经几家混币服务流入朝鲜关联地址。"
 
 ## Categories
 - regulatory: laws, bills, enforcement, licenses, compliance actions
@@ -98,9 +117,61 @@ const VALID_CATEGORIES = new Set<string>([
   'market', 'policy', 'technical', 'other',
 ])
 
+// Vague quantifier detector. Matches a banned phrase ONLY if it's not
+// immediately followed by an acknowledgement tag like "（具体未披露）" or
+// "(not disclosed)". Used for observability, not rejection — the prompt is
+// the primary defense; this lets us see when the model drifts.
+const VAGUE_ZH = [
+  '几家', '多家', '若干', '数家', '一些', '多个', '一批', '部分',
+  '大量', '不少', '少数', '许多', '数十家', '多方', '多名', '多国',
+]
+const VAGUE_EN = [
+  'several', 'multiple', 'some', 'various', 'numerous', 'many',
+  'a few', 'a handful of', 'a number of', 'dozens of',
+]
+const DISCLOSURE_TAG_RE =
+  /（\s*(具体)?(名称|身份)?\s*(未|暂未|尚未)?\s*(披露|公开|具名|公布)\s*）|\(\s*(not\s*disclosed|undisclosed|not\s*named|identities?\s*not\s*disclosed)\s*\)/i
+
+function hasUnescortedVague(text: string): string | null {
+  if (!text) return null
+  for (const kw of VAGUE_ZH) {
+    const idx = text.indexOf(kw)
+    if (idx >= 0) {
+      // Allow if a disclosure tag appears within the next 60 chars.
+      const tail = text.slice(idx, idx + kw.length + 60)
+      if (!DISCLOSURE_TAG_RE.test(tail)) return kw
+    }
+  }
+  const lower = text.toLowerCase()
+  for (const kw of VAGUE_EN) {
+    // word-boundary match (simple check)
+    const re = new RegExp(`\\b${kw.replace(/\s+/g, '\\s+')}\\b`, 'i')
+    const m = re.exec(lower)
+    if (m) {
+      const tail = text.slice(m.index, m.index + kw.length + 80)
+      if (!DISCLOSURE_TAG_RE.test(tail)) return kw
+    }
+  }
+  return null
+}
+
 function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndices: number[] } | null {
   if (!e.title_zh || !e.summary_zh) return null
   if (e.title_zh.length < 3 || e.summary_zh.length < 10) return null
+
+  // Observability only: log (don't reject) vague quantifiers that slipped
+  // through without a "(未披露)" / "(not disclosed)" tag. Rejection would cost
+  // events we'd rather keep; a warning lets us tighten the prompt over time.
+  const vagueHit =
+    hasUnescortedVague(e.title_zh) ||
+    hasUnescortedVague(e.summary_zh) ||
+    hasUnescortedVague(e.title_en) ||
+    hasUnescortedVague(e.summary_en)
+  if (vagueHit) {
+    console.warn(
+      `[event-extractor] vague-quantifier leak "${vagueHit}" in: ${e.title_zh.slice(0, 80)}`,
+    )
+  }
 
   const category = VALID_CATEGORIES.has(e.category)
     ? (e.category as EventCategory)
