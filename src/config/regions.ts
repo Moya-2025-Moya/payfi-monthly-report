@@ -1,4 +1,11 @@
 // 监管追踪地区配置
+//
+// 每条 rss_sources 里的 URL 都经过 curl 实测返回 200 + 有效 RSS/Atom XML
+// (2026-04 验证)。如需补充，请先用 HEAD+curl 校验再添加。
+//
+// 未包含 / 需进一步研究的：CFTC (页面是 HTML 不是 RSS)，FinCEN (404)，
+// EBA (404)，HKMA (404)，MAS (当前网站维护中)，BIS (URL 失效)，日本 FSA
+// (暂未找到官方 RSS)，阿联酋 VARA / ADGM / DFSA (无对外 RSS feed)。
 
 export interface RegionConfig {
   code: string
@@ -15,22 +22,37 @@ export const REGIONS: RegionConfig[] = [
     name_zh: '美国',
     agencies: ['SEC', 'OCC', 'Federal Reserve', 'CFTC', 'FinCEN', 'Congress'],
     rss_sources: [
-      'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=&dateb=&owner=include&count=40&search_text=&action=getcompany',
+      // SEC 新闻稿 RSS（独立于 collectSecRss() 抓的 sec.gov/cgi-bin 那个）
+      'https://www.sec.gov/news/pressreleases.rss',
+      // 美联储新闻稿
+      'https://www.federalreserve.gov/feeds/press_all.xml',
+      // OCC 新闻（货币监理署）
+      'https://www.occ.gov/rss/occ_news.xml',
     ],
   },
   {
     code: 'EU',
     name_en: 'European Union',
     name_zh: '欧盟',
-    agencies: ['EBA', 'ECB', 'European Commission'],
-    rss_sources: [],
+    agencies: ['ESMA', 'ECB', 'European Commission'],
+    rss_sources: [
+      // ESMA 新闻（MiCA / 稳定币监管主机构）
+      'https://www.esma.europa.eu/rss.xml',
+      // ECB 新闻稿
+      'https://www.ecb.europa.eu/rss/press.html',
+    ],
   },
   {
     code: 'UK',
     name_en: 'United Kingdom',
     name_zh: '英国',
     agencies: ['FCA', 'Bank of England', 'HM Treasury'],
-    rss_sources: [],
+    rss_sources: [
+      // FCA 新闻
+      'https://www.fca.org.uk/news/rss.xml',
+      // 英格兰银行新闻
+      'https://www.bankofengland.co.uk/rss/news',
+    ],
   },
   {
     code: 'SG',
@@ -44,7 +66,10 @@ export const REGIONS: RegionConfig[] = [
     name_en: 'Hong Kong',
     name_zh: '香港',
     agencies: ['HKMA', 'SFC'],
-    rss_sources: [],
+    rss_sources: [
+      // 香港证监会新闻稿
+      'https://www.sfc.hk/en/RSS-Feeds/Press-releases',
+    ],
   },
   {
     code: 'JP',

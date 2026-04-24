@@ -1,11 +1,13 @@
-// Twitter Collector — 双策略采集 (V2: writes to raw_items)
+// Twitter Collector — 仅抓官方账号的推文 (V3)
 //
-// 策略 1: 关键词搜索 — 全网搜索稳定币/PayFi 相关推文（高召回）
-// 策略 2: 账号搜索 — 搜索核心人物的推文（高精度）
+// 设计思想：Twitter 信噪比极低。全网关键词搜索会抓到一堆 KOL / 散户 /
+// 项目方营销/空投农夫推文，处理下来 95% 都是噪音。所以我们放弃"全网搜
+// 索"策略，只追踪 TWITTER_ACCOUNTS 配置里的官方账号：
+//   • 官方媒体（The Block / CoinDesk / …）
+//   • 监管/央行（SEC / CFTC / FCA / …）
+//   • 发行方/托管/交易所官方账号
 //
-// 为什么不用 Monitor 模式：
-//   Monitor 需要预注册账号（Starter 限 6 个），且只能拿注册后的新推文。
-//   Search API 无账号数量限制，且能拿到所有历史推文。
+// KOL / VC / 研究员个人账号**永久排除**——user 明确不要个人观点。
 
 import { SOURCES } from '@/config/sources'
 import { TWITTER_ACCOUNTS } from '@/config/twitter-accounts'
@@ -66,35 +68,11 @@ interface SearchResponse {
 const API_KEY = SOURCES.twitter.apiKey
 const SEARCH_URL = `${SOURCES.twitter.baseUrl}/twitter/tweet/advanced_search`
 
-// 关键词搜索查询 — 稳定币/PayFi 核心词
-const KEYWORD_QUERIES = [
-  'stablecoin OR "stable coin" OR "稳定币"',
-  'USDC OR USDT OR PYUSD OR DAI OR USDe',
-  '"cross-border payment" OR "crypto payment" OR payfi OR "stablecoin payment"',
-  'CBDC OR "digital dollar" OR "digital euro"',
-  'tokenization RWA stablecoin',
-]
-
-// 核心账号搜索 — 不受 Monitor 6 个限制
-const PRIORITY_ACCOUNTS = [
-  // 稳定币发行方
-  'jerallaire',     // Circle CEO
-  'paaborsch',      // Tether CTO
-  'RuneKek',        // MakerDAO Founder
-  // 稳定币基础设施
-  'zabornjak',      // Bridge.xyz CEO
-  // 稳定币研究/数据
-  'staborcoins',    // Stablecoins.wtf
-  'theaboringguy',  // Stablecoin Researcher
-  // PayFi / 支付
-  'nic__carter',    // Castle Island Ventures (stablecoin focus)
-  'MessariCrypto',  // Crypto Research
-]
-
-// 过滤阈值 — 去掉低质量/垃圾推文
-const MIN_FOLLOWERS = 50       // 作者至少 50 粉丝
-const MIN_ENGAGEMENT = 2       // 至少 2 个互动（likes + retweets + replies）
+// 窗口
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+// 官方账号不需要粉丝数/互动数过滤——他们的推文本身就是权威信息源。
+// 只做一条：不抓纯转推（无原创信息）。
 
 // ─── Search API ───────────────────────────────────────────────────────────────
 
@@ -136,27 +114,22 @@ async function searchTweets(query: string, maxPages: number = 2): Promise<Search
 }
 
 // ─── 质量过滤 ─────────────────────────────────────────────────────────────────
+//
+// 账号白名单下不再做粉丝数 / 互动数过滤——官方账号的权威性来自身份，不是
+// 流量。只过滤不含原创信息的条目。
 
-function isQualityTweet(tweet: SearchTweet): boolean {
-  // 过滤回复（通常是噪音）
-  if (tweet.isReply) return false
-
-  // 过滤转推
+function isSubstantiveTweet(tweet: SearchTweet): boolean {
+  // 纯转推不含原创信息
   if (tweet.retweeted_tweet) return false
 
-  // 过滤低粉丝账号（防垃圾）
-  const followers = tweet.author?.followers ?? 0
-  if (followers < MIN_FOLLOWERS) return false
+  // 回复也过滤——官方回复用户的多半是客服/互动，不是新闻
+  if (tweet.isReply) return false
 
-  // 过滤零互动推文
-  const engagement = (tweet.likeCount ?? 0) + (tweet.retweetCount ?? 0) + (tweet.replyCount ?? 0)
-  if (engagement < MIN_ENGAGEMENT) return false
-
-  // 过滤非英文/中文
+  // 非英/中文直接跳（其他语言提取器处理不好）
   const lang = tweet.lang ?? ''
   if (lang && !['en', 'zh', 'und', 'qht', 'qme', 'art'].includes(lang)) return false
 
-  // 过滤太短的推文（可能是表情/链接 only）
+  // 太短（可能是表情/纯链接）
   if ((tweet.text?.length ?? 0) < 30) return false
 
   return true
@@ -214,45 +187,30 @@ export async function collectTweets(): Promise<number> {
     return 0
   }
 
-  console.log('[twitter] ═══ 开始采集 ═══')
+  console.log(`[twitter] ═══ 开始采集 — ${TWITTER_ACCOUNTS.length} 个官方账号 ═══`)
 
   const allItems = new Map<string, RawItem>() // dedup by source_url
 
-  // ── 策略 1: 关键词搜索 ──
-  console.log(`[twitter] 策略1: ${KEYWORD_QUERIES.length} 组关键词搜索`)
-  for (const query of KEYWORD_QUERIES) {
-    const results = await searchTweets(query, 2) // 2 pages per query
-    let accepted = 0
-    for (const tweet of results) {
-      if (!isWithinWindow(tweet) || !isQualityTweet(tweet)) continue
-      const mapped = mapTweet(tweet)
-      if (mapped && !allItems.has(mapped.source_url)) {
-        allItems.set(mapped.source_url, mapped)
-        accepted++
-      }
-    }
-    console.log(`[twitter]   "${query.slice(0, 40)}..." → ${results.length} 条, 保留 ${accepted}`)
-  }
-
-  // ── 策略 2: 核心账号搜索 ──
-  // 将多个账号合并到一次搜索（减少 API 调用）
-  const BATCH_SIZE = 5 // Twitter 搜索 OR 操作数限制
-  for (let i = 0; i < PRIORITY_ACCOUNTS.length; i += BATCH_SIZE) {
-    const batch = PRIORITY_ACCOUNTS.slice(i, i + BATCH_SIZE)
+  // 将多个账号合并到一次搜索（from:A OR from:B OR ...）降低 API 调用数。
+  // Twitter 搜索 OR 操作数限制约 ~10，5 条一批最安全。
+  const BATCH_SIZE = 5
+  const handles = TWITTER_ACCOUNTS.map(a => a.handle)
+  for (let i = 0; i < handles.length; i += BATCH_SIZE) {
+    const batch = handles.slice(i, i + BATCH_SIZE)
     const query = batch.map(h => `from:${h}`).join(' OR ')
     const results = await searchTweets(query, 2)
     let accepted = 0
 
     for (const tweet of results) {
       if (!isWithinWindow(tweet)) continue
-      // 核心账号不做质量过滤（他们的推文都是有价值的）
+      if (!isSubstantiveTweet(tweet)) continue
       const mapped = mapTweet(tweet)
       if (mapped && !allItems.has(mapped.source_url)) {
         allItems.set(mapped.source_url, mapped)
         accepted++
       }
     }
-    console.log(`[twitter]   账号搜索 [${batch.join(', ')}] → ${results.length} 条, 保留 ${accepted}`)
+    console.log(`[twitter]   [${batch.join(', ')}] → ${results.length} 条, 保留 ${accepted}`)
   }
 
   // ── 入库 ──

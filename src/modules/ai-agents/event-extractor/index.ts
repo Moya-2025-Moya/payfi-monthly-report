@@ -65,12 +65,27 @@ Every headline is a complete sentence with:
   (b) Active verb — 部署 / 冻结 / 批准 / 起诉 / 推出 / 调降 / deploys / freezes / approves / downgrades
   (c) Object — what it targets (product, law, asset, chain, entity)
 
-### The "2-number rule" (most important)
-If the article contains ANY numbers (dollar amounts, percentages, counts, dates beyond just the publication date, legal statute numbers), the headline MUST include AT LEAST TWO of them — pick the MOST EYE-CATCHING two (rank by: dollar magnitude > percentage swings > count of entities > date/deadline > legal article number).
+### The "2-number rule" (most important — CHECK BEFORE OUTPUT)
+If the article body contains ANY numbers (dollar amounts, percentages, counts, dates beyond just the publication date, legal statute numbers, time intervals), the HEADLINE itself must carry AT LEAST TWO of them — pick the MOST EYE-CATCHING two (rank by: dollar magnitude > percentage swings > count of entities > date/deadline > legal article number).
 
-If the article contains exactly ONE number → headline carries that number + one other concrete element (named counterparty, date, jurisdiction, chain, mechanism name).
+**This applies to the title field ONLY. Putting numbers in summary_zh does NOT satisfy the rule — numbers must appear in title_zh.**
 
-If the article contains ZERO numbers → headline carries two concrete non-numeric elements (two named entities, or entity + specific action, or action + specific outcome).
+**Mandatory self-check before finalizing output**: scan the article body for numbers. Count the numbers present in your drafted title_zh. If body has ≥2 numbers AND title_zh has <2 numbers, REWRITE the title to lift the 2 most eye-catching into it, even if that makes the title longer (up to 70 Chinese chars).
+
+If the article body contains exactly ONE number → headline carries that number + one other concrete element (named counterparty, date, jurisdiction, chain, mechanism name).
+
+If the article body contains ZERO numbers → headline carries two concrete non-numeric elements (two named entities, or entity + specific action, or action + specific outcome).
+
+### PYUSD compliance example (this exact failure happened — do NOT repeat)
+Article body said: "PYUSD's market cap dropped from $4.22B to $3.6B over three days, with over $400M in supply reduction executed by Paxos."
+
+BAD (previous output, fails 2-number rule — numbers are in detail, not title):
+  title_zh: "PayPal 稳定币市值大幅下降"
+  summary_zh: "PYUSD 三天内市值从 42.2 亿美元下降至 36 亿美元，发生了超过 4 亿美元的供应量减少。"
+
+GOOD (compliant — 2 most eye-catching numbers are IN the title):
+  title_zh: "PayPal PYUSD 三天内供应量减少 4 亿美元，市值从 42.2 亿美元降至 36 亿美元"
+  summary_zh: "减少操作由发行合作方 Paxos 执行，Paxos 未披露赎回客户身份。"
 
 ### Banned in headlines (and detail) — vague adjectives
 These words carry no information and MUST be replaced by the underlying number/name/fact:
@@ -286,6 +301,17 @@ function hasVagueAdjective(text: string): string | null {
   return null
 }
 
+// Count numeric tokens: Arabic digits (allowing .,%$亿万千B(n)M(n)k commas),
+// Chinese numerals in a counter position, and percentage / currency-prefixed
+// numbers. Rough but good enough to flag "title has no numbers despite body
+// containing many".
+const NUMBER_TOKEN_RE = /[0-9]+[0-9.,]*\s*(%|亿|万|千|百万|M|B|bn|k)?|[一二三四五六七八九十百千万]+(家|个|位|名|次|天|年|月|周|亿|万|倍|%)/g
+function countNumberTokens(text: string): number {
+  if (!text) return 0
+  const matches = text.match(NUMBER_TOKEN_RE)
+  return matches ? matches.length : 0
+}
+
 function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndices: number[] } | null {
   // title_zh is mandatory; summary_zh is optional (headline-only events are
   // allowed when the headline is self-sufficient).
@@ -429,6 +455,19 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
         event.raw_item_ids = cited.map(item => item.id)
         event.source_urls = [...new Set(cited.map(item => item.source_url))]
         event.published_at = cited.map(item => item.published_at).sort()[0]
+
+        // Observability: body has numbers but title doesn't — prompt violation.
+        const bodyText = cited
+          .map(it => `${it.title ?? ''} ${it.full_text ?? ''} ${it.content ?? ''}`)
+          .join(' ')
+        const bodyNums = countNumberTokens(bodyText)
+        const titleNums = countNumberTokens(event.title_zh)
+        if (bodyNums >= 2 && titleNums < 2) {
+          console.warn(
+            `[event-extractor] 2-number-rule miss: body has ${bodyNums} numbers, ` +
+            `title has ${titleNums}: "${event.title_zh.slice(0, 80)}"`,
+          )
+        }
 
         allEvents.push(event)
         validCount++
