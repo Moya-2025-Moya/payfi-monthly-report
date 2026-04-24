@@ -8,6 +8,7 @@ import { supabaseAdmin } from '@/db/client'
 import { extractEvents } from '@/modules/ai-agents/event-extractor'
 import { mergeEvents, findSimilarDbEvent, type DbEventLite } from '@/modules/ai-agents/event-merger'
 import { translateEvents } from '@/modules/ai-agents/translator'
+import { sortUrlsByPriority } from '@/lib/url-priority'
 import type { ExtractedEvent, PipelineStats } from '@/lib/types'
 import type { ProgressReporter } from '@/lib/pipeline-progress'
 import { isRunCancelled } from '@/lib/pipeline-progress'
@@ -42,7 +43,8 @@ async function mergeIntoExisting(
   existing: DbEventLite,
   incoming: ExtractedEvent,
 ): Promise<void> {
-  const mergedUrls = [...new Set([...(existing.source_urls ?? []), ...incoming.source_urls])]
+  const dedupedUrls = [...new Set([...(existing.source_urls ?? []), ...incoming.source_urls])]
+  const mergedUrls = sortUrlsByPriority(dedupedUrls)
   const mergedEntities = [...new Set([
     ...(existing.entity_names ?? []).map(n => n.trim()),
     ...incoming.entity_names.map(n => n.trim()),
@@ -108,19 +110,22 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
     return { insertedIds: [], mergedCount }
   }
 
-  const rows = toInsert.map(e => ({
-    title_zh: e.title_zh,
-    title_en: e.title_en || null,
-    summary_zh: e.summary_zh,
-    summary_en: e.summary_en || null,
-    category: e.category,
-    importance: e.importance,
-    entity_names: e.entity_names,
-    source_urls: e.source_urls,
-    source_count: e.source_urls.length,
-    v1_status: null,
-    published_at: e.published_at,
-  }))
+  const rows = toInsert.map(e => {
+    const sortedUrls = sortUrlsByPriority(e.source_urls)
+    return {
+      title_zh: e.title_zh,
+      title_en: e.title_en || null,
+      summary_zh: e.summary_zh,
+      summary_en: e.summary_en || null,
+      category: e.category,
+      importance: e.importance,
+      entity_names: e.entity_names,
+      source_urls: sortedUrls,
+      source_count: sortedUrls.length,
+      v1_status: null,
+      published_at: e.published_at,
+    }
+  })
 
   const { data, error } = await supabaseAdmin
     .from('events')

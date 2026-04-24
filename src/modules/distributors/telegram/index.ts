@@ -11,6 +11,7 @@
 import { supabaseAdmin } from '@/db/client'
 import { SOURCES } from '@/config/sources'
 import { pickLiveUrl } from '@/lib/url-check'
+import { sortUrlsByPriority } from '@/lib/url-priority'
 import type { Event, WeeklySummary } from '@/lib/types'
 import type { ProgressReporter } from '@/lib/pipeline-progress'
 
@@ -292,7 +293,11 @@ export async function pushDailySummary(
   const liveChecks = await Promise.all(
     allEvents.map(async e => ({
       id: e.id,
-      url: await pickLiveUrl(e.source_urls ?? []),
+      // Sort URLs by domain priority before validating. pickLiveUrl walks
+      // the sorted list in order and returns the first live one, so the
+      // displayed link is the highest-priority reachable source. Twitter
+      // only wins if nothing else is alive.
+      url: await pickLiveUrl(sortUrlsByPriority(e.source_urls ?? [])),
     })),
   )
   for (const { id, url } of liveChecks) {

@@ -4,6 +4,7 @@
 
 import Link from 'next/link'
 import { supabaseAdmin } from '@/db/client'
+import { sortUrlsByPriority } from '@/lib/url-priority'
 import type { Event, EventCategory } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -276,7 +277,7 @@ export default async function DigestPage({
                       )}
                       {e.source_urls.length > 0 && (
                         <div className="mt-1.5 ml-6 flex flex-wrap gap-x-3 gap-y-1">
-                          {e.source_urls.map((url, i) => (
+                          {sortUrlsByPriority(e.source_urls).map((url, i) => (
                             <a key={i} href={url} target="_blank" rel="noopener noreferrer"
                               className="text-xs underline"
                               style={{ color: 'var(--accent, #2563eb)' }}>
