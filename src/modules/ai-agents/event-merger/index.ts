@@ -139,11 +139,33 @@ function clusterEvents(events: ExtractedEvent[]): EventCluster[] {
 
 // ─── Merge a set of events into one ────────────────────────────────────────
 
+// Count number-bearing tokens in a string (currency, %, K/M/B, 亿/万, Chinese
+// numeral + counter). Mirrors event-extractor's NUMBER_TOKEN_RE so the two
+// stay aligned. The merger uses this to pick the number-richest variant of a
+// cluster as the representative — tweets often carry concrete figures that
+// RSS headlines omit, and we don't want to lose them just because the RSS
+// variant ranked higher on "importance".
+const NUMBER_TOKEN_RE = /[0-9]+[0-9.,]*\s*(%|亿|万|千|百万|M|B|bn|k)?|[一二三四五六七八九十百千万]+(家|个|位|名|次|天|年|月|周|亿|万|倍|%)/g
+function numberScore(e: ExtractedEvent): number {
+  const text = `${e.title_zh} ${e.title_en} ${e.summary_zh} ${e.summary_en}`
+  const matches = text.match(NUMBER_TOKEN_RE)
+  return matches ? matches.length : 0
+}
+
 function mergeInto(events: ExtractedEvent[]): ExtractedEvent {
   if (events.length === 1) return events[0]
 
-  // Pick highest-importance representative (lowest numeric value).
-  const best = events.reduce((a, b) => a.importance <= b.importance ? a : b)
+  // Representative selection: prefer the variant with the most concrete
+  // numbers (numerical density wins), then tie-break by importance
+  // (lowest numeric = most important). This matters when a cluster mixes an
+  // RSS article with no figures and a tweet that actually carries the
+  // dollar amount — we want the number-bearing variant to survive.
+  const best = events.reduce((a, b) => {
+    const na = numberScore(a)
+    const nb = numberScore(b)
+    if (na !== nb) return na > nb ? a : b
+    return a.importance <= b.importance ? a : b
+  })
   const rawItemIds = [...new Set(events.flatMap(e => e.raw_item_ids))]
   const sourceUrls = [...new Set(events.flatMap(e => e.source_urls))]
   const entityNames = [...new Set(

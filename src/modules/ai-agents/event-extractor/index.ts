@@ -123,11 +123,26 @@ Article body said: "PYUSD's market cap dropped from $4.22B to $3.6B over three d
 
 BAD (previous output, fails 2-number rule — numbers are in detail, not title):
   title_zh: "PayPal 稳定币市值大幅下降"
-  summary_zh: "PYUSD 三天内市值从 42.2 亿美元下降至 36 亿美元，发生了超过 4 亿美元的供应量减少。"
+  summary_zh: "PYUSD 三天内市值从 4.22B 美元下降至 3.6B 美元，发生了超过 400M 美元的供应量减少。"
 
 GOOD (compliant — 2 most eye-catching numbers are IN the title):
-  title_zh: "PayPal PYUSD 三天内供应量减少 4 亿美元，市值从 42.2 亿美元降至 36 亿美元"
+  title_zh: "PayPal PYUSD 三天内供应量减少 400M 美元，市值从 4.22B 美元降至 3.6B 美元"
   summary_zh: "减少操作由发行合作方 Paxos 执行，Paxos 未披露赎回客户身份。"
+
+### Number format — keep K/M/B verbatim, NEVER convert to 亿/万
+Chinese readers of crypto/fintech news are fluent in K/M/B. Preserve numbers from the English body EXACTLY as written — same digits, same unit letter. Do not rescale into 亿 / 万 / 千万 / 百万.
+
+  • "$127.5M"    → write "127.5M 美元"     (not "1.27 亿美元", not "1275 万美元")
+  • "$4.22B"     → write "4.22B 美元"      (not "42.2 亿美元")
+  • "$900K"      → write "900K 美元"       (not "90 万美元")
+  • "1.2 billion" → write "1.2B"           (not "12 亿")
+
+The "$" becomes "美元" after the number; digits and the K/M/B letter stay identical.
+
+### No-invented-numbers rule (hard constraint, overrides everything else)
+Every digit-bearing token in title_zh / title_en / summary_zh / summary_en MUST appear, with the same value and same order of magnitude, in the source article body. If the body does not contain a specific number for a fact, DO NOT put a number in the headline for that fact — write it qualitatively, or pick a different fact that IS numbered in the body.
+
+Before output, for each number in your headline, locate it in the article body. If you can't locate it verbatim (same digits, same unit), remove it. A qualitative headline is better than a fabricated number.
 
 ### Banned in headlines (and detail) — vague adjectives
 These words carry no information and MUST be replaced by the underlying number/name/fact:

@@ -57,6 +57,21 @@ Preserve every concrete name, number, date, and party from the English source. D
 If EN says "Binance, OKX, and Bybit froze accounts" → ZH must say "Binance、OKX、Bybit 三家交易所冻结账户", NEVER "三家交易所冻结账户".
 If EN says "several exchanges froze accounts" (no names) → ZH must say "多家交易所（具体名称未披露）冻结账户".
 
+## STRICT: Number format — keep K/M/B verbatim, NEVER convert to 亿/万
+Chinese readers of crypto/fintech news are fluent in K/M/B notation. Preserve the original English units and magnitudes EXACTLY as they appear — do not translate them into 亿 / 万 / 千万 / 百万.
+
+- "$127.5M"  → "1.275 亿美元" ✗   "127.5M 美元" ✓   (keep "M")
+- "$4.22B"   → "42.2 亿美元"  ✗   "4.22B 美元"  ✓   (keep "B")
+- "$900K"    → "90 万美元"    ✗   "900K 美元"   ✓   (keep "K")
+- "1.2 billion" → "12 亿" ✗      "1.2B" ✓
+
+Preserve the ORIGINAL numeric value. Do not rescale (e.g., never turn 127.5M into 1275万 or 1.27亿 — that both changes the unit and risks an off-by-10 error). The character "$" should become "美元" after the number (e.g., "127.5M 美元"), but the digits and K/M/B letter stay identical.
+
+Percentages, counts, dates, addresses, and statute numbers also copy verbatim.
+
+## STRICT: No invented numbers
+Every number you output in title_zh or summary_zh MUST appear verbatim in the English title_en or summary_en for that same index. Do not invent a number, do not round to a "cleaner" value, do not infer a number from context. If the English source has no number for a fact, the Chinese output also has no number for that fact — leave it qualitative.
+
 ${items}
 
 Return JSON: {"translations": [{"index": N, "title_zh": "...", "summary_zh": "..."}]}`,
