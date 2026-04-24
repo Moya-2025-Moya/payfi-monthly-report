@@ -44,12 +44,54 @@ function buildSystemPrompt(entityNames: string[]): string {
 ## CRITICAL: read the full article
 Each article below includes a full Content body (often 5–12k characters), NOT just a headline. You MUST scan the whole body to find the concrete numbers, named parties, amounts, dates, and jurisdictions that belong in the headline. Numbers buried in paragraph 5 must make it to the headline if they are the most eye-catching fact in the story. Do not write headlines based on the source's own title alone — the source's title is often generic and missing the key stat.
 
-## Inclusion threshold (3 tests, ALL must pass — otherwise skip this article)
-1. Relevance — article has a meaningful connection to stablecoins / PayFi / crypto payments / issuers / custodians / relevant regulation
-2. Non-duplicate — not the same event as another article in this batch
-3. Not pure opinion without market-moving authority (see Opinion policy below)
+## Inclusion threshold (4 tests, ALL must pass — otherwise skip this article)
 
-If an article passes all 3, INCLUDE it. "No strong hook" is NOT a reason to skip — that's a WRITING problem (see headline rules) not an inclusion problem.
+### 1. Core-topic relevance (STRICT — most common reason to skip)
+The article's CORE SUBJECT (what the headline AND first 2-3 paragraphs are about) must be crypto/stablecoin/PayFi. A peripheral mention is NOT enough.
+
+INCLUDE if core subject is:
+  • Stablecoin issuance / adoption / redemption / reserves / depeg events
+  • Crypto-payment rails, merchants accepting crypto, crypto-native lending
+  • Regulatory action primarily targeting crypto entities, stablecoin issuers, or DeFi
+  • CBDC progress, tokenized securities, on-chain RWA
+  • Major crypto exchanges / custodians / infrastructure
+  • Enforcement that SPECIFICALLY freezes or designates crypto wallets/tokens
+
+SKIP (even if the article mentions crypto in passing):
+  • Traditional banking: rebrands, BaaS deployments for traditional banks, credit cards, non-crypto e-money products
+  • Non-crypto sanctions: fentanyl / drugs / terrorism / general financial sanctions where the body doesn't explicitly list crypto wallets/tokens as designated assets
+  • Pure fintech: neobanks, payment apps, credit scoring, unless stablecoin / crypto integration is the core
+  • Traditional asset management: money market funds, ETFs, unless the fund's mandate is crypto/stablecoin reserves
+  • General macro / monetary policy unless crypto is the specific subject
+
+### 2. Primary-source test (commentary detection)
+If the article is clearly COMMENTARY or REACTION on someone else's event (phrases like "this signals", "market reacted", "analysts interpret"), DO NOT treat it as the original event. Re-frame:
+  • If the commentary has its own concrete data (odds, flows, price moves) → treat as a market/reaction event, category='market'
+  • If the commentary has no concrete data and the primary event isn't in any other article in this batch → SKIP (we're not a tabloid)
+
+Real-world example (DO NOT repeat):
+  Article: "Morgan Stanley unveils stablecoin reserves fund amid GENIUS Act anticipation" (Crypto Briefing) — actually a Polymarket analysis piece. Body says "unveiled a Stablecoin Reserves Portfolio" with ZERO fund specifics (no AUM, no launch date, no fee), then 400 words about Polymarket depeg contract at 2.9% YES / 252 days / 33x return.
+  WRONG: extract "Morgan Stanley 推出稳定币准备金基金" — fund has no verifiable details in source
+  RIGHT: extract "Polymarket 稳定币脱锚合约在 MS 公告后仍停留在 2.9% YES，距结算 252 天" (category='market', hooks the real numbers)
+  OR: skip entirely — those Polymarket numbers may not pass newsworthy bar
+
+### 3. Non-duplicate — not the same event as another article in this batch
+
+### 4. Not pure opinion without market-moving authority (see Opinion policy)
+
+If all 4 tests pass, INCLUDE. "No strong hook" is NOT a reason to skip — that's a WRITING problem.
+
+## Real-world SKIP examples (these exact events were extracted incorrectly — do NOT repeat)
+
+### BAD 1: traditional BaaS, no stablecoin/crypto involvement
+  Article: Monument Technology + Castle Trust Bank BaaS deployment (finextra.com)
+  Body: entirely about traditional UK banking-as-a-service; no stablecoin, no crypto token, no on-chain component
+  Verdict: SKIP — fails core-topic test
+
+### BAD 2: non-crypto sanctions, drug enforcement
+  Article: "OFAC sanctions 23 entities tied to fentanyl trafficking" (@USTreasury)
+  Body: Sinaloa cartel, opioid supply chain — NO designated crypto addresses mentioned
+  Verdict: SKIP — OFAC often has non-crypto actions; sanctions are on-topic only when crypto addresses are specifically designated
 
 ## Importance rating (1 = most important, 4 = least)
 - 1 critical: billion-dollar events, major regulatory actions (SEC/CFTC enforcement, bill passage), market-moving frozen assets, major security incidents
@@ -312,6 +354,19 @@ function countNumberTokens(text: string): number {
   return matches ? matches.length : 0
 }
 
+// Crypto / stablecoin / PayFi keyword canary. If an extracted event's full
+// text (title + summary in both langs) contains none of these, the LLM
+// likely extracted something off-topic — warn so drift is visible.
+const CRYPTO_KEYWORD_RE =
+  /\b(stablecoin|stablecoins|usdc|usdt|pyusd|dai|usde|rlusd|fdusd|tusd|bitcoin|ethereum|solana|crypto|cryptocurrency|cbdc|digital\s+dollar|digital\s+euro|digital\s+asset|tokenization|tokenized|tokenised|blockchain|defi|dex|chain|circle|tether|paxos|coinbase|binance|kraken|genius\s+act|mica|clarity\s+act|polymarket|kalshi|ripple|ondo|fidu|buidl)\b|稳定币|加密|比特币|以太|链上|代币化|数字美元|数字欧元|数字资产|区块链/i
+
+function hasCryptoKeyword(...texts: string[]): boolean {
+  for (const t of texts) {
+    if (t && CRYPTO_KEYWORD_RE.test(t)) return true
+  }
+  return false
+}
+
 function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndices: number[] } | null {
   // title_zh is mandatory; summary_zh is optional (headline-only events are
   // allowed when the headline is self-sufficient).
@@ -466,6 +521,16 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
           console.warn(
             `[event-extractor] 2-number-rule miss: body has ${bodyNums} numbers, ` +
             `title has ${titleNums}: "${event.title_zh.slice(0, 80)}"`,
+          )
+        }
+
+        // Observability: if the final event (title + summary) contains no
+        // crypto keyword in either language, the LLM likely ignored the
+        // core-topic test and extracted an off-topic event (Monument BaaS /
+        // OFAC fentanyl style). Warn so we can see drift.
+        if (!hasCryptoKeyword(event.title_zh, event.summary_zh, event.title_en, event.summary_en)) {
+          console.warn(
+            `[event-extractor] off-topic leak (no crypto keyword): "${event.title_zh.slice(0, 80)}"`,
           )
         }
 

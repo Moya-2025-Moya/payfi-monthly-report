@@ -72,7 +72,19 @@ const SEARCH_URL = `${SOURCES.twitter.baseUrl}/twitter/tweet/advanced_search`
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 // 官方账号不需要粉丝数/互动数过滤——他们的推文本身就是权威信息源。
-// 只做一条：不抓纯转推（无原创信息）。
+// 但某些"双用途"账号（Treasury / Fed / Bloomberg / Reuters 等）职能超出
+// 加密领域——这些账号的单条推文必须含加密关键词才入库。
+
+const DUAL_USE_HANDLES = new Set([
+  // 监管 / 央行（职能超出加密）
+  'ustreasury', 'federalreserve', 'usocc', 'fincennews',
+  'ecb', 'bankofengland', 'mas_sg', 'hkmainfo', 'bis_org',
+  // 综合财经/主流媒体
+  'business', 'reuters', 'ft', 'wsjcrypto',
+])
+
+const CRYPTO_KEYWORDS_RE =
+  /\b(stablecoin|stablecoins|usdc|usdt|pyusd|dai|usde|rlusd|fdusd|tusd|bitcoin|ethereum|crypto|cryptocurrency|cbdc|digital\s+dollar|digital\s+euro|digital\s+asset|tokenization|tokenized|tokenised|blockchain|defi|circle|tether|paxos|coinbase|binance|kraken|genius\s+act|mica|clarity\s+act)\b|稳定币|加密|比特币|以太|链上|代币化|数字美元|数字欧元|数字资产/i
 
 // ─── Search API ───────────────────────────────────────────────────────────────
 
@@ -131,6 +143,13 @@ function isSubstantiveTweet(tweet: SearchTweet): boolean {
 
   // 太短（可能是表情/纯链接）
   if ((tweet.text?.length ?? 0) < 30) return false
+
+  // 双用途账号：推文必须含加密/稳定币/PayFi 关键词。
+  // 案例：@USTreasury 发芬太尼走私制裁 → 和我们无关 → 丢弃
+  const handle = (tweet.author?.userName ?? '').toLowerCase()
+  if (DUAL_USE_HANDLES.has(handle)) {
+    if (!CRYPTO_KEYWORDS_RE.test(tweet.text ?? '')) return false
+  }
 
   return true
 }

@@ -3,8 +3,12 @@
 
 export const SOURCES = {
   // ── 新闻 RSS 源（全免费） ──
+  //
+  // 分三类：①二手媒体 ②发行方/机构一手公告 ③支付/金融科技公司 IR
+  // 全部 URL 已实测 (2026-04) 返回 200 + 有效 RSS/Atom。失效时 news 采集器
+  // 的 try/catch 不会崩，只会在日志里 skip。
   rssFeeds: [
-    // ── 加密媒体 (英文 11 个) ──
+    // ── 加密媒体（英文 11 个）──
     { name: 'The Block', url: 'https://www.theblock.co/rss.xml' },
     { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
     { name: 'Decrypt', url: 'https://decrypt.co/feed' },
@@ -16,16 +20,48 @@ export const SOURCES = {
     { name: 'Unchained', url: 'https://unchainedcrypto.com/feed/' },
     { name: 'CryptoSlate', url: 'https://cryptoslate.com/feed/' },
     { name: 'Protos', url: 'https://protos.com/feed/' },
-    // ── 支付行业媒体 (3 个) ──
+
+    // ── 支付 / 金融科技 媒体（3 个）──
     { name: 'PYMNTS', url: 'https://www.pymnts.com/feed/' },
     { name: 'Finextra', url: 'https://www.finextra.com/rss/headlines.aspx' },
     { name: 'PaymentsDive', url: 'https://www.paymentsdive.com/feeds/news/' },
-    // ── 中文 (2 个) ──
+
+    // ── 中文 ──
     { name: 'Cointelegraph 中文', url: 'https://cn.cointelegraph.com/rss' },
     { name: '吴说区块链', url: 'https://wublock.substack.com/feed' },
-    // ── 韩文 / 日文 (多语言覆盖，抓亚洲监管新闻) ──
+
+    // ── 日韩 ──
     { name: 'CoinDesk Korea', url: 'https://www.coindeskkorea.com/rss' },
     { name: 'CoinPost (JP)', url: 'https://coinpost.jp/?feed=rss2' },
+
+    // ── 稳定币发行方 一手（crypto-native，发自己产品的公告）──
+    { name: 'Tether', url: 'https://tether.io/news/feed/' },
+    { name: 'Circle (Medium)', url: 'https://medium.com/feed/@circle' },
+    { name: 'MakerDAO (Medium)', url: 'https://medium.com/feed/@MakerDAO' },
+    { name: 'MakerDAO Governance', url: 'https://forum.makerdao.com/c/governance/54.rss' },
+    { name: 'Frax (Medium)', url: 'https://medium.com/feed/@frax' },
+
+    // ── RWA / tokenization 发行方 ──
+    { name: 'Ondo Finance (Medium)', url: 'https://medium.com/feed/@ondofinance' },
+
+    // ── 交易所 / 托管 / 基础设施 一手 ──
+    { name: 'Coinbase IR', url: 'https://investor.coinbase.com/rss/pressrelease.aspx' },
+    { name: 'Coinbase Blog', url: 'https://medium.com/feed/the-coinbase-blog' },
+    { name: 'Kraken Blog', url: 'https://blog.kraken.com/feed' },
+    { name: 'Fireblocks Blog', url: 'https://www.fireblocks.com/blog/feed' },
+    { name: 'Chainlink Blog', url: 'https://blog.chain.link/rss' },
+
+    // ── 预测市场 ──
+    { name: 'Polymarket (Medium)', url: 'https://medium.com/feed/@polymarket' },
+
+    // ── 传统金融机构 一手 IR / 博客（广义话题，靠关键词过滤切相关的）──
+    { name: 'PayPal Newsroom', url: 'https://newsroom.paypal-corp.com/news?pagetemplate=rss' },
+    { name: 'Visa IR', url: 'https://investor.visa.com/rss/pressrelease.aspx' },
+    { name: 'Mastercard IR', url: 'https://investor.mastercard.com/rss/pressrelease.aspx' },
+    { name: 'Stripe Blog', url: 'https://stripe.com/blog/feed.rss' },
+    { name: 'BlackRock (Medium)', url: 'https://medium.com/feed/@BlackRock' },
+    { name: 'JPMorgan (Medium)', url: 'https://medium.com/feed/@JPMorgan' },
+    { name: 'ARK Invest', url: 'https://ark-invest.com/feed/' },
   ],
 
   // ── SEC (免费) ──

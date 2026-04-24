@@ -22,8 +22,10 @@ export const REGIONS: RegionConfig[] = [
     name_zh: '美国',
     agencies: ['SEC', 'OCC', 'Federal Reserve', 'CFTC', 'FinCEN', 'Congress'],
     rss_sources: [
-      // SEC 新闻稿 RSS（独立于 collectSecRss() 抓的 sec.gov/cgi-bin 那个）
+      // SEC 新闻稿
       'https://www.sec.gov/news/pressreleases.rss',
+      // SEC 官员声明 / public statements（RegFI、主席发言等）
+      'https://www.sec.gov/news/statements.rss',
       // 美联储新闻稿
       'https://www.federalreserve.gov/feeds/press_all.xml',
       // OCC 新闻（货币监理署）
@@ -76,7 +78,10 @@ export const REGIONS: RegionConfig[] = [
     name_en: 'Japan',
     name_zh: '日本',
     agencies: ['FSA', 'Bank of Japan'],
-    rss_sources: [],
+    rss_sources: [
+      // 日本银行官方 RSS
+      'https://www.boj.or.jp/en/rss/whatsnew.xml',
+    ],
   },
   {
     code: 'AE',
