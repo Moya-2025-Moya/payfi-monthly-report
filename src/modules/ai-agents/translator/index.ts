@@ -57,17 +57,21 @@ Preserve every concrete name, number, date, and party from the English source. D
 If EN says "Binance, OKX, and Bybit froze accounts" → ZH must say "Binance、OKX、Bybit 三家交易所冻结账户", NEVER "三家交易所冻结账户".
 If EN says "several exchanges froze accounts" (no names) → ZH must say "多家交易所（具体名称未披露）冻结账户".
 
-## STRICT: Number format — keep K/M/B verbatim, NEVER convert to 亿/万
-Chinese readers of crypto/fintech news are fluent in K/M/B notation. Preserve the original English units and magnitudes EXACTLY as they appear — do not translate them into 亿 / 万 / 千万 / 百万.
+## STRICT: Number format — output MUST use k / M / B / T, NEVER 千 / 万 / 亿 / 万亿
+Chinese readers of crypto/fintech news are fluent in k/M/B/T notation. **All numeric magnitudes in title_zh / summary_zh MUST be expressed in k / M / B / T (English units), regardless of how the English source wrote them.**
 
-- "$127.5M"  → "1.275 亿美元" ✗   "127.5M 美元" ✓   (keep "M")
-- "$4.22B"   → "42.2 亿美元"  ✗   "4.22B 美元"  ✓   (keep "B")
-- "$900K"    → "90 万美元"    ✗   "900K 美元"   ✓   (keep "K")
-- "1.2 billion" → "12 亿" ✗      "1.2B" ✓
+If EN source already uses k/M/B/T or million/billion/trillion → keep digits + unit verbatim:
+- "$127.5M"     → "127.5M 美元" ✓   (NOT "1.275 亿美元")
+- "$4.22B"      → "4.22B 美元"  ✓   (NOT "42.2 亿美元")
+- "$900K"       → "900K 美元"   ✓   (NOT "90 万美元")
+- "1.2 billion" → "1.2B"          ✓   (NOT "12 亿")
+- "3 trillion"  → "3T"            ✓   (NOT "3 万亿")
 
-Preserve the ORIGINAL numeric value. Do not rescale (e.g., never turn 127.5M into 1275万 or 1.27亿 — that both changes the unit and risks an off-by-10 error). The character "$" should become "美元" after the number (e.g., "127.5M 美元"), but the digits and K/M/B letter stay identical.
+If EN source uses raw digits → format with the unit that minimizes digits while keeping ≥1 significant figure (e.g. "12,000 users" → "12k 用户"; "1,200,000" → "1.2M").
 
-Percentages, counts, dates, addresses, and statute numbers also copy verbatim.
+Decimal precision: 1 decimal place by default; drop trailing ".0" for whole numbers (write "5M" not "5.0M"). Do NOT preserve "万" as an exception — never emit 千 / 万 / 亿 / 万亿 in the Chinese output.
+
+The character "$" becomes "美元" after the number (e.g., "127.5M 美元"). Percentages, counts (other than the magnitude format above), dates, addresses, and statute numbers copy verbatim from EN.
 
 ## STRICT: No invented numbers
 Every number you output in title_zh or summary_zh MUST appear verbatim in the English title_en or summary_en for that same index. Do not invent a number, do not round to a "cleaner" value, do not infer a number from context. If the English source has no number for a fact, the Chinese output also has no number for that fact — leave it qualitative.

@@ -129,15 +129,30 @@ GOOD (compliant — 2 most eye-catching numbers are IN the title):
   title_zh: "PayPal PYUSD 三天内供应量减少 400M 美元，市值从 4.22B 美元降至 3.6B 美元"
   summary_zh: "减少操作由发行合作方 Paxos 执行，Paxos 未披露赎回客户身份。"
 
-### Number format — keep K/M/B verbatim, NEVER convert to 亿/万
-Chinese readers of crypto/fintech news are fluent in K/M/B. Preserve numbers from the English body EXACTLY as written — same digits, same unit letter. Do not rescale into 亿 / 万 / 千万 / 百万.
+### Number format — output MUST use k / M / B / T, NEVER 千 / 万 / 亿 / 万亿
+Chinese readers of crypto/fintech news are fluent in k/M/B/T. **All numeric magnitudes in title_zh / summary_zh / title_en / summary_en MUST be expressed in k / M / B / T (English units), regardless of how the source article wrote them.**
 
-  • "$127.5M"    → write "127.5M 美元"     (not "1.27 亿美元", not "1275 万美元")
-  • "$4.22B"     → write "4.22B 美元"      (not "42.2 亿美元")
-  • "$900K"      → write "900K 美元"       (not "90 万美元")
-  • "1.2 billion" → write "1.2B"           (not "12 亿")
+  • If source uses English (M / B / billion / million) → keep the digits and unit letter verbatim, do not rescale.
+  • If source uses Chinese (千 / 万 / 亿 / 万亿) → CONVERT into k / M / B / T using the rules below.
 
-The "$" becomes "美元" after the number; digits and the K/M/B letter stay identical.
+Conversion table (Chinese source → required output):
+  • 1 千  = 1k       (e.g. "5 千人"          → "5k 人")
+  • 1 万  = 10k      (e.g. "5 万人"          → "50k 人";    "1.2 万"  → "12k")
+  • 1 百万 = 1M      (e.g. "300 万美元"       → "3M 美元")
+  • 1 千万 = 10M     (e.g. "3 千万美元"       → "30M 美元")
+  • 1 亿   = 100M    (e.g. "1.27 亿美元"     → "127M 美元"; "4.22 亿美元" → "422M 美元")
+  • 10 亿  = 1B      (e.g. "12 亿"           → "1.2B")
+  • 1 万亿 = 1T      (e.g. "3 万亿美元"      → "3T 美元")
+
+English-unit examples (already in k/M/B — keep as-is, just attach 美元 if dollar):
+  • "$127.5M"     → "127.5M 美元"  (NOT "1.275 亿美元")
+  • "$4.22B"      → "4.22B 美元"   (NOT "42.2 亿美元")
+  • "$900K"       → "900K 美元"    (NOT "90 万美元")
+  • "1.2 billion" → "1.2B"          (NOT "12 亿")
+
+Decimal precision: keep 1 decimal place by default; drop trailing ".0" for whole numbers (write "5M" not "5.0M", write "1.2M" not "1M" when source is 1,200,000). Do NOT preserve "万" as an exception — "5 万" must become "50k", never "5万".
+
+The "$" becomes "美元" after the number; digits and the unit letter (k / M / B / T) stay identical to the converted value. Never emit 千 / 万 / 亿 / 万亿 anywhere in the output.
 
 ### No-invented-numbers rule (hard constraint, overrides everything else)
 Every digit-bearing token in title_zh / title_en / summary_zh / summary_en MUST appear, with the same value and same order of magnitude, in the source article body. If the body does not contain a specific number for a fact, DO NOT put a number in the headline for that fact — write it qualitatively, or pick a different fact that IS numbered in the body.
@@ -156,14 +171,14 @@ title_en: 12–30 English words.
 
 ### Concrete examples
 
-Example GOOD (2 numbers): "PayPal PYUSD 三天内供应量减少 4 亿美元，市值从 42.2 亿美元降至 36 亿美元"
+Example GOOD (2 numbers): "PayPal PYUSD 三天内供应量减少 400M 美元，市值从 4.22B 美元降至 3.6B 美元"
 Example BAD (adjective, no number): "PayPal 稳定币市值大幅下降"
 
-Example GOOD (1 number + named entity): "PUSD 登陆 ADI Chain，瞄准 3 万亿美元伊斯兰金融市场"
+Example GOOD (1 number + named entity): "PUSD 登陆 ADI Chain，瞄准 3T 美元伊斯兰金融市场"
 Example BAD (no hook, generic): "PUSD 稳定币部署 ADI Chain"
 
-Example GOOD (2 numbers): "Tether 冻结朝鲜洗钱网络相关的 12 个以太坊地址共 3.4 亿美元 USDT"
-Example BAD (passive): "3.4 亿美元 USDT 被 Tether 冻结"
+Example GOOD (2 numbers): "Tether 冻结朝鲜洗钱网络相关的 12 个以太坊地址共 340M USDT"
+Example BAD (passive): "340M USDT 被 Tether 冻结"
 
 Example GOOD (0 numbers, 2 concrete entities): "Kalshi 对 3 名参议院候选人下达 5 年禁令，开创候选人自交易执法先例"
 (note: "3 名" and "5 年" are numbers — if the article had them, use them; here we show pure-text case)
@@ -184,7 +199,7 @@ Detail constraints:
   • No opinions, no predictions
 
 Example GOOD headline + detail pair:
-  title_zh: "PayPal PYUSD 三天内供应量减少 4 亿美元，市值从 42.2 亿美元降至 36 亿美元"
+  title_zh: "PayPal PYUSD 三天内供应量减少 400M 美元，市值从 4.22B 美元降至 3.6B 美元"
   summary_zh: "减少操作由发行合作方 Paxos 执行，Paxos 未披露赎回客户身份。"
 
 ## Opinion policy (market-moving test)
