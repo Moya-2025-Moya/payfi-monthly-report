@@ -24,6 +24,13 @@ const SEARCH_QUERIES = [
   'stablecoin 安定幣 規制',    // Japanese/Chinese: stablecoin regulation
   '稳定币 监管',               // Chinese: stablecoin regulation
 
+  // Vietnam (no RSS coverage — Vietnamese + English queries)
+  'Vietnam crypto exchange license',
+  'tiền mã hóa Việt Nam',      // Vietnamese: cryptocurrency Vietnam
+  'sàn giao dịch tiền số',     // Vietnamese: digital asset exchange
+  'stablecoin Việt Nam',       // Vietnamese: stablecoin Vietnam
+  'SBV crypto regulation',     // State Bank of Vietnam
+
   // RWA / tokenization
   'USYC OR BUIDL OR IBENJI tokenization',
   'RWA stablecoin tokenized',

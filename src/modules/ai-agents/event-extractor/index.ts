@@ -203,21 +203,30 @@ Example GOOD headline + detail pair:
   summary_zh: "减少操作由发行合作方 Paxos 执行，Paxos 未披露赎回客户身份。"
 
 ## Opinion policy (market-moving test)
-INCLUDE opinion-framed news ONLY if the speaker has DIRECT market-moving authority:
-  ✓ Regulators, central bankers, court judgments
-  ✓ CEOs of relevant issuer / exchange / custodian — ONLY when binding commitment or specific plan (roadmap, exit decision, filing)
-  ✓ Rating agencies — formal rating actions
-  ✓ Large institutional investors publicly disclosing allocation changes
+INCLUDE opinion-framed news ONLY if the speaker is taking a BINDING ACTION right now:
+  ✓ Regulators issuing a rule / enforcement / license decision (not commentary about future rules)
+  ✓ Court judgments / orders (not lawyer commentary)
+  ✓ CEOs of relevant issuer / exchange / custodian — ONLY when binding commitment or specific plan (roadmap, exit decision, filing) with concrete numbers/dates
+  ✓ Rating agencies — formal rating actions (not analyst notes)
+  ✓ Large institutional investors publicly disclosing allocation changes (filed positions, not "we're considering")
 
-EXCLUDE:
+EXCLUDE (NO EXCEPTIONS):
   ✗ Analyst predictions / "industry experts say"
   ✗ Media editorializing
   ✗ Crypto Twitter sentiment, KOL takes
   ✗ Exec speculation about the future (unless dated commitment)
   ✗ Op-eds / analysis pieces
-  ✗ Research firm trend reports (except BIS / IMF policy-level)
+  ✗ Research firm trend reports — INCLUDING BIS, IMF, FSB, OECD, World Bank think-pieces and governor speeches. A central banker SAYING "USDT looks more like a security" is commentary, not news. ONLY include BIS / IMF / FSB output if it is a binding rule, formal policy decision, or concrete supervisory action with named entities and effective dates.
+  ✗ Reaction roundups, "experts react", "what this means for X" pieces
 
-Decision rule: "if this person said this thing, would chain / order book / regulated firms move within the next hour?" Yes → include. No → skip.
+### Sovereign / regulatory market-relevance gate (additional, STRICT)
+A genuine sovereign action (signed law, decree, license grant) still SKIPS unless it has crypto-market spillover:
+  ✓ Action by major crypto market: US, EU, UK, JP, KR, SG, HK, AE, CN, CH, BR, IN, VN, NG, BR, AR, MX
+  ✓ OR action concretely affecting a top-50 global exchange / top-10 stablecoin issuer
+  ✓ OR cross-border / multi-jurisdiction implications named in the article
+  ✗ Tax-haven / micro-jurisdiction mining-zone or sandbox decrees with no named major issuer/exchange counterparty → SKIP. Examples to skip: Uzbekistan free-zone decrees, isolated regional sandboxes with no crypto firm participation, generic "country X is studying crypto" announcements.
+
+Decision rule: "if this person said this thing, would chain / order book / regulated firms move within the next hour?" Yes → include. No → skip. If the answer requires inference about the future, the answer is NO.
 
 ## Core output rules
 1. Each event is a SINGLE, self-contained development
@@ -245,12 +254,12 @@ When the source article states a vague quantity, you MUST do one of the followin
 Omitting the detail entirely to avoid vagueness is FORBIDDEN — the reader must see either the names or an explicit "未披露" marker.
 
 ## Categories
-- regulatory: laws, bills, enforcement, licenses, compliance actions
+- regulatory: signed/enacted laws, bills passing a chamber, enforcement actions, license grants/denials, formal compliance orders
 - partnership: business deals, integrations, collaborations
 - product: new features, launches, upgrades, technical changes
 - funding: fundraising, investments, acquisitions
 - market: market data, TVL, volume, market cap changes
-- policy: company policy changes, strategic shifts
+- policy: BINDING strategic decisions by named crypto firms (issuer/exchange/custodian) — e.g. delisting a token, exiting a market, changing reserve composition, formal corporate roadmap commits. NOT central-bank commentary, NOT think-tank reports, NOT generic "country considering crypto" announcements. If the item is a sovereign / central-bank speech or research paper, it does NOT belong here — it should have been SKIPPED by the Opinion policy / Sovereign relevance gate above.
 - technical: blockchain upgrades, protocol changes, security incidents
 - other: anything that doesn't fit above
 
@@ -363,6 +372,55 @@ function hasResearchFraming(text: string): string | null {
   return null
 }
 
+// ─── Chinese-unit normalization ────────────────────────────────────────────
+// All numeric magnitudes in output MUST use k / M / B / T. The LLM still leaks
+// 千 / 万 / 亿 / 万亿 when source articles use them. Post-process to convert.
+// Order matters: longer units first (万亿 before 万, 千万 before 万 / 千).
+const BANNED_UNIT_PATTERN = '(万亿|千万|百万|亿|万|千)'
+const BANNED_UNIT_GLOBAL_RE = new RegExp(
+  `([0-9]+(?:\\.[0-9]+)?)\\s*${BANNED_UNIT_PATTERN}`,
+  'g',
+)
+const BANNED_UNIT_PROBE_RE = new RegExp(
+  `([0-9]+(?:\\.[0-9]+)?)\\s*${BANNED_UNIT_PATTERN}`,
+)
+const UNIT_MULT: Record<string, number> = {
+  '万亿': 1e12,
+  '千万': 1e7,
+  '百万': 1e6,
+  '亿': 1e8,
+  '万': 1e4,
+  '千': 1e3,
+}
+
+function formatNumKMBT(n: number): string {
+  const r = Math.round(n * 10) / 10
+  return Number.isInteger(r) ? String(r) : r.toFixed(1)
+}
+
+function valueToKMBT(v: number): string {
+  if (v >= 1e12) return formatNumKMBT(v / 1e12) + 'T'
+  if (v >= 1e9)  return formatNumKMBT(v / 1e9)  + 'B'
+  if (v >= 1e6)  return formatNumKMBT(v / 1e6)  + 'M'
+  if (v >= 1e3)  return formatNumKMBT(v / 1e3)  + 'k'
+  return formatNumKMBT(v)
+}
+
+function normalizeNumberUnits(text: string): string {
+  if (!text) return text
+  return text.replace(BANNED_UNIT_GLOBAL_RE, (whole, num: string, unit: string) => {
+    const v = parseFloat(num) * (UNIT_MULT[unit] ?? NaN)
+    if (!Number.isFinite(v)) return whole
+    return valueToKMBT(v)
+  })
+}
+
+function hasBannedNumberUnit(text: string): string | null {
+  if (!text) return null
+  const m = BANNED_UNIT_PROBE_RE.exec(text)
+  return m ? m[0] : null
+}
+
 function hasVagueAdjective(text: string): string | null {
   if (!text) return null
   for (const kw of VAGUE_ADJ_ZH) {
@@ -401,9 +459,14 @@ function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndi
   // title_zh is mandatory; summary_zh is optional (headline-only events are
   // allowed when the headline is self-sufficient).
   if (!e.title_zh || e.title_zh.length < 3) return null
+  // Force k/M/B/T units on Chinese fields — LLM still emits 千/万/亿/万亿
+  // when source articles use them, in violation of the prompt rule.
+  e.title_zh = normalizeNumberUnits(e.title_zh)
   // Normalise missing/whitespace-only summaries to empty string so downstream
   // rendering can branch on e.summary_zh === ''.
-  const summary_zh = typeof e.summary_zh === 'string' ? e.summary_zh.trim() : ''
+  const summary_zh = normalizeNumberUnits(
+    typeof e.summary_zh === 'string' ? e.summary_zh.trim() : '',
+  )
   const summary_en = typeof e.summary_en === 'string' ? e.summary_en.trim() : ''
 
   // Observability: log drift on anti-vague + anti-research-framing rules.
@@ -425,8 +488,9 @@ function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndi
     hasResearchFraming(summary_en)
   if (framingHit) {
     console.warn(
-      `[event-extractor] research-framing leak "${framingHit}" in: ${e.title_zh.slice(0, 80)}`,
+      `[event-extractor] research-framing reject "${framingHit}" in: ${e.title_zh.slice(0, 80)}`,
     )
+    return null
   }
   const adjHit =
     hasVagueAdjective(e.title_zh) ||
@@ -437,6 +501,17 @@ function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndi
     console.warn(
       `[event-extractor] vague-adjective leak "${adjHit}" in: ${e.title_zh.slice(0, 80)}`,
     )
+  }
+  // Final guard: any digit-anchored 千/万/亿/万亿 that survived normalization
+  // (e.g. malformed input the regex couldn't parse) → reject. The user
+  // requirement is strict: NO 千/万/亿 magnitudes in Chinese output.
+  const leftoverUnit =
+    hasBannedNumberUnit(e.title_zh) || hasBannedNumberUnit(summary_zh)
+  if (leftoverUnit) {
+    console.warn(
+      `[event-extractor] banned-CN-unit reject "${leftoverUnit}" in: ${e.title_zh.slice(0, 80)}`,
+    )
+    return null
   }
 
   const category = VALID_CATEGORIES.has(e.category)

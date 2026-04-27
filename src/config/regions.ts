@@ -90,4 +90,13 @@ export const REGIONS: RegionConfig[] = [
     agencies: ['VARA', 'ADGM', 'DFSA'],
     rss_sources: [],
   },
+  {
+    code: 'VN',
+    name_en: 'Vietnam',
+    name_zh: '越南',
+    agencies: ['SBV', 'MOF', 'SSC'],
+    // SBV / MOF / SSC 暂未发现稳定的英文 RSS。靠 Brave Search 越南语 / 英文
+    // 关键词查询补位 — 见 src/modules/collectors/brave-search/index.ts。
+    rss_sources: [],
+  },
 ]
