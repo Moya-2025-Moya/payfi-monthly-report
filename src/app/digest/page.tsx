@@ -18,6 +18,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   market: '📊',
   policy: '📜',
   technical: '⚙️',
+  security: '🚨',
   other: '📌',
 }
 
@@ -29,6 +30,7 @@ const CATEGORY_LABEL_ZH: Record<string, string> = {
   product: '产品发布',
   market: '市场数据',
   technical: '技术进展',
+  security: '安全事件',
   other: '其他',
 }
 
@@ -40,6 +42,7 @@ const CATEGORY_ORDER: EventCategory[] = [
   'product',
   'market',
   'technical',
+  'security',
   'other',
 ]
 

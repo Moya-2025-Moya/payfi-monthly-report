@@ -72,6 +72,7 @@ export type EventCategory =
   | 'market'
   | 'policy'
   | 'technical'
+  | 'security'
   | 'other'
 
 export type Importance = 1 | 2 | 3 | 4 // 1=critical, 2=high, 3=medium, 4=low

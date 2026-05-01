@@ -87,6 +87,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   market: '📊',
   policy: '📜',
   technical: '⚙️',
+  security: '🚨',
   other: '📌',
 }
 
@@ -98,10 +99,12 @@ const CATEGORY_LABEL_ZH: Record<string, string> = {
   product: '产品发布',
   market: '市场数据',
   technical: '技术进展',
+  security: '安全事件',
   other: '其他',
 }
 
-// Output order for the daily digest sections.
+// Output order for the daily digest sections. Empty buckets are skipped at
+// render time, so listing a category here doesn't force it to appear.
 const CATEGORY_ORDER: string[] = [
   'regulatory',
   'policy',
@@ -110,6 +113,7 @@ const CATEGORY_ORDER: string[] = [
   'product',
   'market',
   'technical',
+  'security',
   'other',
 ]
 

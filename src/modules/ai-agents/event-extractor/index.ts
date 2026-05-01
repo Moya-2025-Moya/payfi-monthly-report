@@ -44,7 +44,7 @@ function buildSystemPrompt(entityNames: string[]): string {
 ## CRITICAL: read the full article
 Each article below includes a full Content body (often 5–12k characters), NOT just a headline. You MUST scan the whole body to find the concrete numbers, named parties, amounts, dates, and jurisdictions that belong in the headline. Numbers buried in paragraph 5 must make it to the headline if they are the most eye-catching fact in the story. Do not write headlines based on the source's own title alone — the source's title is often generic and missing the key stat.
 
-## Inclusion threshold (4 tests, ALL must pass — otherwise skip this article)
+## Inclusion threshold (5 tests, ALL must pass — otherwise skip this article)
 
 ### 1. Core-topic relevance (STRICT — most common reason to skip)
 The article's CORE SUBJECT (what the headline AND first 2-3 paragraphs are about) must be crypto/stablecoin/PayFi. A peripheral mention is NOT enough.
@@ -79,7 +79,18 @@ Real-world example (DO NOT repeat):
 
 ### 4. Not pure opinion without market-moving authority (see Opinion policy)
 
-If all 4 tests pass, INCLUDE. "No strong hook" is NOT a reason to skip — that's a WRITING problem.
+### 5. Recency / non-retrospective test (STRICT)
+The extracted event must describe a NEW development happening NOW or within the last few days. SKIP an article — or skip a candidate event inside it — when:
+  • The article is a retrospective / "year in review" / "5 years ago today" / "history of X" piece, AND the candidate event is a historical case it is recapping (e.g. an article about DPRK theft history that recaps the 2017 Mt.Gox hack — do NOT extract Mt.Gox as today's event).
+  • The headline fact is a CUMULATIVE / LIFETIME / multi-year statistic ("$6B stolen since 2017", "all-time enforcement totals") with no fresh data point attached. If the article also reports a fresh periodic figure ("April hacks totalled $X" / "2026-to-date $Y"), extract THAT as the event and let the cumulative number sit in the body, not the headline.
+  • The article restates a years-old law / fine / enforcement action as primary subject (e.g. "India's 2022 Finance Act" as the headline of a 2026 article). Background regulations should NOT be extracted as today's news — only NEW actions taken under them.
+  • The candidate event's most concrete fact is dated more than ~30 days before the article's published_at, AND no new development is attached.
+
+A periodic/aggregate report ("April crypto hacks totalled $630M, 14-month high") IS a current event — the periodic stat itself is the news. INCLUDE it. But do NOT spin off each historical case the report references as its own separate event.
+
+In summary_zh / summary_en, do NOT pad with unrelated historical context numbers (e.g. mentioning a months-old fine on a different exchange to colour today's enforcement story). The detail line must describe the CURRENT event, not background trivia.
+
+If all 5 tests pass, INCLUDE. "No strong hook" is NOT a reason to skip — that's a WRITING problem.
 
 ## Real-world SKIP examples (these exact events were extracted incorrectly — do NOT repeat)
 
@@ -260,7 +271,8 @@ Omitting the detail entirely to avoid vagueness is FORBIDDEN — the reader must
 - funding: fundraising, investments, acquisitions
 - market: market data, TVL, volume, market cap changes
 - policy: BINDING strategic decisions by named crypto firms (issuer/exchange/custodian) — e.g. delisting a token, exiting a market, changing reserve composition, formal corporate roadmap commits. NOT central-bank commentary, NOT think-tank reports, NOT generic "country considering crypto" announcements. If the item is a sovereign / central-bank speech or research paper, it does NOT belong here — it should have been SKIPPED by the Opinion policy / Sovereign relevance gate above.
-- technical: blockchain upgrades, protocol changes, security incidents
+- technical: blockchain / protocol upgrades, mainnet launches, consensus changes, new chain features, technical roadmap milestones, scaling improvements. Use this for genuine engineering news ONLY. Hacks / exploits / security incidents do NOT belong here — they go in 'security'.
+- security: hacks, exploits, smart-contract drains, bridge attacks, key compromises, theft, phishing campaigns, periodic loss reports (e.g. "April crypto hacks totalled $X"), state-actor (DPRK/Lazarus) intrusion reports, post-mortem incident disclosures. ANY event whose primary subject is funds being lost / stolen / compromised goes here, not in 'technical'.
 - other: anything that doesn't fit above
 
 ## Importance
@@ -298,7 +310,7 @@ Date: ${item.published_at}`
 
 const VALID_CATEGORIES = new Set<string>([
   'regulatory', 'partnership', 'product', 'funding',
-  'market', 'policy', 'technical', 'other',
+  'market', 'policy', 'technical', 'security', 'other',
 ])
 
 // Vague quantifier detector. Matches a banned phrase ONLY if it's not
