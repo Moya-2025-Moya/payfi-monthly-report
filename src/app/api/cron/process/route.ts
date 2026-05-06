@@ -6,12 +6,17 @@ import { runProcessingPipeline } from '@/modules/ai-agents/orchestrator'
 import { verifyAdminToken } from '@/lib/admin-auth'
 import { supabaseAdmin } from '@/db/client'
 import { makeProgressReporter } from '@/lib/pipeline-progress'
+import { reapStuckRuns } from '@/lib/pipeline-watchdog'
 
 export const maxDuration = 300
 
 export async function GET(request: Request) {
   const authError = verifyAdminToken(request)
   if (authError) return authError
+
+  // Clear any stuck `running` rows from prior killed invocations before
+  // inserting our own — keeps pipeline_runs honest after Vercel timeouts.
+  await reapStuckRuns()
 
   const { data: run } = await supabaseAdmin
     .from('pipeline_runs')

@@ -12,15 +12,45 @@ import { sortUrlsByPriority } from '@/lib/url-priority'
 import type { ExtractedEvent, PipelineStats } from '@/lib/types'
 import type { ProgressReporter } from '@/lib/pipeline-progress'
 import { isRunCancelled } from '@/lib/pipeline-progress'
+import {
+  embedDocuments,
+  eventEmbeddingText,
+  isEmbeddingsConfigured,
+} from '@/lib/embeddings'
 
 // Cross-day dedup window. An event reported over several days (e.g. a multi-
 // day incident) shouldn't create a new row each day — we merge into the
 // already-saved row instead.
 const CROSS_DAY_DEDUP_WINDOW_DAYS = 7
 
+// Vector top-K candidate count. Lexical merger is run on these K candidates
+// only, replacing the previous full 1000-row pool scan. Empirically the true
+// match (when one exists) sits in the top-3; K=10 leaves slack for noisy
+// embeddings without re-introducing N×M cost.
+const VECTOR_TOPK = 10
+
+// Mark raw_items as processed in chunks. Called by the orchestrator only
+// after saveEvents() succeeds so a mid-pipeline crash doesn't strand items.
+async function markRawItemsProcessed(itemIds: string[]): Promise<void> {
+  if (itemIds.length === 0) return
+  const CHUNK = 500
+  for (let i = 0; i < itemIds.length; i += CHUNK) {
+    const chunk = itemIds.slice(i, i + CHUNK)
+    const { error } = await supabaseAdmin
+      .from('raw_items')
+      .update({ processed: true })
+      .in('id', chunk)
+    if (error) {
+      console.warn('[orchestrator] markRawItemsProcessed chunk failed:', error.message)
+    }
+  }
+}
+
 // ─── Save: cross-day dedup, then insert remainder ─────────────────────────
 
-async function loadRecentEventsForDedup(): Promise<DbEventLite[]> {
+// Legacy path: full pool scan, used only when embeddings are disabled or a
+// candidate failed to embed. Kept narrow (1000-row cap) for safety.
+async function loadRecentEventsForDedup(category: string): Promise<DbEventLite[]> {
   const since = new Date(
     Date.now() - CROSS_DAY_DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString()
@@ -28,12 +58,38 @@ async function loadRecentEventsForDedup(): Promise<DbEventLite[]> {
   const { data, error } = await supabaseAdmin
     .from('events')
     .select('id, title_zh, title_en, entity_names, category, source_urls')
+    .eq('category', category)
     .gte('published_at', since)
     .limit(1000)
 
   if (error) {
     console.warn('[orchestrator] Failed to load existing events for dedup:', error.message)
     return []
+  }
+  return (data ?? []) as DbEventLite[]
+}
+
+// Vector path: HNSW top-K nearest neighbors via the find_similar_events RPC.
+// Returns null if the RPC errored so the caller can fall back to the lexical
+// pool scan rather than silently merging nothing.
+async function loadCandidatesViaVector(
+  embedding: number[],
+  category: string,
+): Promise<DbEventLite[] | null> {
+  const since = new Date(
+    Date.now() - CROSS_DAY_DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString()
+
+  const { data, error } = await supabaseAdmin.rpc('find_similar_events', {
+    query_embedding: embedding,
+    query_category: category,
+    query_published_after: since,
+    match_count: VECTOR_TOPK,
+  })
+
+  if (error) {
+    console.warn('[orchestrator] find_similar_events RPC failed:', error.message)
+    return null
   }
   return (data ?? []) as DbEventLite[]
 }
@@ -89,19 +145,57 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
 }> {
   if (events.length === 0) return { insertedIds: [], mergedCount: 0 }
 
-  const existingPool = await loadRecentEventsForDedup()
-  console.log(`[orchestrator]   → ${existingPool.length} recent events loaded for cross-day dedup`)
+  // Embed all candidates up-front in a single batched call so dedup lookups
+  // can use vector retrieval. Embeddings are best-effort: when disabled or a
+  // slot returns null, that candidate falls back to the lexical pool scan
+  // (legacy behaviour).
+  const embeddingsEnabled = isEmbeddingsConfigured()
+  const candidateEmbeddings: (number[] | null)[] = embeddingsEnabled
+    ? await embedDocuments(events.map(e => eventEmbeddingText(e)))
+    : new Array(events.length).fill(null)
+
+  if (embeddingsEnabled) {
+    const ok = candidateEmbeddings.filter(Boolean).length
+    console.log(`[orchestrator]   → embedded ${ok}/${events.length} candidates for vector dedup`)
+  } else {
+    console.log('[orchestrator]   → VOYAGE_API_KEY not set; using legacy lexical scan')
+  }
+
+  // Cache lexical pool per category — only loaded on demand if a candidate's
+  // vector retrieval failed or embeddings are disabled.
+  const lexicalPoolByCategory = new Map<string, DbEventLite[]>()
+  async function getLexicalPool(category: string): Promise<DbEventLite[]> {
+    let pool = lexicalPoolByCategory.get(category)
+    if (!pool) {
+      pool = await loadRecentEventsForDedup(category)
+      lexicalPoolByCategory.set(category, pool)
+    }
+    return pool
+  }
 
   const toInsert: ExtractedEvent[] = []
+  const toInsertEmbeddings: (number[] | null)[] = []
   let mergedCount = 0
 
-  for (const event of events) {
-    const match = await findSimilarDbEvent(event, existingPool)
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i]
+    const embedding = candidateEmbeddings[i]
+
+    let pool: DbEventLite[] | null = null
+    if (embedding) {
+      pool = await loadCandidatesViaVector(embedding, event.category)
+    }
+    if (!pool) {
+      pool = await getLexicalPool(event.category)
+    }
+
+    const match = await findSimilarDbEvent(event, pool)
     if (match) {
       await mergeIntoExisting(match.id, match, event)
       mergedCount++
     } else {
       toInsert.push(event)
+      toInsertEmbeddings.push(embedding)
     }
   }
 
@@ -110,7 +204,7 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
     return { insertedIds: [], mergedCount }
   }
 
-  const rows = toInsert.map(e => {
+  const rows = toInsert.map((e, i) => {
     const sortedUrls = sortUrlsByPriority(e.source_urls)
     return {
       title_zh: e.title_zh,
@@ -124,6 +218,9 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
       source_count: sortedUrls.length,
       v1_status: null,
       published_at: e.published_at,
+      // Persist on insert so the next run's vector RPC can find this row.
+      // Stored as a JSON array; pgvector accepts that shape via PostgREST.
+      title_embedding: toInsertEmbeddings[i] ?? null,
     }
   })
 
@@ -181,7 +278,7 @@ export async function runProcessingPipeline(
 
   // Step 1: Extract events from unprocessed raw_items
   await report({ level: 'progress', message: 'Step 1/4: extracting events from raw_items…' })
-  const { events: extracted, processedCount } = await extractEvents()
+  const { events: extracted, processedCount, successfullyExtractedItemIds } = await extractEvents()
   stats.raw_items_processed = processedCount
   stats.events_extracted = extracted.length
   await report({
@@ -191,6 +288,11 @@ export async function runProcessingPipeline(
   })
 
   if (extracted.length === 0) {
+    // No events to save, but extraction calls did succeed for off-topic
+    // items — mark them so we don't re-extract them next run.
+    if (successfullyExtractedItemIds.length > 0) {
+      await markRawItemsProcessed(successfullyExtractedItemIds)
+    }
     stats.duration_ms = Date.now() - start
     await report({ level: 'info', message: 'No events extracted; pipeline complete.', stats })
     return { eventIds: [], stats }
@@ -235,6 +337,11 @@ export async function runProcessingPipeline(
     message: `Step 4/4: ${insertedIds.length} new rows, ${mergedCount} merged into existing`,
     stats: { events_pushed: insertedIds.length },
   })
+
+  // Mark raw_items processed only AFTER save succeeded. If we crash anywhere
+  // in steps 2–4, the items stay unprocessed and the next run retries them
+  // (no silent data loss like the May 2-5 outage).
+  await markRawItemsProcessed(successfullyExtractedItemIds)
 
   stats.duration_ms = Date.now() - start
   await report({

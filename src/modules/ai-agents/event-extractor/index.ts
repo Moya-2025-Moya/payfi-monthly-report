@@ -560,6 +560,11 @@ function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndi
 export async function extractEvents(rawItemIds?: string[]): Promise<{
   events: ExtractedEvent[]
   processedCount: number
+  // raw_item ids whose extraction call succeeded (regardless of whether it
+  // yielded events — off-topic items count as "successful, no events" and
+  // shouldn't be retried). The caller marks these `processed=true` AFTER
+  // events are saved, so a crash mid-pipeline doesn't lose data.
+  successfullyExtractedItemIds: string[]
 }> {
   // Fetch unprocessed raw_items
   let query = supabaseAdmin
@@ -579,7 +584,7 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
   if (error) throw new Error(`Failed to fetch raw_items: ${error.message}`)
   if (!rawItems || rawItems.length === 0) {
     console.log('[event-extractor] No unprocessed items')
-    return { events: [], processedCount: 0 }
+    return { events: [], processedCount: 0, successfullyExtractedItemIds: [] }
   }
 
   console.log(`[event-extractor] Processing ${rawItems.length} raw items`)
@@ -590,6 +595,7 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
 
   const systemPrompt = buildSystemPrompt(entityNames)
   const allEvents: ExtractedEvent[] = []
+  const successfullyExtractedItemIds: string[] = []
 
   // Process in batches
   for (let i = 0; i < rawItems.length; i += BATCH_SIZE) {
@@ -656,18 +662,15 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
       }
 
       console.log(`[event-extractor]   → ${events.length} events extracted, ${validCount} valid`)
+      // Only record items whose extraction call SUCCEEDED. Failed batches stay
+      // unprocessed and get retried next run. Marking happens after save (in
+      // the orchestrator) so a downstream crash doesn't strand the items.
+      for (const item of batch) successfullyExtractedItemIds.push(item.id)
     } catch (err) {
       console.error(`[event-extractor] Batch ${batchNum} failed:`, err instanceof Error ? err.message : String(err))
     }
-
-    // Mark batch as processed
-    const batchIds = batch.map(item => item.id)
-    await supabaseAdmin
-      .from('raw_items')
-      .update({ processed: true })
-      .in('id', batchIds)
   }
 
-  console.log(`[event-extractor] Total: ${allEvents.length} events from ${rawItems.length} raw items`)
-  return { events: allEvents, processedCount: rawItems.length }
+  console.log(`[event-extractor] Total: ${allEvents.length} events from ${rawItems.length} raw items (${successfullyExtractedItemIds.length} extraction-successful)`)
+  return { events: allEvents, processedCount: rawItems.length, successfullyExtractedItemIds }
 }
