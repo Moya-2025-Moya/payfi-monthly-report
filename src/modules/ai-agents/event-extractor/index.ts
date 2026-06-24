@@ -557,7 +557,7 @@ function validateEvent(e: AIExtractedEvent): { event: ExtractedEvent; sourceIndi
 
 // ─── Main ──────────────────────────────────────────────────────────────────
 
-export async function extractEvents(rawItemIds?: string[]): Promise<{
+export async function extractEvents(rawItemIds?: string[], opts?: { deadlineMs?: number }): Promise<{
   events: ExtractedEvent[]
   processedCount: number
   // raw_item ids whose extraction call succeeded (regardless of whether it
@@ -565,7 +565,9 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
   // shouldn't be retried). The caller marks these `processed=true` AFTER
   // events are saved, so a crash mid-pipeline doesn't lose data.
   successfullyExtractedItemIds: string[]
+  hitDeadline: boolean
 }> {
+  const deadline = opts?.deadlineMs ?? Infinity
   // Fetch unprocessed raw_items
   let query = supabaseAdmin
     .from('raw_items')
@@ -584,7 +586,7 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
   if (error) throw new Error(`Failed to fetch raw_items: ${error.message}`)
   if (!rawItems || rawItems.length === 0) {
     console.log('[event-extractor] No unprocessed items')
-    return { events: [], processedCount: 0, successfullyExtractedItemIds: [] }
+    return { events: [], processedCount: 0, successfullyExtractedItemIds: [], hitDeadline: false }
   }
 
   console.log(`[event-extractor] Processing ${rawItems.length} raw items`)
@@ -597,12 +599,26 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
   const allEvents: ExtractedEvent[] = []
   const successfullyExtractedItemIds: string[] = []
 
-  // Process in batches
-  for (let i = 0; i < rawItems.length; i += BATCH_SIZE) {
-    const batch = rawItems.slice(i, i + BATCH_SIZE) as RawItem[]
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1
-    const totalBatches = Math.ceil(rawItems.length / BATCH_SIZE)
+  let hitDeadline = false
 
+  // Build all batches upfront
+  interface BatchEntry { batch: RawItem[]; batchNum: number }
+  const batches: BatchEntry[] = []
+  const totalBatches = Math.ceil(rawItems.length / BATCH_SIZE)
+  for (let i = 0; i < rawItems.length; i += BATCH_SIZE) {
+    batches.push({
+      batch: rawItems.slice(i, i + BATCH_SIZE) as RawItem[],
+      batchNum: Math.floor(i / BATCH_SIZE) + 1,
+    })
+  }
+
+  // Process a single batch — pure function of its inputs, safe for concurrent use.
+  async function processBatch(entry: BatchEntry): Promise<{
+    events: ExtractedEvent[]
+    itemIds: string[]
+  } | null> {
+    if (Date.now() > deadline) return null
+    const { batch, batchNum } = entry
     console.log(`[event-extractor] Batch ${batchNum}/${totalBatches} (${batch.length} items)`)
 
     try {
@@ -611,16 +627,14 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
         { system: systemPrompt, maxTokens: 4096, cacheSystem: true }
       )
 
-      const events = result.events ?? []
+      const events: ExtractedEvent[] = []
+      const rawEvents = result.events ?? []
       let validCount = 0
-      for (const rawEvent of events) {
+      for (const rawEvent of rawEvents) {
         const validated = validateEvent(rawEvent)
         if (!validated) continue
         const { event, sourceIndices } = validated
 
-        // Resolve source_indices → actual articles. If AI didn't supply valid
-        // indices, fall back to the whole batch (old behavior) with a warning,
-        // since dropping the event silently would hide extraction bugs.
         const inRange = sourceIndices.filter(i => i < batch.length)
         const cited = inRange.length > 0 ? inRange.map(i => batch[i]) : batch
         if (inRange.length === 0) {
@@ -634,7 +648,6 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
         event.source_urls = [...new Set(cited.map(item => item.source_url))]
         event.published_at = cited.map(item => item.published_at).sort()[0]
 
-        // Observability: body has numbers but title doesn't — prompt violation.
         const bodyText = cited
           .map(it => `${it.title ?? ''} ${it.full_text ?? ''} ${it.content ?? ''}`)
           .join(' ')
@@ -647,30 +660,43 @@ export async function extractEvents(rawItemIds?: string[]): Promise<{
           )
         }
 
-        // Observability: if the final event (title + summary) contains no
-        // crypto keyword in either language, the LLM likely ignored the
-        // core-topic test and extracted an off-topic event (Monument BaaS /
-        // OFAC fentanyl style). Warn so we can see drift.
         if (!hasCryptoKeyword(event.title_zh, event.summary_zh, event.title_en, event.summary_en)) {
           console.warn(
             `[event-extractor] off-topic leak (no crypto keyword): "${event.title_zh.slice(0, 80)}"`,
           )
         }
 
-        allEvents.push(event)
+        events.push(event)
         validCount++
       }
 
-      console.log(`[event-extractor]   → ${events.length} events extracted, ${validCount} valid`)
-      // Only record items whose extraction call SUCCEEDED. Failed batches stay
-      // unprocessed and get retried next run. Marking happens after save (in
-      // the orchestrator) so a downstream crash doesn't strand the items.
-      for (const item of batch) successfullyExtractedItemIds.push(item.id)
+      console.log(`[event-extractor]   Batch ${batchNum} → ${rawEvents.length} extracted, ${validCount} valid`)
+      return { events, itemIds: batch.map(item => item.id) }
     } catch (err) {
       console.error(`[event-extractor] Batch ${batchNum} failed:`, err instanceof Error ? err.message : String(err))
+      return null
     }
   }
 
-  console.log(`[event-extractor] Total: ${allEvents.length} events from ${rawItems.length} raw items (${successfullyExtractedItemIds.length} extraction-successful)`)
-  return { events: allEvents, processedCount: rawItems.length, successfullyExtractedItemIds }
+  // Fire all batches concurrently — the global semaphore in ai-client.ts
+  // caps actual in-flight AI requests (MAX_CONCURRENT_AI_CALLS = 6), so we
+  // get parallelism without thundering herd.
+  console.log(`[event-extractor] Launching ${batches.length} batches concurrently (concurrency capped by ai-client semaphore)`)
+  const results = await Promise.all(batches.map(b => processBatch(b)))
+
+  for (const r of results) {
+    if (r === null) {
+      hitDeadline = true
+      continue
+    }
+    allEvents.push(...r.events)
+    successfullyExtractedItemIds.push(...r.itemIds)
+  }
+
+  if (hitDeadline) {
+    console.warn(`[event-extractor] Deadline reached — processed ${successfullyExtractedItemIds.length}/${rawItems.length} items`)
+  }
+
+  console.log(`[event-extractor] Total: ${allEvents.length} events from ${rawItems.length} raw items (${successfullyExtractedItemIds.length} extraction-successful)${hitDeadline ? ' [deadline reached]' : ''}`)
+  return { events: allEvents, processedCount: rawItems.length, successfullyExtractedItemIds, hitDeadline }
 }

@@ -266,87 +266,114 @@ export interface ProcessResult {
 }
 
 export async function runProcessingPipeline(
-  opts: { reportProgress?: ProgressReporter; runId?: string | null } = {},
+  opts: { reportProgress?: ProgressReporter; runId?: string | null; maxDurationMs?: number } = {},
 ): Promise<ProcessResult> {
   const start = Date.now()
+  // Hard wall-clock budget — must finish before Vercel kills the function.
+  const maxDuration = opts.maxDurationMs ?? 280_000
+  const hardDeadline = start + maxDuration
   const stats: PipelineStats = {}
   const report = opts.reportProgress ?? (async () => {})
   const runId = opts.runId ?? null
 
-  console.log('[orchestrator] ═══ V2 Processing Pipeline Start ═══')
-  await report({ level: 'info', message: 'Processing pipeline start' })
+  function elapsed() { return Date.now() - start }
+  function remaining() { return Math.max(0, hardDeadline - Date.now()) }
 
-  // Step 1: Extract events from unprocessed raw_items
+  console.log('[orchestrator] ═══ V2 Processing Pipeline Start ═══')
+  await report({ level: 'info', message: `Processing pipeline start (budget ${Math.round(maxDuration / 1000)}s)` })
+
+  // ── Step 1: Extract ─────────────────────────────────────────────────────
+  // Reserve 40s for merge+translate+save (typically ~35s from historical data).
+  const SAVE_BUDGET_MS = 40_000
+  const extractDeadline = hardDeadline - SAVE_BUDGET_MS
   await report({ level: 'progress', message: 'Step 1/4: extracting events from raw_items…' })
-  const { events: extracted, processedCount, successfullyExtractedItemIds } = await extractEvents()
+  const { events: extracted, processedCount, successfullyExtractedItemIds, hitDeadline } = await extractEvents(
+    undefined,
+    { deadlineMs: extractDeadline },
+  )
   stats.raw_items_processed = processedCount
   stats.events_extracted = extracted.length
+  const extractMs = elapsed()
+  const deadlineNote = hitDeadline ? ' (deadline reached — partial batch)' : ''
   await report({
-    level: 'success',
-    message: `Step 1/4: extracted ${extracted.length} events from ${processedCount} raw items`,
+    level: hitDeadline ? 'progress' : 'success',
+    message: `Step 1/4: extracted ${extracted.length} events from ${processedCount} raw items in ${Math.round(extractMs / 1000)}s${deadlineNote}`,
     stats: { raw_items_processed: processedCount, events_extracted: extracted.length },
   })
 
   if (extracted.length === 0) {
-    // No events to save, but extraction calls did succeed for off-topic
-    // items — mark them so we don't re-extract them next run.
     if (successfullyExtractedItemIds.length > 0) {
       await markRawItemsProcessed(successfullyExtractedItemIds)
     }
-    stats.duration_ms = Date.now() - start
+    stats.duration_ms = elapsed()
     await report({ level: 'info', message: 'No events extracted; pipeline complete.', stats })
     return { eventIds: [], stats }
   }
 
   if (await isRunCancelled(runId)) {
     await report({ level: 'error', message: 'Cancelled after extract — aborting.' })
-    return { eventIds: [], stats: { ...stats, duration_ms: Date.now() - start } }
+    return { eventIds: [], stats: { ...stats, duration_ms: elapsed() } }
   }
 
-  // Step 2: Merge duplicate events within this batch
+  // ── Step 2: Merge ───────────────────────────────────────────────────────
+  if (remaining() < 15_000) {
+    await report({ level: 'error', message: `Only ${Math.round(remaining() / 1000)}s left — skipping merge/translate, saving raw extractions` })
+    const { insertedIds, mergedCount } = await saveEvents(extracted)
+    await markRawItemsProcessed(successfullyExtractedItemIds)
+    stats.events_pushed = insertedIds.length
+    stats.duration_ms = elapsed()
+    await report({ level: 'success', message: `Emergency save: ${insertedIds.length} new + ${mergedCount} merged in ${stats.duration_ms}ms`, stats })
+    return { eventIds: insertedIds, stats }
+  }
+
+  const mergeStart = Date.now()
   await report({ level: 'progress', message: 'Step 2/4: intra-batch merge…' })
   const merged = await mergeEvents(extracted)
   stats.events_merged = merged.length
   await report({
     level: 'success',
-    message: `Step 2/4: ${extracted.length} → ${merged.length} after intra-batch merge`,
+    message: `Step 2/4: ${extracted.length} → ${merged.length} after intra-batch merge (${Math.round((Date.now() - mergeStart) / 1000)}s)`,
     stats: { events_merged: merged.length },
   })
 
   if (await isRunCancelled(runId)) {
     await report({ level: 'error', message: 'Cancelled after merge — aborting.' })
-    return { eventIds: [], stats: { ...stats, duration_ms: Date.now() - start } }
+    return { eventIds: [], stats: { ...stats, duration_ms: elapsed() } }
   }
 
-  // Step 3: Translate (EN→ZH where needed)
-  await report({ level: 'progress', message: 'Step 3/4: translating EN→ZH…' })
-  await translateEvents(merged)
-  await report({ level: 'success', message: `Step 3/4: translation done` })
+  // ── Step 3: Translate ───────────────────────────────────────────────────
+  if (remaining() < 10_000) {
+    await report({ level: 'error', message: `Only ${Math.round(remaining() / 1000)}s left — skipping translate, saving merged events` })
+  } else {
+    const transStart = Date.now()
+    await report({ level: 'progress', message: 'Step 3/4: translating EN→ZH…' })
+    await translateEvents(merged)
+    await report({ level: 'success', message: `Step 3/4: translation done (${Math.round((Date.now() - transStart) / 1000)}s)` })
+  }
 
   if (await isRunCancelled(runId)) {
     await report({ level: 'error', message: 'Cancelled after translate — aborting.' })
-    return { eventIds: [], stats: { ...stats, duration_ms: Date.now() - start } }
+    return { eventIds: [], stats: { ...stats, duration_ms: elapsed() } }
   }
 
-  // Step 4: Save — with cross-day dedup against events from the last 7 days
-  await report({ level: 'progress', message: 'Step 4/4: cross-day dedup + save…' })
+  // ── Step 4: Save ────────────────────────────────────────────────────────
+  const saveStart = Date.now()
+  await report({ level: 'progress', message: `Step 4/4: cross-day dedup + save… (${Math.round(remaining() / 1000)}s remaining)` })
   const { insertedIds, mergedCount } = await saveEvents(merged)
   stats.events_pushed = insertedIds.length
   await report({
     level: 'success',
-    message: `Step 4/4: ${insertedIds.length} new rows, ${mergedCount} merged into existing`,
+    message: `Step 4/4: ${insertedIds.length} new rows, ${mergedCount} merged into existing (${Math.round((Date.now() - saveStart) / 1000)}s)`,
     stats: { events_pushed: insertedIds.length },
   })
 
-  // Mark raw_items processed only AFTER save succeeded. If we crash anywhere
-  // in steps 2–4, the items stay unprocessed and the next run retries them
-  // (no silent data loss like the May 2-5 outage).
   await markRawItemsProcessed(successfullyExtractedItemIds)
 
-  stats.duration_ms = Date.now() - start
+  stats.duration_ms = elapsed()
+  const pctUsed = Math.round((stats.duration_ms / maxDuration) * 100)
   await report({
     level: 'success',
-    message: `Pipeline complete — ${insertedIds.length} new + ${mergedCount} merged in ${stats.duration_ms}ms`,
+    message: `Pipeline complete — ${insertedIds.length} new + ${mergedCount} merged in ${Math.round(stats.duration_ms / 1000)}s (${pctUsed}% of budget)`,
     stats: { duration_ms: stats.duration_ms },
   })
 
