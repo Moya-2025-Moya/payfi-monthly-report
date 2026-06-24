@@ -602,9 +602,9 @@ export async function extractEvents(rawItemIds?: string[], opts?: { deadlineMs?:
   let hitDeadline = false
 
   // Build all batches upfront
+  const totalBatches = Math.ceil(rawItems.length / BATCH_SIZE)
   interface BatchEntry { batch: RawItem[]; batchNum: number }
   const batches: BatchEntry[] = []
-  const totalBatches = Math.ceil(rawItems.length / BATCH_SIZE)
   for (let i = 0; i < rawItems.length; i += BATCH_SIZE) {
     batches.push({
       batch: rawItems.slice(i, i + BATCH_SIZE) as RawItem[],
@@ -613,11 +613,9 @@ export async function extractEvents(rawItemIds?: string[], opts?: { deadlineMs?:
   }
 
   // Process a single batch — pure function of its inputs, safe for concurrent use.
-  async function processBatch(entry: BatchEntry): Promise<{
-    events: ExtractedEvent[]
-    itemIds: string[]
-  } | null> {
-    if (Date.now() > deadline) return null
+  interface BatchResult { events: ExtractedEvent[]; itemIds: string[] }
+
+  async function processBatch(entry: BatchEntry): Promise<BatchResult | null> {
     const { batch, batchNum } = entry
     console.log(`[event-extractor] Batch ${batchNum}/${totalBatches} (${batch.length} items)`)
 
@@ -678,17 +676,33 @@ export async function extractEvents(rawItemIds?: string[], opts?: { deadlineMs?:
     }
   }
 
-  // Fire all batches concurrently — the global semaphore in ai-client.ts
-  // caps actual in-flight AI requests (MAX_CONCURRENT_AI_CALLS = 6), so we
-  // get parallelism without thundering herd.
-  console.log(`[event-extractor] Launching ${batches.length} batches concurrently (concurrency capped by ai-client semaphore)`)
-  const results = await Promise.all(batches.map(b => processBatch(b)))
+  // Concurrent worker pool — each worker picks the next batch from a shared
+  // index. Deadline is checked BETWEEN tasks (after acquiring a slot / before
+  // starting the AI call), so queued batches that would run past the deadline
+  // are skipped instead of started blindly.
+  const POOL_SIZE = 6
+  let nextBatch = 0
+  const batchResults: (BatchResult | null)[] = new Array(batches.length).fill(null)
 
-  for (const r of results) {
-    if (r === null) {
-      hitDeadline = true
-      continue
+  async function worker(): Promise<void> {
+    while (true) {
+      const idx = nextBatch++
+      if (idx >= batches.length) break
+      if (Date.now() > deadline) {
+        hitDeadline = true
+        break
+      }
+      batchResults[idx] = await processBatch(batches[idx])
     }
+  }
+
+  console.log(`[event-extractor] Starting ${Math.min(POOL_SIZE, batches.length)} workers for ${batches.length} batches`)
+  await Promise.all(
+    Array.from({ length: Math.min(POOL_SIZE, batches.length) }, () => worker()),
+  )
+
+  for (const r of batchResults) {
+    if (r === null) continue
     allEvents.push(...r.events)
     successfullyExtractedItemIds.push(...r.itemIds)
   }

@@ -139,16 +139,17 @@ async function mergeIntoExisting(
   }
 }
 
-async function saveEvents(events: ExtractedEvent[]): Promise<{
+async function saveEvents(
+  events: ExtractedEvent[],
+  opts?: { deadlineMs?: number },
+): Promise<{
   insertedIds: string[]
   mergedCount: number
+  skippedDedup: number
 }> {
-  if (events.length === 0) return { insertedIds: [], mergedCount: 0 }
+  if (events.length === 0) return { insertedIds: [], mergedCount: 0, skippedDedup: 0 }
+  const deadline = opts?.deadlineMs ?? Infinity
 
-  // Embed all candidates up-front in a single batched call so dedup lookups
-  // can use vector retrieval. Embeddings are best-effort: when disabled or a
-  // slot returns null, that candidate falls back to the lexical pool scan
-  // (legacy behaviour).
   const embeddingsEnabled = isEmbeddingsConfigured()
   const candidateEmbeddings: (number[] | null)[] = embeddingsEnabled
     ? await embedDocuments(events.map(e => eventEmbeddingText(e)))
@@ -161,8 +162,6 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
     console.log('[orchestrator]   → VOYAGE_API_KEY not set; using legacy lexical scan')
   }
 
-  // Cache lexical pool per category — only loaded on demand if a candidate's
-  // vector retrieval failed or embeddings are disabled.
   const lexicalPoolByCategory = new Map<string, DbEventLite[]>()
   async function getLexicalPool(category: string): Promise<DbEventLite[]> {
     let pool = lexicalPoolByCategory.get(category)
@@ -176,10 +175,27 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
   const toInsert: ExtractedEvent[] = []
   const toInsertEmbeddings: (number[] | null)[] = []
   let mergedCount = 0
+  let skippedDedup = 0
+
+  // Leave 5s at the end for the bulk insert + junction upsert.
+  const dedupDeadline = deadline - 5_000
 
   for (let i = 0; i < events.length; i++) {
     const event = events[i]
     const embedding = candidateEmbeddings[i]
+
+    // If running out of time, skip dedup and just insert the rest directly.
+    // A few duplicate rows are far better than losing all extracted events.
+    if (Date.now() > dedupDeadline) {
+      const remaining = events.length - i
+      console.warn(`[orchestrator] Save deadline reached at event ${i}/${events.length} — inserting remaining ${remaining} without dedup`)
+      for (let j = i; j < events.length; j++) {
+        toInsert.push(events[j])
+        toInsertEmbeddings.push(candidateEmbeddings[j])
+      }
+      skippedDedup = remaining
+      break
+    }
 
     let pool: DbEventLite[] | null = null
     if (embedding) {
@@ -201,7 +217,7 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
 
   if (toInsert.length === 0) {
     console.log(`[orchestrator]   → All ${events.length} events matched existing rows (no new inserts)`)
-    return { insertedIds: [], mergedCount }
+    return { insertedIds: [], mergedCount, skippedDedup }
   }
 
   const rows = toInsert.map((e, i) => {
@@ -218,8 +234,6 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
       source_count: sortedUrls.length,
       v1_status: null,
       published_at: e.published_at,
-      // Persist on insert so the next run's vector RPC can find this row.
-      // Stored as a JSON array; pgvector accepts that shape via PostgREST.
       title_embedding: toInsertEmbeddings[i] ?? null,
     }
   })
@@ -231,12 +245,11 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
 
   if (error) {
     console.error('[orchestrator] Failed to save events:', error.message)
-    return { insertedIds: [], mergedCount }
+    return { insertedIds: [], mergedCount, skippedDedup }
   }
 
   const insertedIds = (data ?? []).map((r: { id: string }) => r.id)
 
-  // Save event_sources junction for newly-inserted events
   const junctionRows: { event_id: string; raw_item_id: string }[] = []
   for (let i = 0; i < toInsert.length; i++) {
     const eventId = insertedIds[i]
@@ -255,7 +268,7 @@ async function saveEvents(events: ExtractedEvent[]): Promise<{
     }
   }
 
-  return { insertedIds, mergedCount }
+  return { insertedIds, mergedCount, skippedDedup }
 }
 
 // ─── Main Pipeline ─────────────────────────────────────────────────────────
@@ -318,7 +331,7 @@ export async function runProcessingPipeline(
   // ── Step 2: Merge ───────────────────────────────────────────────────────
   if (remaining() < 15_000) {
     await report({ level: 'error', message: `Only ${Math.round(remaining() / 1000)}s left — skipping merge/translate, saving raw extractions` })
-    const { insertedIds, mergedCount } = await saveEvents(extracted)
+    const { insertedIds, mergedCount } = await saveEvents(extracted, { deadlineMs: hardDeadline })
     await markRawItemsProcessed(successfullyExtractedItemIds)
     stats.events_pushed = insertedIds.length
     stats.duration_ms = elapsed()
@@ -359,11 +372,12 @@ export async function runProcessingPipeline(
   // ── Step 4: Save ────────────────────────────────────────────────────────
   const saveStart = Date.now()
   await report({ level: 'progress', message: `Step 4/4: cross-day dedup + save… (${Math.round(remaining() / 1000)}s remaining)` })
-  const { insertedIds, mergedCount } = await saveEvents(merged)
+  const { insertedIds, mergedCount, skippedDedup } = await saveEvents(merged, { deadlineMs: hardDeadline })
   stats.events_pushed = insertedIds.length
+  const dedupNote = skippedDedup > 0 ? `, ${skippedDedup} inserted without dedup (time pressure)` : ''
   await report({
     level: 'success',
-    message: `Step 4/4: ${insertedIds.length} new rows, ${mergedCount} merged into existing (${Math.round((Date.now() - saveStart) / 1000)}s)`,
+    message: `Step 4/4: ${insertedIds.length} new rows, ${mergedCount} merged into existing${dedupNote} (${Math.round((Date.now() - saveStart) / 1000)}s)`,
     stats: { events_pushed: insertedIds.length },
   })
 
